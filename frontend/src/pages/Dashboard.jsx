@@ -35,7 +35,7 @@ export const Dashboard = () => {
       {/* ヘッダーエリア */}
       <header className="bg-white shadow-sm px-4 py-3 flex justify-between items-center sticky top-0 z-10">
         <div className="flex items-center">
-          {/* ロゴ画像（public/logo.png を参照） */}
+          {/* ロゴ画像（lucide-reactのSproutを使用） */}
           <Sprout className="w-8 h-8 mr-2 text-green-600" />
           <h1 className="text-lg font-bold text-gray-800">
             農地維持管理システム by 鎌田緑保護会
@@ -53,7 +53,10 @@ export const Dashboard = () => {
       {/* メインコンテンツ */}
       <main className="p-4 max-w-md mx-auto">
         {/* 新規実績入力ボタン */}
-        <button className="w-full mb-6 bg-white border-2 border-dashed border-gray-300 rounded-xl p-6 text-center text-gray-600 hover:bg-gray-50 hover:border-green-500 hover:text-green-600 transition-all flex flex-col items-center justify-center group">
+        <button 
+          onClick={() => navigate('/activity-form')}
+          className="w-full mb-6 bg-white border-2 border-dashed border-gray-300 rounded-xl p-6 text-center text-gray-600 hover:bg-gray-50 hover:border-green-500 hover:text-green-600 transition-all flex flex-col items-center justify-center group"
+        >
           <div className="bg-gray-100 p-3 rounded-full mb-2 group-hover:bg-green-100 transition-colors">
             <Plus className="h-6 w-6 text-gray-400 group-hover:text-green-600" />
           </div>
@@ -93,7 +96,10 @@ export const Dashboard = () => {
                 </div>
               </div>
               
-              <button className="mt-4 w-full bg-green-600 text-white font-bold py-2 rounded-lg hover:bg-green-700 transition-colors text-sm">
+              <button 
+                onClick={() => navigate('/activity-form')}
+                className="mt-4 w-full bg-green-600 text-white font-bold py-2 rounded-lg hover:bg-green-700 transition-colors text-sm"
+              >
                 この活動の実績を入力
               </button>
             </div>
