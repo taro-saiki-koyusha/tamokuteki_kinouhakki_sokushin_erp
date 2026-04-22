@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
-// 👇 useLocation を追加
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X } from 'lucide-react';
-// 👇 doc, updateDoc を追加
 import { collection, addDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase'; 
@@ -10,11 +8,8 @@ import { db, storage } from '../firebase';
 export const ActivityForm = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  
-  // ダッシュボードから渡された「編集用のデータ」を受け取る（新規の場合は空っぽになります）
   const editData = location.state?.editData;
 
-  // 初期値の設定：編集データがあればそれを、無ければ空の初期値をセット
   const [formData, setFormData] = useState(
     editData ? {
       date: editData.date,
@@ -35,9 +30,16 @@ export const ActivityForm = () => {
     }
   );
   
-  const [imageFile, setImageFile] = useState(null); 
-  // 編集データに画像URLがあれば、それを初期プレビューとして表示
-  const [previewUrl, setPreviewUrl] = useState(editData?.imageUrl || ''); 
+  // 👇 複数画像のための状態管理
+  // 1. すでに保存されている画像のURLリスト（過去データのimageUrlにも対応）
+  const [existingUrls, setExistingUrls] = useState(
+    editData?.imageUrls || (editData?.imageUrl ? [editData.imageUrl] : [])
+  );
+  // 2. 新しく追加で選択された画像ファイル本体のリスト
+  const [newImageFiles, setNewImageFiles] = useState([]);
+  // 3. 新しく追加された画像のプレビュー用URLリスト
+  const [newPreviewUrls, setNewPreviewUrls] = useState([]);
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleChange = (e) => {
@@ -45,17 +47,26 @@ export const ActivityForm = () => {
     setFormData({ ...formData, [name]: value });
   };
 
+  // 📸 写真が選択された時の処理（複数選択対応）
   const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setImageFile(file);
-      setPreviewUrl(URL.createObjectURL(file));
+    const files = Array.from(e.target.files); // 選択された複数のファイルを配列にする
+    if (files.length > 0) {
+      setNewImageFiles(prev => [...prev, ...files]);
+      
+      const newPreviews = files.map(file => URL.createObjectURL(file));
+      setNewPreviewUrls(prev => [...prev, ...newPreviews]);
     }
   };
 
-  const handleRemoveImage = () => {
-    setImageFile(null);
-    setPreviewUrl('');
+  // 既存の画像を削除する
+  const removeExistingUrl = (index) => {
+    setExistingUrls(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // 新しく選んだ画像を削除する
+  const removeNewImage = (index) => {
+    setNewImageFiles(prev => prev.filter((_, i) => i !== index));
+    setNewPreviewUrls(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e) => {
@@ -63,43 +74,40 @@ export const ActivityForm = () => {
     setIsSubmitting(true);
 
     try {
-      // 元々画像があって、新しく画像を選び直さなかった場合は、元のURLを維持する
-      let imageUrl = editData?.imageUrl || ''; 
+      let finalImageUrls = [...existingUrls]; // 最終的に保存する画像のリスト
 
-      // 新しい画像ファイルが選択された場合はアップロード
-      if (imageFile) {
-        const fileName = `photos/${Date.now()}_${imageFile.name}`;
-        const imageRef = ref(storage, fileName);
-        await uploadBytes(imageRef, imageFile);
-        imageUrl = await getDownloadURL(imageRef);
+      // 新しい画像があれば、すべてStorageにアップロードする
+      if (newImageFiles.length > 0) {
+        // Promise.all を使って複数枚の画像を同時にアップロード
+        const uploadPromises = newImageFiles.map(async (file) => {
+          const fileName = `photos/${Date.now()}_${file.name}`;
+          const imageRef = ref(storage, fileName);
+          await uploadBytes(imageRef, file);
+          return await getDownloadURL(imageRef);
+        });
+        
+        // すべてのアップロードが終わるのを待ってURLを取得
+        const newlyUploadedUrls = await Promise.all(uploadPromises);
+        finalImageUrls = [...finalImageUrls, ...newlyUploadedUrls]; // 既存のURLと合体
       }
 
-      // 送信するデータのかたまり
       const submitData = {
-        date: formData.date,
-        startTime: formData.startTime,
-        endTime: formData.endTime,
-        location: formData.location,
-        activityType: formData.activityType,
+        ...formData,
         participants: Number(formData.participants),
-        memo: formData.memo,
-        imageUrl: imageUrl, 
-        updatedAt: serverTimestamp() // 常に更新時間を記録
+        imageUrls: finalImageUrls, // 👈 複数のURLを配列として保存
+        updatedAt: serverTimestamp()
       };
 
       if (editData) {
-        // ✏️ 編集モードの場合：特定のデータを「上書き（updateDoc）」する
         await updateDoc(doc(db, 'activities', editData.id), submitData);
         alert('活動実績を修正しました！📝');
       } else {
-        // 🌱 新規作成モードの場合：新しいデータとして「追加（addDoc）」する
         submitData.createdAt = serverTimestamp();
         await addDoc(collection(db, 'activities'), submitData);
         alert('活動実績を保存しました！📸');
       }
 
       navigate('/dashboard');
-      
     } catch (error) {
       console.error('保存エラー:', error);
       alert('保存に失敗しました。通信環境を確認してください。');
@@ -168,24 +176,41 @@ export const ActivityForm = () => {
               <input type="number" name="participants" min="1" value={formData.participants} onChange={handleChange} className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-green-500 focus:border-green-500" required />
             </div>
             
+            {/* 📸 写真アップロード機能（グリッド表示対応） */}
             <div>
               <label className="flex items-center text-sm font-bold text-gray-700 mb-2">
-                <Camera className="w-4 h-4 mr-1 text-green-600" /> 現場写真
+                <Camera className="w-4 h-4 mr-1 text-green-600" /> 現場写真（複数可）
               </label>
-              {previewUrl ? (
-                <div className="relative rounded-lg overflow-hidden border border-gray-200">
-                  <img src={previewUrl} alt="プレビュー" className="w-full h-48 object-cover" />
-                  <button type="button" onClick={handleRemoveImage} className="absolute top-2 right-2 bg-black/50 text-white p-1.5 rounded-full hover:bg-black/70 transition-colors">
-                    <X size={20} />
-                  </button>
-                </div>
-              ) : (
-                <label className="border-2 border-dashed border-gray-300 rounded-lg p-6 flex flex-col items-center justify-center text-gray-500 hover:bg-green-50 hover:border-green-500 hover:text-green-600 cursor-pointer transition-colors group">
-                  <Camera size={32} className="mb-2 text-gray-400 group-hover:text-green-500" />
-                  <span className="text-sm font-bold">タップして写真を撮影・選択</span>
-                  <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+              
+              <div className="grid grid-cols-3 gap-2">
+                {/* 既存の画像プレビュー */}
+                {existingUrls.map((url, i) => (
+                  <div key={`exist-${i}`} className="relative aspect-square rounded-lg overflow-hidden border border-gray-200">
+                    <img src={url} alt="既存の写真" className="w-full h-full object-cover" />
+                    <button type="button" onClick={() => removeExistingUrl(i)} className="absolute top-1 right-1 bg-black/60 text-white p-1 rounded-full hover:bg-black/80">
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+
+                {/* 新規の画像プレビュー */}
+                {newPreviewUrls.map((url, i) => (
+                  <div key={`new-${i}`} className="relative aspect-square rounded-lg overflow-hidden border border-green-300 shadow-[0_0_0_2px_rgba(74,222,128,0.2)]">
+                    <img src={url} alt="新規追加の写真" className="w-full h-full object-cover" />
+                    <button type="button" onClick={() => removeNewImage(i)} className="absolute top-1 right-1 bg-black/60 text-white p-1 rounded-full hover:bg-black/80">
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+
+                {/* 追加ボタン */}
+                <label className="aspect-square border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-400 hover:bg-green-50 hover:border-green-500 hover:text-green-600 cursor-pointer transition-colors group">
+                  <Camera size={24} className="mb-1" />
+                  <span className="text-[10px] font-bold">写真を追加</span>
+                  {/* multiple属性で複数選択を可能に */}
+                  <input type="file" accept="image/*" multiple onChange={handleImageChange} className="hidden" />
                 </label>
-              )}
+              </div>
             </div>
 
             <div>
@@ -196,7 +221,7 @@ export const ActivityForm = () => {
 
           <button type="submit" disabled={isSubmitting} className={`w-full flex items-center justify-center py-4 px-4 border border-transparent rounded-xl shadow-sm text-lg font-bold text-white transition-all ${isSubmitting ? 'bg-green-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 active:scale-95'}`}>
             <Save className="mr-2 h-6 w-6" />
-            {isSubmitting ? '処理中...' : (editData ? '内容を更新する' : '実績を登録する')}
+            {isSubmitting ? 'アップロード中...' : (editData ? '内容を更新する' : '実績を登録する')}
           </button>
         </form>
       </main>
