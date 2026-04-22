@@ -2,6 +2,7 @@ import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 // ↓この行で GoogleAuthProvider をしっかり呼び出しています！
 import { getAuth, GoogleAuthProvider } from "firebase/auth"; 
+import { getStorage } from "firebase/storage";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -20,3 +21,4 @@ export const db = getFirestore(app);
 export const auth = getAuth(app);
 // ↓上で呼び出したので、ここでエラーにならずに使えるようになります
 export const googleProvider = new GoogleAuthProvider();
+export const storage = getStorage(app);
