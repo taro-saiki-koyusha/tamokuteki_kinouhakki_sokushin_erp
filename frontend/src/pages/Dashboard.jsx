@@ -30,9 +30,15 @@ export const Dashboard = () => {
   const navigate = useNavigate();
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  // 🟢 画面に表示する「詳細ダイアログ」用のState
   const [selectedActivity, setSelectedActivity] = useState(null);
+  
+  // 🖨️ 「PDF印刷」のためだけに裏でセットするState（ダイアログは出さない）
+  const [printActivity, setPrintActivity] = useState(null);
+  
   const [activeTab, setActiveTab] = useState('home');
-  const [isExporting, setIsExporting] = useState(false);
+  const [exportingId, setExportingId] = useState(null);
 
   const userName = auth.currentUser?.displayName || 'ユーザー';
 
@@ -55,7 +61,10 @@ export const Dashboard = () => {
 
   const handleDelete = async (id) => {
     if (window.confirm('本当にこの実績を削除しますか？')) {
-      try { await deleteDoc(doc(db, 'activities', id)); setSelectedActivity(null); } catch (error) { console.error(error); }
+      try { 
+        await deleteDoc(doc(db, 'activities', id)); 
+        setSelectedActivity(null); 
+      } catch (error) { console.error(error); }
     }
   };
 
@@ -63,28 +72,22 @@ export const Dashboard = () => {
     navigate('/activity-form', { state: { editData: activity } });
   };
 
-  const handlePrint = () => { window.print(); };
-
   // 🚀 【様式1対応】Excel出力機能
   const handleExportSingleReport = async (activity) => {
-    setIsExporting(true);
+    setExportingId(activity.id); 
     try {
-      const response = await fetch(`/様式1_活動報告書_v2.xlsx?t=${Date.now()}`);
+      const response = await fetch(`/様式1_活動報告書_農地維持支払.xlsx?t=${Date.now()}`);
       if (!response.ok) throw new Error('テンプレートが見つかりません');
       const arrayBuffer = await response.arrayBuffer();
       const workbook = await XlsxPopulate.fromDataAsync(arrayBuffer);
 
-      // --- シート1：活動報告書（表紙） ---
       const sheet1 = workbook.sheet('活動報告書') || workbook.sheets()[0];
       const [startH, startM] = activity.startTime.split(':').map(Number);
       const [endH, endM] = activity.endTime.split(':').map(Number);
       let duration = (endH + endM / 60) - (startH + startM / 60);
       if (duration < 0) duration += 24;
 
-      // 📊 報告書NOをAJ3セルに書き込み
-      sheet1.cell('AJ3').value(activity.reportNo || ''); 
-
-      // 📊 活動実績の流し込み（7行目）
+      sheet1.cell('AH3').value(activity.reportNo || ''); 
       sheet1.cell('A7').value(activity.date); 
       sheet1.cell('C7').value(activity.startTime); 
       sheet1.cell('F7').value(activity.endTime);   
@@ -93,9 +96,9 @@ export const Dashboard = () => {
       sheet1.cell('O7').value(Number(activity.participantsNonAgri || 0)); 
       sheet1.cell('Q7').value(Number(activity.participants || 0)); 
       sheet1.cell('S7').value(activity.activityNumbers?.join(', ')); 
-      sheet1.cell('Z7').value(activity.activityType || '');          
+      sheet1.cell('AA7').value(activity.activityType || '');          
+      sheet1.cell('A8').value(activity.memo || '');
 
-      // --- シート2：日当借上支払明細 ---
       const sheet2 = workbook.sheet('日当借上支払明細') || workbook.sheets()[1];
       sheet2.cell('AJ3').value(activity.date); 
 
@@ -129,7 +132,6 @@ export const Dashboard = () => {
         });
       }
 
-      // 3. ダウンロード
       const blob = await workbook.outputAsync();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -143,10 +145,18 @@ export const Dashboard = () => {
       alert('「様式1」を作成しました！🎉');
     } catch (error) {
       console.error(error);
-      alert('Excel作成エラー');
+      alert('Excel作成エラー：publicフォルダに「様式1_活動報告書_農地維持支払.xlsx」があるか確認してください。');
     } finally {
-      setIsExporting(false);
+      setExportingId(null);
     }
+  };
+
+  // 🖨️ PDF印刷専用の処理
+  const handleDirectPrint = (activity) => {
+    setPrintActivity(activity);
+    setTimeout(() => {
+      window.print();
+    }, 150);
   };
 
   const summaryData = useMemo(() => {
@@ -212,11 +222,12 @@ export const Dashboard = () => {
                 <div className="text-center py-10 text-gray-400 col-span-full">読み込み中...</div>
               ) : activities.map((activity) => {
                 const images = activity.imageUrls || (activity.imageUrl ? [activity.imageUrl] : []);
+                const isThisExporting = exportingId === activity.id;
+
                 return (
                   <div key={activity.id} onClick={() => setSelectedActivity(activity)} className="bg-white rounded-2xl shadow-sm border-l-4 border-green-500 p-4 cursor-pointer hover:shadow-md hover:-translate-y-1 transition-all flex flex-col h-full group">
                     <h3 className="font-bold text-lg text-gray-900 group-hover:text-green-700 mb-2">{activity.activityType || '内容未入力'}</h3>
                     <div className="space-y-1.5 text-sm text-gray-600 mb-3 flex-grow">
-                      {/* 🆕 一覧画面にも報告書NOを小さく表示 */}
                       {activity.reportNo && (
                         <div className="flex items-center text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded-md w-max mb-1">
                           NO: {activity.reportNo}
@@ -226,10 +237,32 @@ export const Dashboard = () => {
                       <div className="flex items-center"><MapPin className="mr-2 h-4 w-4" />{activity.location}</div>
                     </div>
                     {images.length > 0 && (
-                      <div className="mt-auto relative rounded-lg overflow-hidden h-40 md:h-48 bg-gray-50 border border-gray-100">
+                      <div className="relative rounded-lg overflow-hidden h-40 md:h-48 bg-gray-50 border border-gray-100 mb-3">
                         <img src={images[0]} alt="" className="w-full h-full object-cover" />
                       </div>
                     )}
+                    
+                    <div className="mt-auto pt-3 border-t border-gray-100 flex gap-2">
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleExportSingleReport(activity); }}
+                        disabled={isThisExporting}
+                        className={`flex-1 py-2 rounded-xl font-bold text-xs md:text-sm flex items-center justify-center transition-colors ${isThisExporting ? 'bg-blue-400 text-white cursor-not-allowed' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
+                      >
+                        <FileSpreadsheet size={16} className="mr-1" />
+                        {isThisExporting ? '生成中...' : 'Excel'}
+                      </button>
+                      
+                      <button 
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          handleDirectPrint(activity); 
+                        }}
+                        className="flex-1 bg-gray-50 text-gray-700 border border-gray-200 py-2 rounded-xl font-bold text-xs md:text-sm flex items-center justify-center hover:bg-gray-100 transition-colors"
+                      >
+                        <Printer size={16} className="mr-1" /> PDF
+                      </button>
+                    </div>
+
                   </div>
                 );
               })}
@@ -238,6 +271,7 @@ export const Dashboard = () => {
         )}
       </main>
 
+      {/* 🟢 詳細画面ダイアログ */}
       {selectedActivity && (() => {
         const modalImages = selectedActivity.imageUrls || (selectedActivity.imageUrl ? [selectedActivity.imageUrl] : []);
         return (
@@ -248,21 +282,13 @@ export const Dashboard = () => {
                 <button onClick={() => setSelectedActivity(null)} className="p-2 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200 transition-all"><X size={20} /></button>
               </div>
               <div className="overflow-y-auto p-5 space-y-5">
-                <div className="flex flex-col md:flex-row gap-3">
-                  <button onClick={() => handleExportSingleReport(selectedActivity)} disabled={isExporting} className={`flex-1 text-white py-3 rounded-xl font-bold flex items-center justify-center ${isExporting ? 'bg-blue-400' : 'bg-blue-600 hover:bg-blue-700'}`}>
-                    <FileSpreadsheet size={20} className="mr-2" /> {isExporting ? '生成中...' : '様式1(Excel)を出力'}
-                  </button>
-                  <button onClick={handlePrint} className="flex-1 bg-white text-blue-700 border-2 border-blue-200 py-3 rounded-xl font-bold flex items-center justify-center hover:bg-blue-50">
-                    <Printer size={20} className="mr-2" />写真台帳(PDF)を出力
-                  </button>
-                </div>
                 {modalImages.map((img, idx) => (
                   <div key={idx} className="rounded-xl overflow-hidden border border-gray-200"><img src={img} alt="" className="w-full h-auto" /></div>
                 ))}
               </div>
               <div className="p-4 md:p-5 border-t border-gray-100 flex space-x-3 bg-gray-50">
-                <button onClick={() => { setSelectedActivity(null); handleEdit(selectedActivity); }} className="flex-1 py-3 bg-white border border-gray-300 rounded-xl font-bold">編集</button>
-                <button onClick={() => handleDelete(selectedActivity.id)} className="flex-1 py-3 bg-white border border-red-200 rounded-xl font-bold text-red-600">削除</button>
+                <button onClick={() => { setSelectedActivity(null); handleEdit(selectedActivity); }} className="flex-1 py-3 bg-white border border-gray-300 rounded-xl font-bold">編集する</button>
+                <button onClick={() => handleDelete(selectedActivity.id)} className="flex-1 py-3 bg-white border border-red-200 rounded-xl font-bold text-red-600">削除する</button>
               </div>
             </div>
           </div>
@@ -275,53 +301,63 @@ export const Dashboard = () => {
       </nav>
 
       {/* 🖨️ 印刷用デザイン（写真台帳） */}
-      {selectedActivity && (
-        <div className="hidden print:block w-full text-black bg-white font-serif">
-          <h1 className="text-2xl font-bold text-center border-b-4 border-black pb-2 mb-6">活動状況写真台帳</h1>
-          <table className="w-full border-2 border-black border-collapse mb-8 text-sm">
-            <tbody>
-              {/* 🆕 報告書NOを一番上の行に追加 */}
-              <tr>
-                <th className="border border-black bg-gray-100 p-3 w-1/4 text-left">報告書NO</th>
-                <td className="border border-black p-3" colSpan="3">{selectedActivity.reportNo || '（未設定）'}</td>
-              </tr>
-              <tr>
-                <th className="border border-black bg-gray-100 p-3 w-1/4 text-left">実施年月日</th>
-                <td className="border border-black p-3 w-1/4">{selectedActivity.date}</td>
-                <th className="border border-black bg-gray-100 p-3 w-1/4 text-left">活動項目番号</th>
-                <td className="border border-black p-3 w-1/4">{selectedActivity.activityNumbers?.join(', ')}</td>
-              </tr>
-              <tr>
-                <th className="border border-black bg-gray-100 p-3 text-left">実施場所</th>
-                <td className="border border-black p-3" colSpan="3">{selectedActivity.location}</td>
-              </tr>
-              <tr>
-                <th className="border border-black bg-gray-100 p-3 text-left">活動内容</th>
-                <td className="border border-black p-3" colSpan="3">{selectedActivity.activityType}</td>
-              </tr>
-              <tr>
-                <th className="border border-black bg-gray-100 p-3 text-left">参加人数</th>
-                <td className="border border-black p-3" colSpan="3">
-                  計 {selectedActivity.participants} 名 （農業者：{selectedActivity.participantsAgri}名 ／ 農業者以外：{selectedActivity.participantsNonAgri}名）
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          
-          <div className="space-y-8">
-            {(selectedActivity.imageUrls || []).map((img, idx) => (
-              <div key={idx} className="break-inside-avoid">
-                <div className="border border-gray-400 p-1"><img src={img} alt="" className="w-full h-auto max-h-[140mm] object-contain" /></div>
-              </div>
-            ))}
+      {printActivity && (() => {
+        const printImages = printActivity.imageUrls || (printActivity.imageUrl ? [printActivity.imageUrl] : []);
+        const totalImages = printImages.length;
+
+        return (
+          <div className="hidden print:block w-full text-black bg-white font-serif">
+            <h1 className="text-2xl font-bold text-center border-b-4 border-black pb-2 mb-6">活動状況写真台帳</h1>
+            <table className="w-full border-2 border-black border-collapse mb-6 text-sm">
+              <tbody>
+                <tr>
+                  <th className="border border-black bg-gray-100 p-3 w-1/4 text-left">報告書NO</th>
+                  <td className="border border-black p-3" colSpan="3">{printActivity.reportNo || '（未設定）'}</td>
+                </tr>
+                <tr>
+                  <th className="border border-black bg-gray-100 p-3 w-1/4 text-left">実施年月日</th>
+                  <td className="border border-black p-3 w-1/4">{printActivity.date}</td>
+                  <th className="border border-black bg-gray-100 p-3 w-1/4 text-left">活動項目番号</th>
+                  <td className="border border-black p-3 w-1/4">{printActivity.activityNumbers?.join(', ')}</td>
+                </tr>
+                <tr>
+                  <th className="border border-black bg-gray-100 p-3 text-left">実施場所</th>
+                  <td className="border border-black p-3" colSpan="3">{printActivity.location}</td>
+                </tr>
+                <tr>
+                  <th className="border border-black bg-gray-100 p-3 text-left">活動内容</th>
+                  <td className="border border-black p-3" colSpan="3">{printActivity.activityType}</td>
+                </tr>
+                <tr>
+                  <th className="border border-black bg-gray-100 p-3 text-left">参加人数</th>
+                  <td className="border border-black p-3" colSpan="3">
+                    計 {printActivity.participants} 名 （農業者：{printActivity.participantsAgri}名 ／ 農業者以外：{printActivity.participantsNonAgri}名）
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            
+            <div className="space-y-6">
+              {printImages.map((img, idx) => (
+                <div key={idx} className="break-inside-avoid">
+                  {/* 🚀 写真の左上にカウンターを表示 */}
+                  <div className="text-sm font-bold mb-1 text-left">
+                    {idx + 1}/{totalImages}枚目
+                  </div>
+                  <div className="border border-gray-400 p-1">
+                    <img src={img} alt="" className="w-full h-auto max-h-[140mm] object-contain" />
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            <div className="mt-8 flex justify-between items-end border-t border-black pt-4">
+              <div className="text-sm">組織名：農事組合法人カマタ</div>
+              <div className="text-sm text-right">出力日：{new Date().toLocaleDateString('ja-JP')}</div>
+            </div>
           </div>
-          
-          <div className="mt-12 flex justify-between items-end border-t border-black pt-4">
-            <div className="text-sm">組織名：農事組合法人カマタ</div>
-            <div className="text-sm text-right">出力日：{new Date().toLocaleDateString('ja-JP')}</div>
-          </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };
