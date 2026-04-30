@@ -7,7 +7,7 @@ import { signOut } from 'firebase/auth';
 import XlsxPopulate from 'xlsx-populate/browser/xlsx-populate';
 
 // =========================================================================
-// マスターデータ（ActivityForm.jsxと一致させてください）
+// マスターデータ
 // =========================================================================
 const MEMBERS = [
   { id: "1", name: "齋木 太郎", isAgri: true, defaultWage: 1000 },
@@ -65,7 +65,7 @@ export const Dashboard = () => {
 
   const handlePrint = () => { window.print(); };
 
-  // 🚀 【様式1対応】Excel出力機能（セル番地完全調整版）
+  // 🚀 【様式1対応】Excel出力機能
   const handleExportSingleReport = async (activity) => {
     setIsExporting(true);
     try {
@@ -81,7 +81,10 @@ export const Dashboard = () => {
       let duration = (endH + endM / 60) - (startH + startM / 60);
       if (duration < 0) duration += 24;
 
-      // 📊 7行目に正しく書き込むよう調整
+      // 📊 報告書NOをAJ3セルに書き込み
+      sheet1.cell('AJ3').value(activity.reportNo || ''); 
+
+      // 📊 活動実績の流し込み（7行目）
       sheet1.cell('A7').value(activity.date); 
       sheet1.cell('C7').value(activity.startTime); 
       sheet1.cell('F7').value(activity.endTime);   
@@ -89,16 +92,16 @@ export const Dashboard = () => {
       sheet1.cell('M7').value(Number(activity.participantsAgri || 0)); 
       sheet1.cell('O7').value(Number(activity.participantsNonAgri || 0)); 
       sheet1.cell('Q7').value(Number(activity.participants || 0)); 
-      sheet1.cell('S7').value(activity.activityNumbers?.join(', ')); // 項目番号（S列）
-      sheet1.cell('Z7').value(activity.activityType || '');          // 具体的な活動内容（Z列）
+      sheet1.cell('S7').value(activity.activityNumbers?.join(', ')); 
+      sheet1.cell('Z7').value(activity.activityType || '');          
 
       // --- シート2：日当借上支払明細 ---
       const sheet2 = workbook.sheet('日当借上支払明細') || workbook.sheets()[1];
-      sheet2.cell('AJ3').value(activity.date); // 活動実施日（AJ列）
+      sheet2.cell('AJ3').value(activity.date); 
 
       if (activity.participantDetails && activity.participantDetails.length > 0) {
         activity.participantDetails.forEach((detail, index) => {
-          const row = 6 + index; // 明細は6行目からスタート
+          const row = 6 + index; 
           const member = MEMBERS.find(m => m.id === detail.memberId);
           const machine = MACHINES.find(m => m.id === detail.machineId);
           
@@ -122,8 +125,6 @@ export const Dashboard = () => {
             sheet2.cell(`AC${row}`).value(machine.defaultPrice); 
             sheet2.cell(`AF${row}`).value(machineTotal); 
           }
-          
-          // 支払金額（日当＋機械借上料の合計）
           sheet2.cell(`AJ${row}`).value(memberTotal + machineTotal);
         });
       }
@@ -215,6 +216,12 @@ export const Dashboard = () => {
                   <div key={activity.id} onClick={() => setSelectedActivity(activity)} className="bg-white rounded-2xl shadow-sm border-l-4 border-green-500 p-4 cursor-pointer hover:shadow-md hover:-translate-y-1 transition-all flex flex-col h-full group">
                     <h3 className="font-bold text-lg text-gray-900 group-hover:text-green-700 mb-2">{activity.activityType || '内容未入力'}</h3>
                     <div className="space-y-1.5 text-sm text-gray-600 mb-3 flex-grow">
+                      {/* 🆕 一覧画面にも報告書NOを小さく表示 */}
+                      {activity.reportNo && (
+                        <div className="flex items-center text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded-md w-max mb-1">
+                          NO: {activity.reportNo}
+                        </div>
+                      )}
                       <div className="flex items-center"><Calendar className="mr-2 h-4 w-4" />{activity.date}</div>
                       <div className="flex items-center"><MapPin className="mr-2 h-4 w-4" />{activity.location}</div>
                     </div>
@@ -267,12 +274,17 @@ export const Dashboard = () => {
         <button onClick={() => setActiveTab('summary')} className={`flex flex-col items-center ${activeTab === 'summary' ? 'text-green-600' : 'text-gray-400'}`}><BarChart2 size={24} /><span className="text-[10px] mt-1 font-bold">集計</span></button>
       </nav>
 
-      {/* 🖨️ 印刷用デザイン */}
+      {/* 🖨️ 印刷用デザイン（写真台帳） */}
       {selectedActivity && (
         <div className="hidden print:block w-full text-black bg-white font-serif">
           <h1 className="text-2xl font-bold text-center border-b-4 border-black pb-2 mb-6">活動状況写真台帳</h1>
           <table className="w-full border-2 border-black border-collapse mb-8 text-sm">
             <tbody>
+              {/* 🆕 報告書NOを一番上の行に追加 */}
+              <tr>
+                <th className="border border-black bg-gray-100 p-3 w-1/4 text-left">報告書NO</th>
+                <td className="border border-black p-3" colSpan="3">{selectedActivity.reportNo || '（未設定）'}</td>
+              </tr>
               <tr>
                 <th className="border border-black bg-gray-100 p-3 w-1/4 text-left">実施年月日</th>
                 <td className="border border-black p-3 w-1/4">{selectedActivity.date}</td>
@@ -295,6 +307,7 @@ export const Dashboard = () => {
               </tr>
             </tbody>
           </table>
+          
           <div className="space-y-8">
             {(selectedActivity.imageUrls || []).map((img, idx) => (
               <div key={idx} className="break-inside-avoid">
@@ -302,6 +315,7 @@ export const Dashboard = () => {
               </div>
             ))}
           </div>
+          
           <div className="mt-12 flex justify-between items-end border-t border-black pt-4">
             <div className="text-sm">組織名：農事組合法人カマタ</div>
             <div className="text-sm text-right">出力日：{new Date().toLocaleDateString('ja-JP')}</div>
