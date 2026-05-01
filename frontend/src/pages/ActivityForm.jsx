@@ -1,19 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2 } from 'lucide-react';
-import { collection, addDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit } from 'lucide-react';
+import { collection, addDoc, doc, updateDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase'; 
 
-// マスターデータ
-const MEMBERS = [
-  { id: "1", name: "齋木 太郎", isAgri: true, defaultWage: 1000 },
-  { id: "2", name: "柏崎 一郎", isAgri: true, defaultWage: 1000 },
-  { id: "3", name: "鯖石 二郎", isAgri: false, defaultWage: 1000 },
-  { id: "4", name: "大沢 三郎", isAgri: true, defaultWage: 1000 },
-  { id: "5", name: "農水 花子", isAgri: false, defaultWage: 1000 },
-];
-
+// =========================================================================
+// 機械マスターと活動項目マスター
+// =========================================================================
 const MACHINES = [
   { id: "1", name: "刈払機（肩掛け）", defaultPrice: 900 },
   { id: "2", name: "刈払機（自走式）", defaultPrice: 1500 },
@@ -56,6 +50,16 @@ export const ActivityForm = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const editData = location.state?.editData;
+  
+  const [isViewMode, setIsViewMode] = useState(location.state?.isViewMode || false);
+  const [membersList, setMembersList] = useState([]);
+
+  useEffect(() => {
+    fetch('/members.json')
+      .then(res => res.json())
+      .then(data => setMembersList(data))
+      .catch(err => console.error("メンバー情報の読み込みに失敗しました:", err));
+  }, []);
 
   const [formData, setFormData] = useState(
     editData ? {
@@ -66,7 +70,7 @@ export const ActivityForm = () => {
       activityType: editData.activityType,
       activityNumbers: editData.activityNumbers || [], 
       memo: editData.memo || '',
-      reportNo: editData.reportNo || '' // 🆕 既存の報告書NOがあれば読み込む
+      reportNo: editData.reportNo || ''
     } : {
       date: new Date().toISOString().split('T')[0],
       startTime: '08:00',
@@ -75,7 +79,7 @@ export const ActivityForm = () => {
       activityType: '',
       activityNumbers: [],
       memo: '',
-      reportNo: '' // 🆕 新規作成時の初期値
+      reportNo: ''
     }
   );
 
@@ -108,7 +112,7 @@ export const ActivityForm = () => {
 
   const summary = participantDetails.reduce((acc, p) => {
     if (!p.memberId) return acc;
-    const member = MEMBERS.find(m => m.id === p.memberId);
+    const member = membersList.find(m => m.id === p.memberId);
     if (member) { if (member.isAgri) acc.agri += 1; else acc.nonAgri += 1; }
     return acc;
   }, { agri: 0, nonAgri: 0 });
@@ -155,6 +159,43 @@ export const ActivityForm = () => {
     setNewPreviewUrls(prev => prev.filter((_, i) => i !== index));
   };
 
+  // 🚀 編集キャンセル処理（入力内容を元に戻して閲覧モードへ）
+  const handleCancelEdit = () => {
+    if (!editData) return;
+    
+    // 入力中のデータを元の editData にリセット
+    setFormData({
+      date: editData.date,
+      startTime: editData.startTime,
+      endTime: editData.endTime,
+      location: editData.location,
+      activityType: editData.activityType,
+      activityNumbers: editData.activityNumbers || [],
+      memo: editData.memo || '',
+      reportNo: editData.reportNo || ''
+    });
+    setParticipantDetails(editData.participantDetails || []);
+    setExistingUrls(editData.imageUrls || (editData.imageUrl ? [editData.imageUrl] : []));
+    setNewImageFiles([]);
+    setNewPreviewUrls([]);
+    
+    // 閲覧モードに戻す
+    setIsViewMode(true);
+  };
+
+  const handleDelete = async () => {
+    if (window.confirm('本当にこの実績を削除しますか？')) {
+      try {
+        await deleteDoc(doc(db, 'activities', editData.id));
+        alert('削除しました。');
+        navigate('/dashboard');
+      } catch (error) {
+        console.error(error);
+        alert('削除エラー');
+      }
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (formData.activityNumbers.length === 0) { alert('活動項目番号を選択してください。'); return; }
@@ -184,63 +225,72 @@ export const ActivityForm = () => {
 
   const filteredItems = ACTIVITY_ITEMS.filter(item => item.name.includes(searchTerm) || item.id.includes(searchTerm));
 
+  const inputClass = "w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-green-500 disabled:bg-gray-100 disabled:text-gray-600 disabled:opacity-100";
+
   return (
     <div className="min-h-screen bg-gray-50 pb-20 md:pb-12">
-      {/* 🖥️ PC用ヘッダー */}
-      <header className="bg-white shadow-sm px-4 md:px-8 py-3 flex items-center sticky top-0 z-30">
-        <button onClick={() => navigate('/dashboard')} className="mr-4 text-gray-500 hover:text-gray-700" disabled={isSubmitting}>
-          <ArrowLeft size={24} />
-        </button>
-        <h1 className="text-lg md:text-xl font-bold text-gray-800 flex items-center">
-          <Sprout className="w-6 h-6 mr-2 text-green-600" />
-          {editData ? '活動実績の修正' : '活動実績の入力'}
-        </h1>
+      <header className="bg-white shadow-sm px-4 md:px-8 py-3 flex justify-between items-center sticky top-0 z-30">
+        <div className="flex items-center">
+          <button onClick={() => navigate('/dashboard')} className="mr-4 text-gray-500 hover:text-gray-700" disabled={isSubmitting}>
+            <ArrowLeft size={24} />
+          </button>
+          <h1 className="text-lg md:text-xl font-bold text-gray-800 flex items-center">
+            <Sprout className="w-6 h-6 mr-2 text-green-600" />
+            {editData ? (isViewMode ? '活動実績の詳細' : '活動実績の修正') : '活動実績の入力'}
+          </h1>
+        </div>
+        
+        {/* ヘッダー右上のボタン群 */}
+        <div className="flex space-x-2 md:space-x-3">
+          {editData && isViewMode && (
+            <>
+              <button type="button" onClick={() => setIsViewMode(false)} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-blue-50 text-blue-600 rounded-lg font-bold hover:bg-blue-100 transition-colors text-sm md:text-base">
+                <Edit size={18} className="mr-1.5" /> 編集
+              </button>
+              <button type="button" onClick={handleDelete} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-red-50 text-red-600 rounded-lg font-bold hover:bg-red-100 transition-colors text-sm md:text-base">
+                <Trash2 size={18} className="mr-1.5" /> 削除
+              </button>
+            </>
+          )}
+          {/* 🚀 編集モード中のヘッダーにもキャンセルボタンを表示 */}
+          {editData && !isViewMode && (
+            <button type="button" onClick={handleCancelEdit} disabled={isSubmitting} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-gray-100 text-gray-600 rounded-lg font-bold hover:bg-gray-200 transition-colors text-sm md:text-base">
+              キャンセル
+            </button>
+          )}
+        </div>
       </header>
 
-      {/* 🖥️ PCでは最大幅を md:max-w-6xl に広げる */}
       <main className="p-4 md:p-8 max-w-md md:max-w-6xl mx-auto">
         <form onSubmit={handleSubmit} className="space-y-6">
-          
-          {/* 🖥️ PCでは2カラム（grid-cols-2）にする */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
             
-            {/* ⬅️ 左カラム：基本情報 */}
             <div className="space-y-6">
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                 <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4">
                   <Calendar className="w-5 h-5 mr-2 text-green-600" /> 実施日時・場所
                 </h2>
-                
-                {/* 🆕 報告書NO入力欄を追加 */}
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">報告書NO (文字列入力可)</label>
-                  <input 
-                    type="text" 
-                    name="reportNo" 
-                    value={formData.reportNo} 
-                    onChange={handleChange} 
-                    className="w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-green-500" 
-                    placeholder="例：2026-001、第1号など"
-                  />
+                  <input type="text" name="reportNo" value={formData.reportNo} onChange={handleChange} disabled={isViewMode} className={inputClass} placeholder="例：2026-001、第1号など" />
                 </div>
-
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">日付</label>
-                  <input type="date" name="date" value={formData.date} onChange={handleChange} className="w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-green-500" required />
+                  <input type="date" name="date" value={formData.date} onChange={handleChange} disabled={isViewMode} className={inputClass} required />
                 </div>
                 <div className="flex space-x-4">
                   <div className="flex-1">
                     <label className="block text-sm font-bold text-gray-700 mb-1">開始</label>
-                    <input type="time" name="startTime" value={formData.startTime} onChange={handleChange} className="w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-green-500" required />
+                    <input type="time" name="startTime" value={formData.startTime} onChange={handleChange} disabled={isViewMode} className={inputClass} required />
                   </div>
                   <div className="flex-1">
                     <label className="block text-sm font-bold text-gray-700 mb-1">終了</label>
-                    <input type="time" name="endTime" value={formData.endTime} onChange={handleChange} className="w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-green-500" required />
+                    <input type="time" name="endTime" value={formData.endTime} onChange={handleChange} disabled={isViewMode} className={inputClass} required />
                   </div>
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">活動場所</label>
-                  <select name="location" value={formData.location} onChange={handleChange} className="w-full border border-gray-300 rounded-xl p-3 bg-white focus:ring-2 focus:ring-green-500" required>
+                  <select name="location" value={formData.location} onChange={handleChange} disabled={isViewMode} className={inputClass} required>
                     <option value="">選択してください</option>
                     <option value="鎌田排水機場用地">鎌田排水機場用地</option>
                     <option value="内郷地区水路">内郷地区水路</option>
@@ -255,11 +305,11 @@ export const ActivityForm = () => {
                 </h2>
                 <div className="relative">
                   <label className="block text-sm font-bold text-gray-700 mb-1">Excel活動項目番号 (最大6つ)</label>
-                  <button type="button" onClick={() => { setIsDropdownOpen(!isDropdownOpen); setSearchTerm(""); }} className="w-full text-left bg-white border border-gray-300 rounded-xl p-3 flex justify-between items-center focus:ring-2 focus:ring-green-500">
-                    <span className={`block truncate pr-2 ${formData.activityNumbers.length === 0 ? 'text-gray-500' : 'text-gray-900 font-bold'}`}>
+                  <button type="button" onClick={() => !isViewMode && setIsDropdownOpen(!isDropdownOpen)} className={`w-full text-left bg-white border border-gray-300 rounded-xl p-3 flex justify-between items-center ${isViewMode ? 'bg-gray-100 cursor-not-allowed opacity-100' : 'focus:ring-2 focus:ring-green-500'}`}>
+                    <span className={`block truncate pr-2 ${formData.activityNumbers.length === 0 ? 'text-gray-500' : (isViewMode ? 'text-gray-600 font-bold' : 'text-gray-900 font-bold')}`}>
                       {formData.activityNumbers.length > 0 ? formData.activityNumbers.join(', ') + ' 番を選択中' : '検索・選択'}
                     </span>
-                    <ChevronDown size={20} className="text-gray-500 flex-shrink-0" />
+                    <ChevronDown size={20} className="text-gray-400 flex-shrink-0" />
                   </button>
                   {isDropdownOpen && (
                     <>
@@ -285,12 +335,11 @@ export const ActivityForm = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">具体的な活動内容（手入力）</label>
-                  <input type="text" name="activityType" value={formData.activityType} onChange={handleChange} className="w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-green-500" placeholder="例：内郷地区の草刈り" />
+                  <input type="text" name="activityType" value={formData.activityType} onChange={handleChange} disabled={isViewMode} className={inputClass} placeholder="例：内郷地区の草刈り" />
                 </div>
               </div>
             </div>
 
-            {/* ➡️ 右カラム：参加者と機械（PCではここが独立して表示される） */}
             <div className="space-y-6">
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                 <div className="flex justify-between items-center mb-4 border-b pb-3">
@@ -304,71 +353,96 @@ export const ActivityForm = () => {
                 <div className="space-y-4 max-h-[600px] overflow-y-auto pr-1">
                   {participantDetails.map((detail, index) => (
                     <div key={index} className="bg-gray-50 border border-gray-200 rounded-2xl p-4 relative group">
-                      <button type="button" onClick={() => removeParticipant(index)} className="absolute -top-2 -right-2 bg-white text-red-500 p-1.5 rounded-full border border-red-100 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16} /></button>
+                      {!isViewMode && (
+                        <button type="button" onClick={() => removeParticipant(index)} className="absolute -top-2 -right-2 bg-white text-red-500 p-1.5 rounded-full border border-red-100 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16} /></button>
+                      )}
+                      
                       <div className="flex items-center space-x-3 mb-3">
-                        <select value={detail.memberId} onChange={(e) => updateParticipant(index, 'memberId', e.target.value)} className="flex-1 border border-gray-300 rounded-xl p-2.5 text-sm bg-white focus:ring-2 focus:ring-green-500" required>
+                        <select value={detail.memberId} onChange={(e) => updateParticipant(index, 'memberId', e.target.value)} disabled={isViewMode} className={`flex-1 border border-gray-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100`} required>
                           <option value="">👤 氏名を選択</option>
-                          {MEMBERS.map(m => <option key={m.id} value={m.id}>{m.name} {m.isAgri ? '' : '(非)'}</option>)}
+                          {membersList.map(m => <option key={m.id} value={m.id}>{m.name} {m.isAgri ? '' : '(非)'}</option>)}
                         </select>
-                        <div className="w-28 flex items-center bg-white border border-gray-300 rounded-xl px-2">
-                          <input type="number" step="0.5" min="0" value={detail.workTime} onChange={(e) => updateParticipant(index, 'workTime', parseFloat(e.target.value))} className="w-full py-2.5 text-sm text-center border-none focus:ring-0" required />
+                        <div className={`w-28 flex items-center border border-gray-300 rounded-xl px-2 ${isViewMode ? 'bg-white' : 'bg-white'}`}>
+                          <input type="number" step="0.5" min="0" value={detail.workTime} onChange={(e) => updateParticipant(index, 'workTime', parseFloat(e.target.value))} disabled={isViewMode} className="w-full py-2.5 text-sm text-center border-none focus:ring-0 disabled:bg-transparent disabled:text-gray-600 disabled:opacity-100" required />
                           <span className="text-xs text-gray-400">h</span>
                         </div>
                       </div>
                       <div className="flex items-center space-x-3 pl-3 border-l-2 border-green-200">
-                        <select value={detail.machineId} onChange={(e) => updateParticipant(index, 'machineId', e.target.value)} className="flex-1 border border-gray-300 rounded-xl p-2.5 text-sm bg-white text-gray-600 focus:ring-2 focus:ring-green-500">
+                        <select value={detail.machineId} onChange={(e) => updateParticipant(index, 'machineId', e.target.value)} disabled={isViewMode} className="flex-1 border border-gray-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100">
                           <option value="">🚜 使用機械なし</option>
                           {MACHINES.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                         </select>
                         {detail.machineId && (
-                          <div className="w-28 flex items-center bg-green-50 border border-green-200 rounded-xl px-2">
-                            <input type="number" step="0.5" min="0" value={detail.machineTime} onChange={(e) => updateParticipant(index, 'machineTime', parseFloat(e.target.value))} className="w-full py-2.5 text-sm text-center bg-transparent border-none focus:ring-0 font-bold text-green-700" />
+                          <div className={`w-28 flex items-center border border-green-200 rounded-xl px-2 ${isViewMode ? 'bg-green-50' : 'bg-green-50'}`}>
+                            <input type="number" step="0.5" min="0" value={detail.machineTime} onChange={(e) => updateParticipant(index, 'machineTime', parseFloat(e.target.value))} disabled={isViewMode} className="w-full py-2.5 text-sm text-center bg-transparent border-none focus:ring-0 font-bold text-green-700 disabled:opacity-100" />
                             <span className="text-xs text-green-600">h</span>
                           </div>
                         )}
                       </div>
                     </div>
                   ))}
-                  <button type="button" onClick={addParticipant} className="w-full py-4 border-2 border-dashed border-green-200 text-green-600 rounded-2xl font-bold flex justify-center items-center hover:bg-green-50 hover:border-green-400 transition-all"><UserPlus size={20} className="mr-2" /> 参加者を追加</button>
+                  
+                  {!isViewMode && (
+                    <button type="button" onClick={addParticipant} className="w-full py-4 border-2 border-dashed border-green-200 text-green-600 rounded-2xl font-bold flex justify-center items-center hover:bg-green-50 hover:border-green-400 transition-all"><UserPlus size={20} className="mr-2" /> 参加者を追加</button>
+                  )}
                 </div>
               </div>
             </div>
 
-            {/* 下部：メディアと備考（PCでは2カラムの下に横長に配置される） */}
             <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                 <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Camera className="w-5 h-5 mr-2 text-green-600" /> 現場写真</h2>
                 <div className="grid grid-cols-4 md:grid-cols-6 gap-3">
                   {existingUrls.map((url, i) => (
-                    <div key={`ex-${i}`} className="relative aspect-square rounded-xl overflow-hidden border border-gray-200"><img src={url} alt="" className="w-full h-full object-cover" /><button type="button" onClick={() => removeExistingUrl(i)} className="absolute top-1 right-1 bg-black/50 text-white p-1 rounded-full"><X size={12} /></button></div>
+                    <div key={`ex-${i}`} className="relative aspect-square rounded-xl overflow-hidden border border-gray-200">
+                      <img src={url} alt="" className="w-full h-full object-cover" />
+                      {!isViewMode && (
+                        <button type="button" onClick={() => removeExistingUrl(i)} className="absolute top-1 right-1 bg-black/50 text-white p-1 rounded-full"><X size={12} /></button>
+                      )}
+                    </div>
                   ))}
                   {newPreviewUrls.map((url, i) => (
-                    <div key={`new-${i}`} className="relative aspect-square rounded-xl overflow-hidden border-2 border-green-400"><img src={url} alt="" className="w-full h-full object-cover" /><button type="button" onClick={() => removeNewImage(i)} className="absolute top-1 right-1 bg-black/50 text-white p-1 rounded-full"><X size={12} /></button></div>
+                    <div key={`new-${i}`} className="relative aspect-square rounded-xl overflow-hidden border-2 border-green-400">
+                      <img src={url} alt="" className="w-full h-full object-cover" />
+                      {!isViewMode && (
+                        <button type="button" onClick={() => removeNewImage(i)} className="absolute top-1 right-1 bg-black/50 text-white p-1 rounded-full"><X size={12} /></button>
+                      )}
+                    </div>
                   ))}
-                  <label className="aspect-square border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center text-gray-400 hover:bg-green-50 hover:border-green-400 cursor-pointer transition-all"><Camera size={24} /><span className="text-[10px] mt-1 font-bold">追加</span><input type="file" accept="image/*" multiple onChange={handleImageChange} className="hidden" /></label>
+                  
+                  {!isViewMode && (
+                    <label className="aspect-square border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center text-gray-400 hover:bg-green-50 hover:border-green-400 cursor-pointer transition-all"><Camera size={24} /><span className="text-[10px] mt-1 font-bold">追加</span><input type="file" accept="image/*" multiple onChange={handleImageChange} className="hidden" /></label>
+                  )}
                 </div>
               </div>
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                 <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><MessageSquare className="w-5 h-5 mr-2 text-green-600" /> 備考・特記事項</h2>
-                <textarea name="memo" value={formData.memo} onChange={handleChange} rows="4" className="w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-green-500" placeholder="作業の様子や特記事項を入力..."></textarea>
+                <textarea name="memo" value={formData.memo} onChange={handleChange} disabled={isViewMode} rows="4" className={inputClass} placeholder="作業の様子や特記事項を入力..."></textarea>
               </div>
             </div>
           </div>
 
-          {/* 送信ボタン（PCでは少し幅を抑えて配置） */}
-          <div className="max-w-md mx-auto pt-4">
-            <button type="submit" disabled={isSubmitting} className={`w-full flex items-center justify-center py-4 px-6 rounded-2xl shadow-lg text-lg font-bold text-white transition-all ${isSubmitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 hover:shadow-blue-200 active:scale-95'}`}>
-              <Save className="mr-2 h-6 w-6" />
-              {isSubmitting ? '保存中...' : (editData ? '内容を更新する' : '活動実績を登録する')}
-            </button>
-          </div>
+          {/* 🚀 アクションボタンエリア（編集モード時のみ表示） */}
+          {!isViewMode && (
+            <div className="max-w-md mx-auto pt-4 flex space-x-3">
+              {/* 既存のデータを編集している時だけキャンセルボタンを表示 */}
+              {editData && (
+                <button type="button" onClick={handleCancelEdit} disabled={isSubmitting} className="w-1/3 py-4 rounded-2xl font-bold text-gray-600 bg-gray-200 hover:bg-gray-300 transition-all">
+                  キャンセル
+                </button>
+              )}
+              <button type="submit" disabled={isSubmitting} className={`${editData ? 'w-2/3' : 'w-full'} flex items-center justify-center py-4 px-6 rounded-2xl shadow-lg text-lg font-bold text-white transition-all ${isSubmitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 hover:shadow-blue-200 active:scale-95'}`}>
+                <Save className="mr-2 h-6 w-6" />
+                {isSubmitting ? '保存中...' : (editData ? '内容を更新する' : '活動実績を登録する')}
+              </button>
+            </div>
+          )}
         </form>
       </main>
     </div>
   );
 };
 
-// 備考用アイコン
 const MessageSquare = ({ size, className }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
 );

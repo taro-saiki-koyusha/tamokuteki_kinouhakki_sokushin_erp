@@ -1,22 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, Clock, CheckCircle, Plus, Settings, LogOut, Sprout, Users, MessageSquare, Edit, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet } from 'lucide-react';
+import { Calendar, Clock, CheckCircle, Plus, Settings, LogOut, Sprout, Users, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, orderBy, onSnapshot, doc, deleteDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { signOut } from 'firebase/auth';
 import XlsxPopulate from 'xlsx-populate/browser/xlsx-populate';
 
 // =========================================================================
-// マスターデータ
+// 機械マスター
 // =========================================================================
-const MEMBERS = [
-  { id: "1", name: "齋木 太郎", isAgri: true, defaultWage: 1000 },
-  { id: "2", name: "柏崎 一郎", isAgri: true, defaultWage: 1000 },
-  { id: "3", name: "鯖石 二郎", isAgri: false, defaultWage: 1000 },
-  { id: "4", name: "大沢 三郎", isAgri: true, defaultWage: 1000 },
-  { id: "5", name: "農水 花子", isAgri: false, defaultWage: 1000 },
-];
-
 const MACHINES = [
   { id: "1", name: "刈払機（肩掛け）", defaultPrice: 900 },
   { id: "2", name: "刈払機（自走式）", defaultPrice: 1500 },
@@ -31,18 +23,19 @@ export const Dashboard = () => {
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // 🟢 画面に表示する「詳細ダイアログ」用のState
-  const [selectedActivity, setSelectedActivity] = useState(null);
-  
-  // 🖨️ 「PDF印刷」のためだけに裏でセットするState（ダイアログは出さない）
   const [printActivity, setPrintActivity] = useState(null);
-  
   const [activeTab, setActiveTab] = useState('home');
   const [exportingId, setExportingId] = useState(null);
+  const [membersList, setMembersList] = useState([]);
 
   const userName = auth.currentUser?.displayName || 'ユーザー';
 
   useEffect(() => {
+    fetch('/members.json')
+      .then(res => res.json())
+      .then(data => setMembersList(data))
+      .catch(err => console.error("メンバー情報の読み込みに失敗しました:", err));
+
     const q = query(collection(db, 'activities'), orderBy('date', 'desc')); 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const data = [];
@@ -57,19 +50,6 @@ export const Dashboard = () => {
 
   const handleLogout = async () => {
     try { await signOut(auth); navigate('/'); } catch (error) { console.error(error); }
-  };
-
-  const handleDelete = async (id) => {
-    if (window.confirm('本当にこの実績を削除しますか？')) {
-      try { 
-        await deleteDoc(doc(db, 'activities', id)); 
-        setSelectedActivity(null); 
-      } catch (error) { console.error(error); }
-    }
-  };
-
-  const handleEdit = (activity) => {
-    navigate('/activity-form', { state: { editData: activity } });
   };
 
   // 🚀 【様式1対応】Excel出力機能
@@ -105,7 +85,7 @@ export const Dashboard = () => {
       if (activity.participantDetails && activity.participantDetails.length > 0) {
         activity.participantDetails.forEach((detail, index) => {
           const row = 6 + index; 
-          const member = MEMBERS.find(m => m.id === detail.memberId);
+          const member = membersList.find(m => m.id === detail.memberId);
           const machine = MACHINES.find(m => m.id === detail.machineId);
           
           let memberTotal = 0;
@@ -142,7 +122,6 @@ export const Dashboard = () => {
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
       
-      alert('「様式1」を作成しました！🎉');
     } catch (error) {
       console.error(error);
       alert('Excel作成エラー：publicフォルダに「様式1_活動報告書_農地維持支払.xlsx」があるか確認してください。');
@@ -151,7 +130,6 @@ export const Dashboard = () => {
     }
   };
 
-  // 🖨️ PDF印刷専用の処理
   const handleDirectPrint = (activity) => {
     setPrintActivity(activity);
     setTimeout(() => {
@@ -225,7 +203,8 @@ export const Dashboard = () => {
                 const isThisExporting = exportingId === activity.id;
 
                 return (
-                  <div key={activity.id} onClick={() => setSelectedActivity(activity)} className="bg-white rounded-2xl shadow-sm border-l-4 border-green-500 p-4 cursor-pointer hover:shadow-md hover:-translate-y-1 transition-all flex flex-col h-full group">
+                  // 🚀 変更点：カードクリック時に直接入力画面へ（isViewModeフラグを渡す）
+                  <div key={activity.id} onClick={() => navigate('/activity-form', { state: { editData: activity, isViewMode: true } })} className="bg-white rounded-2xl shadow-sm border-l-4 border-green-500 p-4 cursor-pointer hover:shadow-md hover:-translate-y-1 transition-all flex flex-col h-full group">
                     <h3 className="font-bold text-lg text-gray-900 group-hover:text-green-700 mb-2">{activity.activityType || '内容未入力'}</h3>
                     <div className="space-y-1.5 text-sm text-gray-600 mb-3 flex-grow">
                       {activity.reportNo && (
@@ -253,10 +232,7 @@ export const Dashboard = () => {
                       </button>
                       
                       <button 
-                        onClick={(e) => { 
-                          e.stopPropagation(); 
-                          handleDirectPrint(activity); 
-                        }}
+                        onClick={(e) => { e.stopPropagation(); handleDirectPrint(activity); }}
                         className="flex-1 bg-gray-50 text-gray-700 border border-gray-200 py-2 rounded-xl font-bold text-xs md:text-sm flex items-center justify-center hover:bg-gray-100 transition-colors"
                       >
                         <Printer size={16} className="mr-1" /> PDF
@@ -271,36 +247,12 @@ export const Dashboard = () => {
         )}
       </main>
 
-      {/* 🟢 詳細画面ダイアログ */}
-      {selectedActivity && (() => {
-        const modalImages = selectedActivity.imageUrls || (selectedActivity.imageUrl ? [selectedActivity.imageUrl] : []);
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm no-print" onClick={() => setSelectedActivity(null)}>
-            <div className="bg-white w-full max-w-md md:max-w-2xl rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
-              <div className="flex justify-between items-center p-5 border-b border-gray-100">
-                <h3 className="font-bold text-lg md:text-xl text-gray-900">活動の詳細</h3>
-                <button onClick={() => setSelectedActivity(null)} className="p-2 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200 transition-all"><X size={20} /></button>
-              </div>
-              <div className="overflow-y-auto p-5 space-y-5">
-                {modalImages.map((img, idx) => (
-                  <div key={idx} className="rounded-xl overflow-hidden border border-gray-200"><img src={img} alt="" className="w-full h-auto" /></div>
-                ))}
-              </div>
-              <div className="p-4 md:p-5 border-t border-gray-100 flex space-x-3 bg-gray-50">
-                <button onClick={() => { setSelectedActivity(null); handleEdit(selectedActivity); }} className="flex-1 py-3 bg-white border border-gray-300 rounded-xl font-bold">編集する</button>
-                <button onClick={() => handleDelete(selectedActivity.id)} className="flex-1 py-3 bg-white border border-red-200 rounded-xl font-bold text-red-600">削除する</button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-3 flex justify-around items-center z-20 pb-safe no-print">
         <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center ${activeTab === 'home' ? 'text-green-600' : 'text-gray-400'}`}><Calendar size={24} /><span className="text-[10px] mt-1 font-bold">実績</span></button>
         <button onClick={() => setActiveTab('summary')} className={`flex flex-col items-center ${activeTab === 'summary' ? 'text-green-600' : 'text-gray-400'}`}><BarChart2 size={24} /><span className="text-[10px] mt-1 font-bold">集計</span></button>
       </nav>
 
-      {/* 🖨️ 印刷用デザイン（写真台帳） */}
+      {/* 🖨️ 印刷用デザイン */}
       {printActivity && (() => {
         const printImages = printActivity.imageUrls || (printActivity.imageUrl ? [printActivity.imageUrl] : []);
         const totalImages = printImages.length;
@@ -340,13 +292,8 @@ export const Dashboard = () => {
             <div className="space-y-6">
               {printImages.map((img, idx) => (
                 <div key={idx} className="break-inside-avoid">
-                  {/* 🚀 写真の左上にカウンターを表示 */}
-                  <div className="text-sm font-bold mb-1 text-left">
-                    {idx + 1}/{totalImages}枚目
-                  </div>
-                  <div className="border border-gray-400 p-1">
-                    <img src={img} alt="" className="w-full h-auto max-h-[140mm] object-contain" />
-                  </div>
+                  <div className="text-sm font-bold mb-1 text-left">{idx + 1}/{totalImages}枚目</div>
+                  <div className="border border-gray-400 p-1"><img src={img} alt="" className="w-full h-auto max-h-[140mm] object-contain" /></div>
                 </div>
               ))}
             </div>
