@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit } from 'lucide-react';
+// 🚀 Loader2（くるくる回るアイコン）を追加でインポート
+import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2 } from 'lucide-react';
 import { collection, addDoc, doc, updateDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase'; 
@@ -226,6 +227,14 @@ export const ActivityForm = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20 md:pb-12">
+      {/* 🚀 【追加】保存中の全画面オーバーレイ */}
+      {isSubmitting && (
+        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/70 backdrop-blur-sm">
+          <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
+          <p className="text-blue-800 font-bold text-lg tracking-wider">データを保存しています...</p>
+        </div>
+      )}
+
       <header className="bg-white shadow-sm px-4 md:px-8 py-3 flex justify-between items-center sticky top-0 z-30">
         <div className="flex items-center">
           <button onClick={() => navigate('/dashboard')} className="mr-4 text-gray-500 hover:text-gray-700" disabled={isSubmitting}>
@@ -348,7 +357,6 @@ export const ActivityForm = () => {
                 <div className="space-y-4 max-h-[600px] overflow-y-auto pr-1">
                   {participantDetails.map((detail, index) => (
                     <div key={index} className="bg-gray-50 border border-gray-200 rounded-2xl p-4 relative group">
-                      {/* 🚀 修正ポイント: hoverなどの制御を外し、編集モード中は常に表示させる */}
                       {!isViewMode && (
                         <button type="button" onClick={() => removeParticipant(index)} className="absolute -top-2 -right-2 bg-white text-red-500 p-1.5 rounded-full border border-red-100 shadow-sm transition-opacity"><Trash2 size={16} /></button>
                       )}
@@ -425,8 +433,9 @@ export const ActivityForm = () => {
                   キャンセル
                 </button>
               )}
+              {/* 🚀 ボタン内のアイコンもくるくる回るように変更 */}
               <button type="submit" disabled={isSubmitting} className={`${editData ? 'w-2/3' : 'w-full'} flex items-center justify-center py-4 px-6 rounded-2xl shadow-lg text-lg font-bold text-white transition-all ${isSubmitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 hover:shadow-blue-200 active:scale-95'}`}>
-                <Save className="mr-2 h-6 w-6" />
+                {isSubmitting ? <Loader2 className="mr-2 h-6 w-6 animate-spin" /> : <Save className="mr-2 h-6 w-6" />}
                 {isSubmitting ? '保存中...' : (editData ? '内容を更新する' : '活動実績を登録する')}
               </button>
             </div>
