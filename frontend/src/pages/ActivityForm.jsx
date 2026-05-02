@@ -159,11 +159,9 @@ export const ActivityForm = () => {
     setNewPreviewUrls(prev => prev.filter((_, i) => i !== index));
   };
 
-  // 🚀 編集キャンセル処理（入力内容を元に戻して閲覧モードへ）
   const handleCancelEdit = () => {
     if (!editData) return;
     
-    // 入力中のデータを元の editData にリセット
     setFormData({
       date: editData.date,
       startTime: editData.startTime,
@@ -179,7 +177,6 @@ export const ActivityForm = () => {
     setNewImageFiles([]);
     setNewPreviewUrls([]);
     
-    // 閲覧モードに戻す
     setIsViewMode(true);
   };
 
@@ -240,7 +237,6 @@ export const ActivityForm = () => {
           </h1>
         </div>
         
-        {/* ヘッダー右上のボタン群 */}
         <div className="flex space-x-2 md:space-x-3">
           {editData && isViewMode && (
             <>
@@ -252,7 +248,6 @@ export const ActivityForm = () => {
               </button>
             </>
           )}
-          {/* 🚀 編集モード中のヘッダーにもキャンセルボタンを表示 */}
           {editData && !isViewMode && (
             <button type="button" onClick={handleCancelEdit} disabled={isSubmitting} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-gray-100 text-gray-600 rounded-lg font-bold hover:bg-gray-200 transition-colors text-sm md:text-base">
               キャンセル
@@ -353,8 +348,9 @@ export const ActivityForm = () => {
                 <div className="space-y-4 max-h-[600px] overflow-y-auto pr-1">
                   {participantDetails.map((detail, index) => (
                     <div key={index} className="bg-gray-50 border border-gray-200 rounded-2xl p-4 relative group">
+                      {/* 🚀 修正ポイント: hoverなどの制御を外し、編集モード中は常に表示させる */}
                       {!isViewMode && (
-                        <button type="button" onClick={() => removeParticipant(index)} className="absolute -top-2 -right-2 bg-white text-red-500 p-1.5 rounded-full border border-red-100 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16} /></button>
+                        <button type="button" onClick={() => removeParticipant(index)} className="absolute -top-2 -right-2 bg-white text-red-500 p-1.5 rounded-full border border-red-100 shadow-sm transition-opacity"><Trash2 size={16} /></button>
                       )}
                       
                       <div className="flex items-center space-x-3 mb-3">
@@ -422,10 +418,8 @@ export const ActivityForm = () => {
             </div>
           </div>
 
-          {/* 🚀 アクションボタンエリア（編集モード時のみ表示） */}
           {!isViewMode && (
             <div className="max-w-md mx-auto pt-4 flex space-x-3">
-              {/* 既存のデータを編集している時だけキャンセルボタンを表示 */}
               {editData && (
                 <button type="button" onClick={handleCancelEdit} disabled={isSubmitting} className="w-1/3 py-4 rounded-2xl font-bold text-gray-600 bg-gray-200 hover:bg-gray-300 transition-all">
                   キャンセル
