@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Calendar, Clock, CheckCircle, Plus, Settings, LogOut, Sprout, Users, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, deleteDoc, getDoc } from 'firebase/firestore';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { db, auth } from '../firebase';
-import { signOut } from 'firebase/auth';
 import XlsxPopulate from 'xlsx-populate/browser/xlsx-populate';
 
 // =========================================================================
@@ -28,16 +28,32 @@ export const Dashboard = () => {
   const [exportingId, setExportingId] = useState(null);
   const [membersList, setMembersList] = useState([]);
 
-  const userName = auth.currentUser?.displayName || 'ユーザー';
+  // 🚀 ユーザー情報と権限の管理
+  const [currentUser, setCurrentUser] = useState(null);
+  const [userRole, setUserRole] = useState('reporter'); // デフォルトは一番権限の低いreporter
 
   useEffect(() => {
+    // メンバー情報の読み込み
     fetch('/members.json')
       .then(res => res.json())
       .then(data => setMembersList(data))
       .catch(err => console.error("メンバー情報の読み込みに失敗しました:", err));
 
+    // 🚀 ログイン状態の監視と権限の取得
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+      setCurrentUser(user);
+      if (user) {
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (userDoc.exists()) {
+          setUserRole(userDoc.data().role || 'reporter');
+        } else {
+          setUserRole('reporter'); // DBに登録がない場合は最低権限
+        }
+      }
+    });
+
     const q = query(collection(db, 'activities'), orderBy('date', 'desc')); 
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+    const unsubscribeData = onSnapshot(q, (querySnapshot) => {
       const data = [];
       querySnapshot.forEach((doc) => {
         data.push({ id: doc.id, ...doc.data() });
@@ -45,14 +61,17 @@ export const Dashboard = () => {
       setActivities(data);
       setLoading(false);
     });
-    return () => unsubscribe();
+
+    return () => {
+      unsubscribeAuth();
+      unsubscribeData();
+    };
   }, []);
 
   const handleLogout = async () => {
     try { await signOut(auth); navigate('/'); } catch (error) { console.error(error); }
   };
 
-  // 🚀 【様式1対応】Excel出力機能
   const handleExportSingleReport = async (activity) => {
     setExportingId(activity.id); 
     try {
@@ -143,6 +162,8 @@ export const Dashboard = () => {
     return { totalActivities, totalParticipants };
   }, [activities]);
 
+  const roleLabel = userRole === 'admin' ? '管理者' : userRole === 'manager' ? '事務・役員' : '現場リーダー';
+
   return (
     <div className="min-h-screen bg-gray-100 pb-20 md:pb-8 print:bg-white print:pb-0">
       <style>{`
@@ -179,7 +200,10 @@ export const Dashboard = () => {
         <div className="mb-6 flex justify-between items-end">
           <div>
             <p className="text-gray-600 text-sm">こんにちは、</p>
-            <h2 className="text-xl md:text-2xl font-bold text-gray-900">{userName} さん</h2>
+            <h2 className="text-xl md:text-2xl font-bold text-gray-900">
+              {currentUser?.displayName || 'ユーザー'} さん
+              <span className="ml-2 text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded-full font-normal">権限: {roleLabel}</span>
+            </h2>
           </div>
           {activeTab === 'home' && (
             <button onClick={() => navigate('/activity-form')} className="hidden md:flex items-center bg-green-600 text-white px-6 py-2.5 rounded-xl font-bold shadow-sm hover:bg-green-700 transition-colors">
@@ -201,9 +225,11 @@ export const Dashboard = () => {
               ) : activities.map((activity) => {
                 const images = activity.imageUrls || (activity.imageUrl ? [activity.imageUrl] : []);
                 const isThisExporting = exportingId === activity.id;
+                
+                // 🚀 現場リーダー以外はボタンを表示
+                const canExport = userRole === 'admin' || userRole === 'manager';
 
                 return (
-                  // 🚀 変更点：カードクリック時に直接入力画面へ（isViewModeフラグを渡す）
                   <div key={activity.id} onClick={() => navigate('/activity-form', { state: { editData: activity, isViewMode: true } })} className="bg-white rounded-2xl shadow-sm border-l-4 border-green-500 p-4 cursor-pointer hover:shadow-md hover:-translate-y-1 transition-all flex flex-col h-full group">
                     <h3 className="font-bold text-lg text-gray-900 group-hover:text-green-700 mb-2">{activity.activityType || '内容未入力'}</h3>
                     <div className="space-y-1.5 text-sm text-gray-600 mb-3 flex-grow">
@@ -221,24 +247,26 @@ export const Dashboard = () => {
                       </div>
                     )}
                     
-                    <div className="mt-auto pt-3 border-t border-gray-100 flex gap-2">
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleExportSingleReport(activity); }}
-                        disabled={isThisExporting}
-                        className={`flex-1 py-2 rounded-xl font-bold text-xs md:text-sm flex items-center justify-center transition-colors ${isThisExporting ? 'bg-blue-400 text-white cursor-not-allowed' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
-                      >
-                        <FileSpreadsheet size={16} className="mr-1" />
-                        {isThisExporting ? '生成中...' : 'Excel'}
-                      </button>
-                      
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleDirectPrint(activity); }}
-                        className="flex-1 bg-gray-50 text-gray-700 border border-gray-200 py-2 rounded-xl font-bold text-xs md:text-sm flex items-center justify-center hover:bg-gray-100 transition-colors"
-                      >
-                        <Printer size={16} className="mr-1" /> PDF
-                      </button>
-                    </div>
-
+                    {/* 🚀 権限チェックによる出力ボタンの表示/非表示 */}
+                    {canExport && (
+                      <div className="mt-auto pt-3 border-t border-gray-100 flex gap-2">
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleExportSingleReport(activity); }}
+                          disabled={isThisExporting}
+                          className={`flex-1 py-2 rounded-xl font-bold text-xs md:text-sm flex items-center justify-center transition-colors ${isThisExporting ? 'bg-blue-400 text-white cursor-not-allowed' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
+                        >
+                          <FileSpreadsheet size={16} className="mr-1" />
+                          {isThisExporting ? '生成中...' : 'Excel'}
+                        </button>
+                        
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleDirectPrint(activity); }}
+                          className="flex-1 bg-gray-50 text-gray-700 border border-gray-200 py-2 rounded-xl font-bold text-xs md:text-sm flex items-center justify-center hover:bg-gray-100 transition-colors"
+                        >
+                          <Printer size={16} className="mr-1" /> PDF
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })}

@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-// 🚀 Loader2（くるくる回るアイコン）を追加でインポート
 import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2 } from 'lucide-react';
-import { collection, addDoc, doc, updateDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
+import { collection, addDoc, doc, updateDoc, serverTimestamp, deleteDoc, getDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../firebase'; 
+import { onAuthStateChanged } from 'firebase/auth';
+import { db, storage, auth } from '../firebase'; 
 
 // =========================================================================
 // 機械マスターと活動項目マスター
@@ -54,12 +54,29 @@ export const ActivityForm = () => {
   
   const [isViewMode, setIsViewMode] = useState(location.state?.isViewMode || false);
   const [membersList, setMembersList] = useState([]);
+  
+  // 🚀 ユーザー権限管理
+  const [currentUser, setCurrentUser] = useState(null);
+  const [userRole, setUserRole] = useState('reporter');
 
   useEffect(() => {
     fetch('/members.json')
       .then(res => res.json())
       .then(data => setMembersList(data))
       .catch(err => console.error("メンバー情報の読み込みに失敗しました:", err));
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+      setCurrentUser(user);
+      if (user) {
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (userDoc.exists()) {
+          setUserRole(userDoc.data().role || 'reporter');
+        } else {
+          setUserRole('reporter');
+        }
+      }
+    });
+    return () => unsubscribeAuth();
   }, []);
 
   const [formData, setFormData] = useState(
@@ -162,7 +179,6 @@ export const ActivityForm = () => {
 
   const handleCancelEdit = () => {
     if (!editData) return;
-    
     setFormData({
       date: editData.date,
       startTime: editData.startTime,
@@ -177,7 +193,6 @@ export const ActivityForm = () => {
     setExistingUrls(editData.imageUrls || (editData.imageUrl ? [editData.imageUrl] : []));
     setNewImageFiles([]);
     setNewPreviewUrls([]);
-    
     setIsViewMode(true);
   };
 
@@ -213,10 +228,27 @@ export const ActivityForm = () => {
         finalImageUrls = [...finalImageUrls, ...newlyUploadedUrls];
       }
       const validParticipants = participantDetails.filter(p => p.memberId !== '');
-      const submitData = { ...formData, participantDetails: validParticipants, participantsAgri: summary.agri, participantsNonAgri: summary.nonAgri, participants: totalParticipants, imageUrls: finalImageUrls, updatedAt: serverTimestamp() };
+      
+      // 🚀 作成者（createdBy）の情報を追加して保存
+      const submitData = { 
+        ...formData, 
+        participantDetails: validParticipants, 
+        participantsAgri: summary.agri, 
+        participantsNonAgri: summary.nonAgri, 
+        participants: totalParticipants, 
+        imageUrls: finalImageUrls, 
+        updatedAt: serverTimestamp() 
+      };
 
-      if (editData) { await updateDoc(doc(db, 'activities', editData.id), submitData); alert('修正しました！'); }
-      else { submitData.createdAt = serverTimestamp(); await addDoc(collection(db, 'activities'), submitData); alert('保存しました！'); }
+      if (editData) { 
+        await updateDoc(doc(db, 'activities', editData.id), submitData); 
+        alert('修正しました！'); 
+      } else { 
+        submitData.createdAt = serverTimestamp(); 
+        submitData.createdBy = currentUser?.uid; // 作成者のUIDを記録
+        await addDoc(collection(db, 'activities'), submitData); 
+        alert('保存しました！'); 
+      }
       navigate('/dashboard');
     } catch (error) { console.error(error); alert('保存エラー'); } finally { setIsSubmitting(false); }
   };
@@ -225,9 +257,12 @@ export const ActivityForm = () => {
 
   const inputClass = "w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-green-500 disabled:bg-gray-100 disabled:text-gray-600 disabled:opacity-100";
 
+  // 🚀 権限判定：管理者・事務局、または自分が作成したデータの場合は編集・削除可能
+  const isCreator = editData?.createdBy === currentUser?.uid;
+  const canEditOrDelete = userRole === 'admin' || userRole === 'manager' || isCreator;
+
   return (
     <div className="min-h-screen bg-gray-50 pb-20 md:pb-12">
-      {/* 🚀 【追加】保存中の全画面オーバーレイ */}
       {isSubmitting && (
         <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/70 backdrop-blur-sm">
           <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
@@ -247,7 +282,8 @@ export const ActivityForm = () => {
         </div>
         
         <div className="flex space-x-2 md:space-x-3">
-          {editData && isViewMode && (
+          {/* 🚀 編集・削除ボタンは権限がある場合のみ表示 */}
+          {editData && isViewMode && canEditOrDelete && (
             <>
               <button type="button" onClick={() => setIsViewMode(false)} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-blue-50 text-blue-600 rounded-lg font-bold hover:bg-blue-100 transition-colors text-sm md:text-base">
                 <Edit size={18} className="mr-1.5" /> 編集
@@ -433,7 +469,6 @@ export const ActivityForm = () => {
                   キャンセル
                 </button>
               )}
-              {/* 🚀 ボタン内のアイコンもくるくる回るように変更 */}
               <button type="submit" disabled={isSubmitting} className={`${editData ? 'w-2/3' : 'w-full'} flex items-center justify-center py-4 px-6 rounded-2xl shadow-lg text-lg font-bold text-white transition-all ${isSubmitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 hover:shadow-blue-200 active:scale-95'}`}>
                 {isSubmitting ? <Loader2 className="mr-2 h-6 w-6 animate-spin" /> : <Save className="mr-2 h-6 w-6" />}
                 {isSubmitting ? '保存中...' : (editData ? '内容を更新する' : '活動実績を登録する')}
