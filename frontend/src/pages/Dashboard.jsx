@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, Clock, CheckCircle, Plus, Settings, LogOut, Sprout, Users, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet } from 'lucide-react';
+import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, orderBy, onSnapshot, doc, deleteDoc, getDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { db, auth } from '../firebase';
 import XlsxPopulate from 'xlsx-populate/browser/xlsx-populate';
 
 // =========================================================================
-// 機械マスター
+// マスターデータ
 // =========================================================================
 const MACHINES = [
   { id: "1", name: "刈払機（肩掛け）", defaultPrice: 900 },
@@ -15,6 +15,12 @@ const MACHINES = [
   { id: "3", name: "軽トラック", defaultPrice: 1000 },
   { id: "4", name: "バックホー", defaultPrice: 3000 },
   { id: "5", name: "チェンソー", defaultPrice: 1000 },
+];
+
+const GROUPS = [
+  { id: "group_a", name: "鎌田下管理組合" },
+  { id: "group_b", name: "鎌田町内会" },
+  { id: "group_c", name: "鎌田龍の会" },
 ];
 // =========================================================================
 
@@ -28,43 +34,72 @@ export const Dashboard = () => {
   const [exportingId, setExportingId] = useState(null);
   const [membersList, setMembersList] = useState([]);
 
-  // 🚀 ユーザー情報と権限の管理
   const [currentUser, setCurrentUser] = useState(null);
-  const [userRole, setUserRole] = useState('reporter'); // デフォルトは一番権限の低いreporter
+  const [userRole, setUserRole] = useState('reporter');
+  const [userGroupIds, setUserGroupIds] = useState([]);
 
   useEffect(() => {
-    // メンバー情報の読み込み
     fetch('/members.json')
       .then(res => res.json())
       .then(data => setMembersList(data))
       .catch(err => console.error("メンバー情報の読み込みに失敗しました:", err));
 
-    // 🚀 ログイン状態の監視と権限の取得
+    let unsubscribeData = null;
+
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
       if (user) {
         const userDoc = await getDoc(doc(db, 'users', user.uid));
-        if (userDoc.exists()) {
-          setUserRole(userDoc.data().role || 'reporter');
-        } else {
-          setUserRole('reporter'); // DBに登録がない場合は最低権限
-        }
-      }
-    });
+        const role = userDoc.exists() ? (userDoc.data().role || 'reporter') : 'reporter';
+        const groupIds = userDoc.exists() ? (userDoc.data().groupIds || []) : [];
+        
+        setUserRole(role);
+        setUserGroupIds(groupIds);
 
-    const q = query(collection(db, 'activities'), orderBy('date', 'desc')); 
-    const unsubscribeData = onSnapshot(q, (querySnapshot) => {
-      const data = [];
-      querySnapshot.forEach((doc) => {
-        data.push({ id: doc.id, ...doc.data() });
-      });
-      setActivities(data);
-      setLoading(false);
+        let q;
+        if (role === 'admin' || role === 'manager') {
+          q = query(collection(db, 'activities'));
+        } else {
+          if (groupIds.length === 0) {
+            setActivities([]);
+            setLoading(false);
+            return;
+          }
+          import('firebase/firestore').then(({ where }) => {
+            q = query(collection(db, 'activities'), where('groupId', 'in', groupIds));
+            
+            unsubscribeData = onSnapshot(q, (querySnapshot) => {
+              const data = [];
+              querySnapshot.forEach((doc) => {
+                data.push({ id: doc.id, ...doc.data() });
+              });
+              data.sort((a, b) => new Date(b.date) - new Date(a.date));
+              setActivities(data);
+              setLoading(false);
+            });
+          });
+          return; 
+        }
+
+        unsubscribeData = onSnapshot(q, (querySnapshot) => {
+          const data = [];
+          querySnapshot.forEach((doc) => {
+            data.push({ id: doc.id, ...doc.data() });
+          });
+          data.sort((a, b) => new Date(b.date) - new Date(a.date));
+          setActivities(data);
+          setLoading(false);
+        });
+
+      } else {
+        setActivities([]);
+        setLoading(false);
+      }
     });
 
     return () => {
       unsubscribeAuth();
-      unsubscribeData();
+      if (unsubscribeData) unsubscribeData();
     };
   }, []);
 
@@ -187,13 +222,31 @@ export const Dashboard = () => {
           <button onClick={() => setActiveTab('summary')} className={`flex items-center font-bold py-2 border-b-2 transition-colors ${activeTab === 'summary' ? 'text-green-600 border-green-600' : 'text-gray-500 border-transparent hover:text-green-600'}`}>
             <BarChart2 size={18} className="mr-1.5"/> 集計サマリー
           </button>
+
+          {/* 🚀 管理者とマネージャーのみ「グループ管理」ボタンを表示 */}
+          {(userRole === 'admin' || userRole === 'manager') && (
+            <button onClick={() => navigate('/groups')} className="flex items-center text-sm font-bold text-gray-500 hover:text-blue-600 transition-colors">
+              <Users size={18} className="mr-1"/> グループ管理
+            </button>
+          )}
+
           <div className="h-6 w-px bg-gray-300 mx-2"></div>
           <button onClick={handleLogout} className="flex items-center text-sm font-bold text-gray-500 hover:text-red-600 transition-colors">
             <LogOut size={18} className="mr-1"/> ログアウト
           </button>
         </div>
 
-        <button onClick={handleLogout} className="md:hidden p-2 text-gray-500 hover:text-red-600 transition-colors"><LogOut size={20} /></button>
+        {/* 📱 スマホ用ヘッダーメニュー */}
+        <div className="md:hidden flex items-center space-x-3">
+           {(userRole === 'admin' || userRole === 'manager') && (
+            <button onClick={() => navigate('/groups')} className="p-2 text-gray-500 hover:text-blue-600 transition-colors">
+              <Users size={20} />
+            </button>
+          )}
+          <button onClick={handleLogout} className="p-2 text-gray-500 hover:text-red-600 transition-colors">
+            <LogOut size={20} />
+          </button>
+        </div>
       </header>
 
       <main className="p-4 max-w-md md:max-w-6xl mx-auto no-print">
@@ -222,16 +275,25 @@ export const Dashboard = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
               {loading ? (
                 <div className="text-center py-10 text-gray-400 col-span-full">読み込み中...</div>
+              ) : activities.length === 0 ? (
+                 <div className="text-center py-10 text-gray-400 col-span-full bg-white rounded-2xl shadow-sm border border-gray-100">
+                   表示できる実績がありません
+                 </div>
               ) : activities.map((activity) => {
                 const images = activity.imageUrls || (activity.imageUrl ? [activity.imageUrl] : []);
                 const isThisExporting = exportingId === activity.id;
-                
-                // 🚀 現場リーダー以外はボタンを表示
                 const canExport = userRole === 'admin' || userRole === 'manager';
+                const groupInfo = GROUPS.find(g => g.id === activity.groupId);
 
                 return (
-                  <div key={activity.id} onClick={() => navigate('/activity-form', { state: { editData: activity, isViewMode: true } })} className="bg-white rounded-2xl shadow-sm border-l-4 border-green-500 p-4 cursor-pointer hover:shadow-md hover:-translate-y-1 transition-all flex flex-col h-full group">
-                    <h3 className="font-bold text-lg text-gray-900 group-hover:text-green-700 mb-2">{activity.activityType || '内容未入力'}</h3>
+                  <div key={activity.id} onClick={() => navigate('/activity-form', { state: { editData: activity, isViewMode: true } })} className="bg-white rounded-2xl shadow-sm border-l-4 border-green-500 p-4 cursor-pointer hover:shadow-md hover:-translate-y-1 transition-all flex flex-col h-full group relative">
+                    {groupInfo && (
+                      <span className="absolute top-4 right-4 bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-md font-bold">
+                        {groupInfo.name}
+                      </span>
+                    )}
+
+                    <h3 className="font-bold text-lg text-gray-900 group-hover:text-green-700 mb-2 pr-20">{activity.activityType || '内容未入力'}</h3>
                     <div className="space-y-1.5 text-sm text-gray-600 mb-3 flex-grow">
                       {activity.reportNo && (
                         <div className="flex items-center text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded-md w-max mb-1">
@@ -247,7 +309,6 @@ export const Dashboard = () => {
                       </div>
                     )}
                     
-                    {/* 🚀 権限チェックによる出力ボタンの表示/非表示 */}
                     {canExport && (
                       <div className="mt-auto pt-3 border-t border-gray-100 flex gap-2">
                         <button 
@@ -284,6 +345,7 @@ export const Dashboard = () => {
       {printActivity && (() => {
         const printImages = printActivity.imageUrls || (printActivity.imageUrl ? [printActivity.imageUrl] : []);
         const totalImages = printImages.length;
+        const groupInfo = GROUPS.find(g => g.id === printActivity.groupId);
 
         return (
           <div className="hidden print:block w-full text-black bg-white font-serif">
@@ -327,7 +389,7 @@ export const Dashboard = () => {
             </div>
             
             <div className="mt-8 flex justify-between items-end border-t border-black pt-4">
-              <div className="text-sm">組織名：農事組合法人カマタ</div>
+              <div className="text-sm">組織名：{groupInfo ? groupInfo.name : '農事組合法人カマタ'}</div>
               <div className="text-sm text-right">出力日：{new Date().toLocaleDateString('ja-JP')}</div>
             </div>
           </div>

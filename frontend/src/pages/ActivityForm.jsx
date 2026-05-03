@@ -7,7 +7,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { db, storage, auth } from '../firebase'; 
 
 // =========================================================================
-// 機械マスターと活動項目マスター
+// マスターデータ
 // =========================================================================
 const MACHINES = [
   { id: "1", name: "刈払機（肩掛け）", defaultPrice: 900 },
@@ -15,6 +15,12 @@ const MACHINES = [
   { id: "3", name: "軽トラック", defaultPrice: 1000 },
   { id: "4", name: "バックホー", defaultPrice: 3000 },
   { id: "5", name: "チェンソー", defaultPrice: 1000 },
+];
+
+const GROUPS = [
+  { id: "group_a", name: "鎌田下管理組合" },
+  { id: "group_b", name: "鎌田町内会" },
+  { id: "group_c", name: "鎌田龍の会" },
 ];
 
 const ACTIVITY_ITEMS = [
@@ -55,9 +61,34 @@ export const ActivityForm = () => {
   const [isViewMode, setIsViewMode] = useState(location.state?.isViewMode || false);
   const [membersList, setMembersList] = useState([]);
   
-  // 🚀 ユーザー権限管理
   const [currentUser, setCurrentUser] = useState(null);
   const [userRole, setUserRole] = useState('reporter');
+  const [userGroups, setUserGroups] = useState([]);
+
+  // 🚀 フォームデータに groupId を追加
+  const [formData, setFormData] = useState(
+    editData ? {
+      groupId: editData.groupId || '',
+      date: editData.date,
+      startTime: editData.startTime,
+      endTime: editData.endTime,
+      location: editData.location,
+      activityType: editData.activityType,
+      activityNumbers: editData.activityNumbers || [], 
+      memo: editData.memo || '',
+      reportNo: editData.reportNo || ''
+    } : {
+      groupId: '',
+      date: new Date().toISOString().split('T')[0],
+      startTime: '08:00',
+      endTime: '10:00',
+      location: '',
+      activityType: '',
+      activityNumbers: [],
+      memo: '',
+      reportNo: ''
+    }
+  );
 
   useEffect(() => {
     fetch('/members.json')
@@ -70,36 +101,22 @@ export const ActivityForm = () => {
       if (user) {
         const userDoc = await getDoc(doc(db, 'users', user.uid));
         if (userDoc.exists()) {
-          setUserRole(userDoc.data().role || 'reporter');
+          const data = userDoc.data();
+          setUserRole(data.role || 'reporter');
+          const groups = data.groupIds || [];
+          setUserGroups(groups);
+
+          // 🚀 新規作成時に、ユーザーがグループに所属していれば1つ目を初期選択する
+          if (!editData && groups.length > 0) {
+            setFormData(prev => ({ ...prev, groupId: groups[0] }));
+          }
         } else {
           setUserRole('reporter');
         }
       }
     });
     return () => unsubscribeAuth();
-  }, []);
-
-  const [formData, setFormData] = useState(
-    editData ? {
-      date: editData.date,
-      startTime: editData.startTime,
-      endTime: editData.endTime,
-      location: editData.location,
-      activityType: editData.activityType,
-      activityNumbers: editData.activityNumbers || [], 
-      memo: editData.memo || '',
-      reportNo: editData.reportNo || ''
-    } : {
-      date: new Date().toISOString().split('T')[0],
-      startTime: '08:00',
-      endTime: '10:00',
-      location: '',
-      activityType: '',
-      activityNumbers: [],
-      memo: '',
-      reportNo: ''
-    }
-  );
+  }, [editData]);
 
   const [participantDetails, setParticipantDetails] = useState(editData?.participantDetails || []);
 
@@ -180,6 +197,7 @@ export const ActivityForm = () => {
   const handleCancelEdit = () => {
     if (!editData) return;
     setFormData({
+      groupId: editData.groupId || '',
       date: editData.date,
       startTime: editData.startTime,
       endTime: editData.endTime,
@@ -211,6 +229,7 @@ export const ActivityForm = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!formData.groupId) { alert('対象グループを選択してください。'); return; }
     if (formData.activityNumbers.length === 0) { alert('活動項目番号を選択してください。'); return; }
     if (participantDetails.length === 0 || !participantDetails.some(p => p.memberId)) { alert('参加者を選択してください。'); return; }
 
@@ -229,7 +248,6 @@ export const ActivityForm = () => {
       }
       const validParticipants = participantDetails.filter(p => p.memberId !== '');
       
-      // 🚀 作成者（createdBy）の情報を追加して保存
       const submitData = { 
         ...formData, 
         participantDetails: validParticipants, 
@@ -245,7 +263,7 @@ export const ActivityForm = () => {
         alert('修正しました！'); 
       } else { 
         submitData.createdAt = serverTimestamp(); 
-        submitData.createdBy = currentUser?.uid; // 作成者のUIDを記録
+        submitData.createdBy = currentUser?.uid; 
         await addDoc(collection(db, 'activities'), submitData); 
         alert('保存しました！'); 
       }
@@ -257,9 +275,15 @@ export const ActivityForm = () => {
 
   const inputClass = "w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-green-500 disabled:bg-gray-100 disabled:text-gray-600 disabled:opacity-100";
 
-  // 🚀 権限判定：管理者・事務局、または自分が作成したデータの場合は編集・削除可能
+  // 管理者・事務局、または自分が作成したデータの場合は編集・削除可能
   const isCreator = editData?.createdBy === currentUser?.uid;
   const canEditOrDelete = userRole === 'admin' || userRole === 'manager' || isCreator;
+
+  // 🚀 選択可能なグループのリストを生成
+  // 管理者・マネージャーは全グループ選択可能。一般は自分が所属しているグループのみ。
+  const selectableGroups = (userRole === 'admin' || userRole === 'manager') 
+    ? GROUPS 
+    : GROUPS.filter(g => userGroups.includes(g.id));
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20 md:pb-12">
@@ -282,7 +306,6 @@ export const ActivityForm = () => {
         </div>
         
         <div className="flex space-x-2 md:space-x-3">
-          {/* 🚀 編集・削除ボタンは権限がある場合のみ表示 */}
           {editData && isViewMode && canEditOrDelete && (
             <>
               <button type="button" onClick={() => setIsViewMode(false)} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-blue-50 text-blue-600 rounded-lg font-bold hover:bg-blue-100 transition-colors text-sm md:text-base">
@@ -310,6 +333,18 @@ export const ActivityForm = () => {
                 <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4">
                   <Calendar className="w-5 h-5 mr-2 text-green-600" /> 実施日時・場所
                 </h2>
+
+                {/* 🚀 新規追加：グループ選択 */}
+                <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 mb-4">
+                  <label className="block text-sm font-bold text-blue-900 mb-1">対象グループ <span className="text-red-500">*</span></label>
+                  <select name="groupId" value={formData.groupId} onChange={handleChange} disabled={isViewMode} className={`${inputClass} border-blue-200 focus:ring-blue-500`} required>
+                    <option value="">グループを選択してください</option>
+                    {selectableGroups.map(g => (
+                      <option key={g.id} value={g.id}>{g.name}</option>
+                    ))}
+                  </select>
+                </div>
+
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">報告書NO (文字列入力可)</label>
                   <input type="text" name="reportNo" value={formData.reportNo} onChange={handleChange} disabled={isViewMode} className={inputClass} placeholder="例：2026-001、第1号など" />
