@@ -10,19 +10,15 @@ import XlsxPopulate from 'xlsx-populate/browser/xlsx-populate';
 // マスターデータ
 // =========================================================================
 const MACHINES = [
-  { id: "1", name: "刈払機（肩掛け）", defaultPrice: 900 },
-  { id: "2", name: "刈払機（自走式）", defaultPrice: 1500 },
-  { id: "3", name: "軽トラック", defaultPrice: 1000 },
-  { id: "4", name: "バックホー", defaultPrice: 3000 },
-  { id: "5", name: "チェンソー", defaultPrice: 1000 },
+  { id: "1", name: "刈払機（肩掛け）", defaultPrice: 1350 },
+  { id: "2", name: "畦畔刈払機", defaultPrice: 1800 },
+  { id: "3", name: "法面刈払機", defaultPrice: 2000 },
+  { id: "4", name: "除草剤噴霧器", defaultPrice: 1350 },
+  { id: "5", name: "軽トラック", defaultPrice: 1000 },
+  { id: "6", name: "バックホー", defaultPrice: 3000 },
+  { id: "7", name: "チェーンソー", defaultPrice: 1000 },
+  { id: "8", name: "泥上げ", defaultPrice: 1050 },
 ];
-
-const GROUPS = [
-  { id: "group_a", name: "鎌田下管理組合" },
-  { id: "group_b", name: "鎌田町内会" },
-  { id: "group_c", name: "鎌田龍の会" },
-];
-// =========================================================================
 
 export const Dashboard = () => {
   const navigate = useNavigate();
@@ -33,16 +29,27 @@ export const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('home');
   const [exportingId, setExportingId] = useState(null);
   const [membersList, setMembersList] = useState([]);
+  
+  // 🚀 グループマスターをデータベースから取得して格納するState
+  const [groupsList, setGroupsList] = useState([]);
 
   const [currentUser, setCurrentUser] = useState(null);
   const [userRole, setUserRole] = useState('reporter');
   const [userGroupIds, setUserGroupIds] = useState([]);
 
   useEffect(() => {
+    // メンバー情報の読み込み
     fetch('/members.json')
       .then(res => res.json())
       .then(data => setMembersList(data))
       .catch(err => console.error("メンバー情報の読み込みに失敗しました:", err));
+
+    // 🚀 グループ情報のリアルタイム読み込み
+    const unsubscribeGroups = onSnapshot(collection(db, 'groups'), (snapshot) => {
+      const gData = [];
+      snapshot.forEach(doc => gData.push({ id: doc.id, ...doc.data() }));
+      setGroupsList(gData);
+    });
 
     let unsubscribeData = null;
 
@@ -99,6 +106,7 @@ export const Dashboard = () => {
 
     return () => {
       unsubscribeAuth();
+      unsubscribeGroups();
       if (unsubscribeData) unsubscribeData();
     };
   }, []);
@@ -223,7 +231,6 @@ export const Dashboard = () => {
             <BarChart2 size={18} className="mr-1.5"/> 集計サマリー
           </button>
 
-          {/* 🚀 管理者とマネージャーのみ「グループ管理」ボタンを表示 */}
           {(userRole === 'admin' || userRole === 'manager') && (
             <button onClick={() => navigate('/groups')} className="flex items-center text-sm font-bold text-gray-500 hover:text-blue-600 transition-colors">
               <Users size={18} className="mr-1"/> グループ管理
@@ -236,7 +243,6 @@ export const Dashboard = () => {
           </button>
         </div>
 
-        {/* 📱 スマホ用ヘッダーメニュー */}
         <div className="md:hidden flex items-center space-x-3">
            {(userRole === 'admin' || userRole === 'manager') && (
             <button onClick={() => navigate('/groups')} className="p-2 text-gray-500 hover:text-blue-600 transition-colors">
@@ -283,7 +289,8 @@ export const Dashboard = () => {
                 const images = activity.imageUrls || (activity.imageUrl ? [activity.imageUrl] : []);
                 const isThisExporting = exportingId === activity.id;
                 const canExport = userRole === 'admin' || userRole === 'manager';
-                const groupInfo = GROUPS.find(g => g.id === activity.groupId);
+                // 🚀 DBから取得した groupsList と照合
+                const groupInfo = groupsList.find(g => g.id === activity.groupId);
 
                 return (
                   <div key={activity.id} onClick={() => navigate('/activity-form', { state: { editData: activity, isViewMode: true } })} className="bg-white rounded-2xl shadow-sm border-l-4 border-green-500 p-4 cursor-pointer hover:shadow-md hover:-translate-y-1 transition-all flex flex-col h-full group relative">
@@ -345,7 +352,7 @@ export const Dashboard = () => {
       {printActivity && (() => {
         const printImages = printActivity.imageUrls || (printActivity.imageUrl ? [printActivity.imageUrl] : []);
         const totalImages = printImages.length;
-        const groupInfo = GROUPS.find(g => g.id === printActivity.groupId);
+        const groupInfo = groupsList.find(g => g.id === printActivity.groupId);
 
         return (
           <div className="hidden print:block w-full text-black bg-white font-serif">

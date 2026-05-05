@@ -1,26 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2 } from 'lucide-react';
-import { collection, addDoc, doc, updateDoc, serverTimestamp, deleteDoc, getDoc } from 'firebase/firestore';
+// 🚀 onSnapshot を追加インポート
+import { collection, addDoc, doc, updateDoc, serverTimestamp, deleteDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged } from 'firebase/auth';
 import { db, storage, auth } from '../firebase'; 
 
-// =========================================================================
-// マスターデータ
-// =========================================================================
 const MACHINES = [
-  { id: "1", name: "刈払機（肩掛け）", defaultPrice: 900 },
-  { id: "2", name: "刈払機（自走式）", defaultPrice: 1500 },
-  { id: "3", name: "軽トラック", defaultPrice: 1000 },
-  { id: "4", name: "バックホー", defaultPrice: 3000 },
-  { id: "5", name: "チェンソー", defaultPrice: 1000 },
-];
-
-const GROUPS = [
-  { id: "group_a", name: "鎌田下管理組合" },
-  { id: "group_b", name: "鎌田町内会" },
-  { id: "group_c", name: "鎌田龍の会" },
+  { id: "1", name: "刈払機（肩掛け）", defaultPrice: 1350 },
+  { id: "2", name: "畦畔刈払機", defaultPrice: 1800 },
+  { id: "3", name: "法面刈払機", defaultPrice: 2000 },
+  { id: "4", name: "除草剤噴霧器", defaultPrice: 1350 },
+  { id: "5", name: "軽トラック", defaultPrice: 1000 },
+  { id: "6", name: "バックホー", defaultPrice: 3000 },
+  { id: "7", name: "チェーンソー", defaultPrice: 1000 },
+  { id: "8", name: "泥上げ", defaultPrice: 1050 },
 ];
 
 const ACTIVITY_ITEMS = [
@@ -61,11 +56,13 @@ export const ActivityForm = () => {
   const [isViewMode, setIsViewMode] = useState(location.state?.isViewMode || false);
   const [membersList, setMembersList] = useState([]);
   
+  // 🚀 DBから取得したグループ一覧を格納
+  const [groupsList, setGroupsList] = useState([]);
+  
   const [currentUser, setCurrentUser] = useState(null);
   const [userRole, setUserRole] = useState('reporter');
   const [userGroups, setUserGroups] = useState([]);
 
-  // 🚀 フォームデータに groupId を追加
   const [formData, setFormData] = useState(
     editData ? {
       groupId: editData.groupId || '',
@@ -96,6 +93,13 @@ export const ActivityForm = () => {
       .then(data => setMembersList(data))
       .catch(err => console.error("メンバー情報の読み込みに失敗しました:", err));
 
+    // 🚀 グループ一覧の取得
+    const unsubscribeGroups = onSnapshot(collection(db, 'groups'), (snapshot) => {
+      const gData = [];
+      snapshot.forEach(doc => gData.push({ id: doc.id, ...doc.data() }));
+      setGroupsList(gData);
+    });
+
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
       if (user) {
@@ -106,7 +110,6 @@ export const ActivityForm = () => {
           const groups = data.groupIds || [];
           setUserGroups(groups);
 
-          // 🚀 新規作成時に、ユーザーがグループに所属していれば1つ目を初期選択する
           if (!editData && groups.length > 0) {
             setFormData(prev => ({ ...prev, groupId: groups[0] }));
           }
@@ -115,7 +118,10 @@ export const ActivityForm = () => {
         }
       }
     });
-    return () => unsubscribeAuth();
+    return () => {
+      unsubscribeAuth();
+      unsubscribeGroups();
+    };
   }, [editData]);
 
   const [participantDetails, setParticipantDetails] = useState(editData?.participantDetails || []);
@@ -275,15 +281,13 @@ export const ActivityForm = () => {
 
   const inputClass = "w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-green-500 disabled:bg-gray-100 disabled:text-gray-600 disabled:opacity-100";
 
-  // 管理者・事務局、または自分が作成したデータの場合は編集・削除可能
   const isCreator = editData?.createdBy === currentUser?.uid;
   const canEditOrDelete = userRole === 'admin' || userRole === 'manager' || isCreator;
 
-  // 🚀 選択可能なグループのリストを生成
-  // 管理者・マネージャーは全グループ選択可能。一般は自分が所属しているグループのみ。
+  // 🚀 直書きだった GROUPS ではなく、DBから取得した groupsList を使って選択肢を生成
   const selectableGroups = (userRole === 'admin' || userRole === 'manager') 
-    ? GROUPS 
-    : GROUPS.filter(g => userGroups.includes(g.id));
+    ? groupsList 
+    : groupsList.filter(g => userGroups.includes(g.id));
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20 md:pb-12">
@@ -334,11 +338,11 @@ export const ActivityForm = () => {
                   <Calendar className="w-5 h-5 mr-2 text-green-600" /> 実施日時・場所
                 </h2>
 
-                {/* 🚀 新規追加：グループ選択 */}
                 <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 mb-4">
                   <label className="block text-sm font-bold text-blue-900 mb-1">対象グループ <span className="text-red-500">*</span></label>
                   <select name="groupId" value={formData.groupId} onChange={handleChange} disabled={isViewMode} className={`${inputClass} border-blue-200 focus:ring-blue-500`} required>
                     <option value="">グループを選択してください</option>
+                    {/* 🚀 ここが動的に切り替わります */}
                     {selectableGroups.map(g => (
                       <option key={g.id} value={g.id}>{g.name}</option>
                     ))}
