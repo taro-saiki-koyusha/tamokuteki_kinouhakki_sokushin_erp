@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet } from 'lucide-react';
+import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -30,7 +30,6 @@ export const Dashboard = () => {
   const [exportingId, setExportingId] = useState(null);
   const [membersList, setMembersList] = useState([]);
   
-  // 🚀 グループマスターをデータベースから取得して格納するState
   const [groupsList, setGroupsList] = useState([]);
 
   const [currentUser, setCurrentUser] = useState(null);
@@ -38,13 +37,11 @@ export const Dashboard = () => {
   const [userGroupIds, setUserGroupIds] = useState([]);
 
   useEffect(() => {
-    // メンバー情報の読み込み
     fetch('/members.json')
       .then(res => res.json())
       .then(data => setMembersList(data))
       .catch(err => console.error("メンバー情報の読み込みに失敗しました:", err));
 
-    // 🚀 グループ情報のリアルタイム読み込み
     const unsubscribeGroups = onSnapshot(collection(db, 'groups'), (snapshot) => {
       const gData = [];
       snapshot.forEach(doc => gData.push({ id: doc.id, ...doc.data() }));
@@ -231,9 +228,17 @@ export const Dashboard = () => {
             <BarChart2 size={18} className="mr-1.5"/> 集計サマリー
           </button>
 
+          {/* 👥 グループ管理ボタン */}
           {(userRole === 'admin' || userRole === 'manager') && (
             <button onClick={() => navigate('/groups')} className="flex items-center text-sm font-bold text-gray-500 hover:text-blue-600 transition-colors">
               <Users size={18} className="mr-1"/> グループ管理
+            </button>
+          )}
+
+          {/* 🚀 ユーザー管理ボタン（管理者のみ表示） */}
+          {userRole === 'admin' && (
+            <button onClick={() => navigate('/users')} className="flex items-center text-sm font-bold text-gray-500 hover:text-purple-600 transition-colors">
+              <UserCog size={18} className="mr-1"/> ユーザー管理
             </button>
           )}
 
@@ -243,10 +248,16 @@ export const Dashboard = () => {
           </button>
         </div>
 
+        {/* 📱 スマホ用ヘッダーメニュー */}
         <div className="md:hidden flex items-center space-x-3">
            {(userRole === 'admin' || userRole === 'manager') && (
             <button onClick={() => navigate('/groups')} className="p-2 text-gray-500 hover:text-blue-600 transition-colors">
               <Users size={20} />
+            </button>
+          )}
+          {userRole === 'admin' && (
+            <button onClick={() => navigate('/users')} className="p-2 text-gray-500 hover:text-purple-600 transition-colors">
+              <UserCog size={20} />
             </button>
           )}
           <button onClick={handleLogout} className="p-2 text-gray-500 hover:text-red-600 transition-colors">
@@ -289,7 +300,6 @@ export const Dashboard = () => {
                 const images = activity.imageUrls || (activity.imageUrl ? [activity.imageUrl] : []);
                 const isThisExporting = exportingId === activity.id;
                 const canExport = userRole === 'admin' || userRole === 'manager';
-                // 🚀 DBから取得した groupsList と照合
                 const groupInfo = groupsList.find(g => g.id === activity.groupId);
 
                 return (

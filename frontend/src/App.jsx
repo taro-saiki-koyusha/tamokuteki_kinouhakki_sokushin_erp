@@ -4,6 +4,7 @@ import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { ActivityForm } from './pages/ActivityForm'; 
 import { GroupManagement } from './pages/GroupManagement';
+import { UserManagement } from './pages/UserManagement'; // 🚀 追加
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/activity-form" element={<ActivityForm />} /> 
         <Route path="/groups" element={<GroupManagement />} />
+        <Route path="/users" element={<UserManagement />} /> {/* 🚀 追加 */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
