@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2 } from 'lucide-react';
+import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2, Calculator } from 'lucide-react';
 import { collection, addDoc, doc, updateDoc, serverTimestamp, deleteDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -156,6 +156,27 @@ export const ActivityForm = () => {
   }, { agri: 0, nonAgri: 0 });
   const totalParticipants = summary.agri + summary.nonAgri;
 
+  // リアルタイムでの全体コスト計算
+  const { totalPersonnelCost, totalMachineCost } = useMemo(() => {
+    let pCost = 0;
+    let mCost = 0;
+    participantDetails.forEach(detail => {
+      if (detail.memberId) {
+        const member = membersList.find(m => m.id === detail.memberId);
+        if (member) {
+          pCost += (detail.workTime || 0) * (member.defaultWage || 0);
+        }
+      }
+      if (detail.machineId) {
+        const machine = MACHINES.find(m => m.id === detail.machineId);
+        if (machine) {
+          mCost += (detail.machineTime || 0) * (machine.defaultPrice || 0);
+        }
+      }
+    });
+    return { totalPersonnelCost: pCost, totalMachineCost: mCost };
+  }, [participantDetails, membersList]);
+
   const [existingUrls, setExistingUrls] = useState(editData?.imageUrls || (editData?.imageUrl ? [editData.imageUrl] : []));
   const [newImageFiles, setNewImageFiles] = useState([]);
   const [newPreviewUrls, setNewPreviewUrls] = useState([]);
@@ -235,9 +256,6 @@ export const ActivityForm = () => {
     if (!formData.groupId) { alert('対象グループを選択してください。'); return; }
     if (formData.activityNumbers.length === 0) { alert('活動項目番号を選択してください。'); return; }
 
-    // 🚀 ここで参加者必須のチェックを外しました！
-    // 計画として登録する（参加者0名）の保存を許可します。
-
     setIsSubmitting(true);
     try {
       let finalImageUrls = [...existingUrls];
@@ -251,7 +269,6 @@ export const ActivityForm = () => {
         const newlyUploadedUrls = await Promise.all(uploadPromises);
         finalImageUrls = [...finalImageUrls, ...newlyUploadedUrls];
       }
-      // 名前が未選択の行は保存時に除外する
       const validParticipants = participantDetails.filter(p => p.memberId !== '');
       
       const submitData = { 
@@ -427,7 +444,6 @@ export const ActivityForm = () => {
                   </div>
                 </div>
 
-                {/* 🚀 注意書きを追加 */}
                 {!isViewMode && (
                   <p className="text-xs text-gray-500 mb-3 bg-gray-50 p-2 rounded-lg">
                     💡 計画として登録する場合は、参加者を追加せずにこのまま保存できます。
@@ -435,42 +451,86 @@ export const ActivityForm = () => {
                 )}
 
                 <div className="space-y-4 max-h-[600px] overflow-y-auto pr-1">
-                  {participantDetails.map((detail, index) => (
-                    <div key={index} className="bg-gray-50 border border-gray-200 rounded-2xl p-4 relative group">
-                      {!isViewMode && (
-                        <button type="button" onClick={() => removeParticipant(index)} className="absolute -top-2 -right-2 bg-white text-red-500 p-1.5 rounded-full border border-red-100 shadow-sm transition-opacity"><Trash2 size={16} /></button>
-                      )}
-                      
-                      <div className="flex items-center space-x-3 mb-3">
-                        {/* 🚀 HTML側の required 属性も削除 */}
-                        <select value={detail.memberId} onChange={(e) => updateParticipant(index, 'memberId', e.target.value)} disabled={isViewMode} className={`flex-1 border border-gray-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100`}>
-                          <option value="">👤 氏名を選択（任意）</option>
-                          {membersList.map(m => <option key={m.id} value={m.id}>{m.name} {m.isAgri ? '' : '(非)'}</option>)}
-                        </select>
-                        <div className={`w-28 flex items-center border border-gray-300 rounded-xl px-2 ${isViewMode ? 'bg-white' : 'bg-white'}`}>
-                          <input type="number" step="0.5" min="0" value={detail.workTime} onChange={(e) => updateParticipant(index, 'workTime', parseFloat(e.target.value))} disabled={isViewMode} className="w-full py-2.5 text-sm text-center border-none focus:ring-0 disabled:bg-transparent disabled:text-gray-600 disabled:opacity-100" />
-                          <span className="text-xs text-gray-400">h</span>
+                  {participantDetails.map((detail, index) => {
+                    // 🚀 各行のコスト計算
+                    const member = membersList.find(m => m.id === detail.memberId);
+                    const memberWage = member ? (member.defaultWage || 0) : 0;
+                    const memberTotal = (detail.workTime || 0) * memberWage;
+
+                    const machine = MACHINES.find(m => m.id === detail.machineId);
+                    const machinePrice = machine ? (machine.defaultPrice || 0) : 0;
+                    const machineTotal = (detail.machineTime || 0) * machinePrice;
+
+                    return (
+                      <div key={index} className="bg-gray-50 border border-gray-200 rounded-2xl p-4 relative group">
+                        {!isViewMode && (
+                          <button type="button" onClick={() => removeParticipant(index)} className="absolute -top-2 -right-2 bg-white text-red-500 p-1.5 rounded-full border border-red-100 shadow-sm transition-opacity"><Trash2 size={16} /></button>
+                        )}
+                        
+                        <div className="flex items-center space-x-2 mb-3">
+                          <select value={detail.memberId} onChange={(e) => updateParticipant(index, 'memberId', e.target.value)} disabled={isViewMode} className={`flex-1 border border-gray-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100`}>
+                            <option value="">👤 氏名を選択（任意）</option>
+                            {membersList.map(m => <option key={m.id} value={m.id}>{m.name} {m.isAgri ? '' : '(非)'}</option>)}
+                          </select>
+                          <div className={`w-20 md:w-24 flex items-center border border-gray-300 rounded-xl px-2 shrink-0 ${isViewMode ? 'bg-white' : 'bg-white'}`}>
+                            <input type="number" step="0.5" min="0" value={detail.workTime} onChange={(e) => updateParticipant(index, 'workTime', parseFloat(e.target.value))} disabled={isViewMode} className="w-full py-2.5 text-sm text-center border-none focus:ring-0 disabled:bg-transparent disabled:text-gray-600 disabled:opacity-100" />
+                            <span className="text-xs text-gray-400">h</span>
+                          </div>
+                          {/* 🚀 人件費の右側表示 */}
+                          <div className="w-16 md:w-20 flex flex-col items-end justify-center shrink-0 leading-tight">
+                            <span className="text-[10px] text-gray-400">@{memberWage.toLocaleString()}円</span>
+                            <span className="text-sm font-bold text-gray-700">¥{memberTotal.toLocaleString()}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center space-x-2 pl-3 border-l-2 border-green-200">
+                          <select value={detail.machineId} onChange={(e) => updateParticipant(index, 'machineId', e.target.value)} disabled={isViewMode} className="flex-1 border border-gray-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100">
+                            <option value="">🚜 使用機械なし</option>
+                            {MACHINES.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                          </select>
+                          {detail.machineId ? (
+                            <>
+                              <div className={`w-20 md:w-24 flex items-center border border-green-200 rounded-xl px-2 shrink-0 ${isViewMode ? 'bg-green-50' : 'bg-green-50'}`}>
+                                <input type="number" step="0.5" min="0" value={detail.machineTime} onChange={(e) => updateParticipant(index, 'machineTime', parseFloat(e.target.value))} disabled={isViewMode} className="w-full py-2.5 text-sm text-center bg-transparent border-none focus:ring-0 font-bold text-green-700 disabled:opacity-100" />
+                                <span className="text-xs text-green-600">h</span>
+                              </div>
+                              {/* 🚀 機械利用料の右側表示 */}
+                              <div className="w-16 md:w-20 flex flex-col items-end justify-center shrink-0 leading-tight">
+                                <span className="text-[10px] text-green-600/70">@{machinePrice.toLocaleString()}円</span>
+                                <span className="text-sm font-bold text-green-700">¥{machineTotal.toLocaleString()}</span>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="w-16 md:w-20 shrink-0"></div> // 余白の調整
+                          )}
                         </div>
                       </div>
-                      <div className="flex items-center space-x-3 pl-3 border-l-2 border-green-200">
-                        <select value={detail.machineId} onChange={(e) => updateParticipant(index, 'machineId', e.target.value)} disabled={isViewMode} className="flex-1 border border-gray-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100">
-                          <option value="">🚜 使用機械なし</option>
-                          {MACHINES.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                        </select>
-                        {detail.machineId && (
-                          <div className={`w-28 flex items-center border border-green-200 rounded-xl px-2 ${isViewMode ? 'bg-green-50' : 'bg-green-50'}`}>
-                            <input type="number" step="0.5" min="0" value={detail.machineTime} onChange={(e) => updateParticipant(index, 'machineTime', parseFloat(e.target.value))} disabled={isViewMode} className="w-full py-2.5 text-sm text-center bg-transparent border-none focus:ring-0 font-bold text-green-700 disabled:opacity-100" />
-                            <span className="text-xs text-green-600">h</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   
                   {!isViewMode && (
                     <button type="button" onClick={addParticipant} className="w-full py-4 border-2 border-dashed border-green-200 text-green-600 rounded-2xl font-bold flex justify-center items-center hover:bg-green-50 hover:border-green-400 transition-all"><UserPlus size={20} className="mr-2" /> 参加者を追加</button>
                   )}
                 </div>
+
+                <div className="bg-blue-50/50 rounded-xl p-4 mt-6 border border-blue-100 flex flex-col space-y-2">
+                  <div className="flex items-center text-blue-800 font-bold mb-1">
+                    <Calculator size={16} className="mr-1.5" /> 費用の目安（合計）
+                  </div>
+                  <div className="flex justify-between items-center text-sm text-gray-700">
+                    <span>人件費:</span>
+                    <span className="font-bold font-mono">¥{totalPersonnelCost.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm text-gray-700">
+                    <span>機械等利用料:</span>
+                    <span className="font-bold font-mono">¥{totalMachineCost.toLocaleString()}</span>
+                  </div>
+                  <div className="border-t border-blue-200 pt-2 mt-2 flex justify-between items-center text-base text-blue-900 font-bold">
+                    <span>合計:</span>
+                    <span className="font-mono">¥{(totalPersonnelCost + totalMachineCost).toLocaleString()}</span>
+                  </div>
+                </div>
+
               </div>
             </div>
 
