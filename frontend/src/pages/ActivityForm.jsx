@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2 } from 'lucide-react';
-// 🚀 onSnapshot を追加インポート
 import { collection, addDoc, doc, updateDoc, serverTimestamp, deleteDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -56,7 +55,6 @@ export const ActivityForm = () => {
   const [isViewMode, setIsViewMode] = useState(location.state?.isViewMode || false);
   const [membersList, setMembersList] = useState([]);
   
-  // 🚀 DBから取得したグループ一覧を格納
   const [groupsList, setGroupsList] = useState([]);
   
   const [currentUser, setCurrentUser] = useState(null);
@@ -93,7 +91,6 @@ export const ActivityForm = () => {
       .then(data => setMembersList(data))
       .catch(err => console.error("メンバー情報の読み込みに失敗しました:", err));
 
-    // 🚀 グループ一覧の取得
     const unsubscribeGroups = onSnapshot(collection(db, 'groups'), (snapshot) => {
       const gData = [];
       snapshot.forEach(doc => gData.push({ id: doc.id, ...doc.data() }));
@@ -237,7 +234,9 @@ export const ActivityForm = () => {
     e.preventDefault();
     if (!formData.groupId) { alert('対象グループを選択してください。'); return; }
     if (formData.activityNumbers.length === 0) { alert('活動項目番号を選択してください。'); return; }
-    if (participantDetails.length === 0 || !participantDetails.some(p => p.memberId)) { alert('参加者を選択してください。'); return; }
+
+    // 🚀 ここで参加者必須のチェックを外しました！
+    // 計画として登録する（参加者0名）の保存を許可します。
 
     setIsSubmitting(true);
     try {
@@ -252,6 +251,7 @@ export const ActivityForm = () => {
         const newlyUploadedUrls = await Promise.all(uploadPromises);
         finalImageUrls = [...finalImageUrls, ...newlyUploadedUrls];
       }
+      // 名前が未選択の行は保存時に除外する
       const validParticipants = participantDetails.filter(p => p.memberId !== '');
       
       const submitData = { 
@@ -284,7 +284,6 @@ export const ActivityForm = () => {
   const isCreator = editData?.createdBy === currentUser?.uid;
   const canEditOrDelete = userRole === 'admin' || userRole === 'manager' || isCreator;
 
-  // 🚀 直書きだった GROUPS ではなく、DBから取得した groupsList を使って選択肢を生成
   const selectableGroups = (userRole === 'admin' || userRole === 'manager') 
     ? groupsList 
     : groupsList.filter(g => userGroups.includes(g.id));
@@ -305,7 +304,7 @@ export const ActivityForm = () => {
           </button>
           <h1 className="text-lg md:text-xl font-bold text-gray-800 flex items-center">
             <Sprout className="w-6 h-6 mr-2 text-green-600" />
-            {editData ? (isViewMode ? '活動実績の詳細' : '活動実績の修正') : '活動実績の入力'}
+            {editData ? (isViewMode ? '活動実績の詳細' : '活動実績の修正') : '活動実績の入力（計画追加）'}
           </h1>
         </div>
         
@@ -342,7 +341,6 @@ export const ActivityForm = () => {
                   <label className="block text-sm font-bold text-blue-900 mb-1">対象グループ <span className="text-red-500">*</span></label>
                   <select name="groupId" value={formData.groupId} onChange={handleChange} disabled={isViewMode} className={`${inputClass} border-blue-200 focus:ring-blue-500`} required>
                     <option value="">グループを選択してください</option>
-                    {/* 🚀 ここが動的に切り替わります */}
                     {selectableGroups.map(g => (
                       <option key={g.id} value={g.id}>{g.name}</option>
                     ))}
@@ -429,6 +427,13 @@ export const ActivityForm = () => {
                   </div>
                 </div>
 
+                {/* 🚀 注意書きを追加 */}
+                {!isViewMode && (
+                  <p className="text-xs text-gray-500 mb-3 bg-gray-50 p-2 rounded-lg">
+                    💡 計画として登録する場合は、参加者を追加せずにこのまま保存できます。
+                  </p>
+                )}
+
                 <div className="space-y-4 max-h-[600px] overflow-y-auto pr-1">
                   {participantDetails.map((detail, index) => (
                     <div key={index} className="bg-gray-50 border border-gray-200 rounded-2xl p-4 relative group">
@@ -437,12 +442,13 @@ export const ActivityForm = () => {
                       )}
                       
                       <div className="flex items-center space-x-3 mb-3">
-                        <select value={detail.memberId} onChange={(e) => updateParticipant(index, 'memberId', e.target.value)} disabled={isViewMode} className={`flex-1 border border-gray-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100`} required>
-                          <option value="">👤 氏名を選択</option>
+                        {/* 🚀 HTML側の required 属性も削除 */}
+                        <select value={detail.memberId} onChange={(e) => updateParticipant(index, 'memberId', e.target.value)} disabled={isViewMode} className={`flex-1 border border-gray-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100`}>
+                          <option value="">👤 氏名を選択（任意）</option>
                           {membersList.map(m => <option key={m.id} value={m.id}>{m.name} {m.isAgri ? '' : '(非)'}</option>)}
                         </select>
                         <div className={`w-28 flex items-center border border-gray-300 rounded-xl px-2 ${isViewMode ? 'bg-white' : 'bg-white'}`}>
-                          <input type="number" step="0.5" min="0" value={detail.workTime} onChange={(e) => updateParticipant(index, 'workTime', parseFloat(e.target.value))} disabled={isViewMode} className="w-full py-2.5 text-sm text-center border-none focus:ring-0 disabled:bg-transparent disabled:text-gray-600 disabled:opacity-100" required />
+                          <input type="number" step="0.5" min="0" value={detail.workTime} onChange={(e) => updateParticipant(index, 'workTime', parseFloat(e.target.value))} disabled={isViewMode} className="w-full py-2.5 text-sm text-center border-none focus:ring-0 disabled:bg-transparent disabled:text-gray-600 disabled:opacity-100" />
                           <span className="text-xs text-gray-400">h</span>
                         </div>
                       </div>
