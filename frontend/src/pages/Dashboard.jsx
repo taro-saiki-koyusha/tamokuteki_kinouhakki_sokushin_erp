@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle } from 'lucide-react';
+import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown } from 'lucide-react'; // 🚀 ChevronUp, ChevronDownを追加
 import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, doc, getDoc, deleteDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -31,13 +31,29 @@ export const Dashboard = () => {
   const [membersList, setMembersList] = useState([]);
   const [groupsList, setGroupsList] = useState([]);
 
-  const [displayMode, setDisplayMode] = useState('list');
+  // 表示モード (日付順: list / グループ別: group)
+  const [displayMode, setDisplayMode] = useState(() => {
+    return localStorage.getItem('dashboardDisplayMode') || 'group';
+  });
+
+  // 表示スタイル (特大/カード: card / 詳細/表形式: table)
+  const [viewStyle, setViewStyle] = useState(() => {
+    return localStorage.getItem('dashboardViewStyle') || 'card';
+  });
+
+  // 🚀 【追加】日付のソート順 (降順/新しい順: desc / 昇順/古い順: asc)
+  const [dateSortOrder, setDateSortOrder] = useState(() => {
+    return localStorage.getItem('dashboardDateSortOrder') || 'desc';
+  });
+
+  useEffect(() => localStorage.setItem('dashboardDisplayMode', displayMode), [displayMode]);
+  useEffect(() => localStorage.setItem('dashboardViewStyle', viewStyle), [viewStyle]);
+  // 🚀 ソート順が変わった時に保存
+  useEffect(() => localStorage.setItem('dashboardDateSortOrder', dateSortOrder), [dateSortOrder]);
 
   const [currentUser, setCurrentUser] = useState(null);
   const [userRole, setUserRole] = useState('reporter');
   const [userGroupIds, setUserGroupIds] = useState([]);
-
-  // 🚀 削除対象のIDを保持するState（nullならモーダル非表示）
   const [deletingActivityId, setDeletingActivityId] = useState(null);
 
   useEffect(() => {
@@ -74,10 +90,8 @@ export const Dashboard = () => {
           }
           import('firebase/firestore').then(({ where }) => {
             q = query(collection(db, 'activities'), where('groupId', 'in', groupIds));
-            
             unsubscribeData = onSnapshot(q, (querySnapshot) => {
               const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-              data.sort((a, b) => new Date(b.date) - new Date(a.date));
               setActivities(data);
               setLoading(false);
             });
@@ -87,7 +101,6 @@ export const Dashboard = () => {
 
         unsubscribeData = onSnapshot(q, (querySnapshot) => {
           const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          data.sort((a, b) => new Date(b.date) - new Date(a.date));
           setActivities(data);
           setLoading(false);
         });
@@ -105,35 +118,40 @@ export const Dashboard = () => {
     };
   }, []);
 
+  // 🚀 ソート順を適用した全データ
+  const globalSortedActivities = useMemo(() => {
+    return [...activities].sort((a, b) => {
+      const dateA = new Date(a.date);
+      const dateB = new Date(b.date);
+      return dateSortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+    });
+  }, [activities, dateSortOrder]);
+
+  // 🚀 ソート順を適用したグループ別データ
   const groupedActivities = useMemo(() => {
     const groups = {};
-    activities.forEach(act => {
+    globalSortedActivities.forEach(act => {
       const gid = act.groupId || 'unknown';
       if (!groups[gid]) groups[gid] = [];
       groups[gid].push(act);
     });
-    Object.keys(groups).forEach(gid => {
-      groups[gid].sort((a, b) => new Date(b.date) - new Date(a.date));
-    });
     return groups;
-  }, [activities]);
+  }, [globalSortedActivities]);
 
   const handleLogout = async () => {
     try { await signOut(auth); navigate('/'); } catch (error) { console.error(error); }
   };
 
-  // 🚀 削除ボタンが押されたとき（モーダルを開く）
   const handleDeleteClick = (id, e) => {
-    e.stopPropagation(); // カードクリックの画面遷移を防止
+    e.stopPropagation(); 
     setDeletingActivityId(id);
   };
 
-  // 🚀 モーダル内の「削除する」が押されたとき（実際に削除）
   const executeDelete = async () => {
     if (!deletingActivityId) return;
     try {
       await deleteDoc(doc(db, 'activities', deletingActivityId));
-      setDeletingActivityId(null); // 削除成功したらモーダルを閉じる
+      setDeletingActivityId(null);
     } catch (error) {
       console.error("削除エラー:", error);
       alert('削除に失敗しました。');
@@ -208,6 +226,9 @@ export const Dashboard = () => {
 
   const roleLabel = userRole === 'admin' ? '管理者' : userRole === 'manager' ? '事務・役員' : '現場リーダー';
 
+  // =========================================================================
+  // 特大（カード）ビュー用コンポーネント
+  // =========================================================================
   const ActivityCard = ({ activity }) => {
     const images = activity.imageUrls || (activity.imageUrl ? [activity.imageUrl] : []);
     const isThisExporting = exportingId === activity.id;
@@ -216,37 +237,21 @@ export const Dashboard = () => {
 
     return (
       <div onClick={() => navigate('/activity-form', { state: { editData: activity, isViewMode: true } })} className="bg-white rounded-2xl shadow-sm border-l-4 border-green-500 p-4 cursor-pointer hover:shadow-md transition-all flex flex-col h-full relative group">
-        
         <div className="absolute top-3 right-3 flex items-center space-x-2 z-10">
           {groupInfo ? (
-            <span className="bg-gray-100 text-gray-600 text-[10px] px-2 py-1 rounded-md font-bold">
-              {groupInfo.name}
-            </span>
+            <span className="bg-gray-100 text-gray-600 text-[10px] px-2 py-1 rounded-md font-bold">{groupInfo.name}</span>
           ) : (
-            <span className="bg-red-50 text-red-500 text-[10px] px-2 py-1 rounded-md font-bold border border-red-100">
-              未登録
-            </span>
+            <span className="bg-red-50 text-red-500 text-[10px] px-2 py-1 rounded-md font-bold border border-red-100">未登録</span>
           )}
-          
           {userRole === 'admin' && (
-            <button
-              onClick={(e) => handleDeleteClick(activity.id, e)} // 🚀 window.confirm ではなく自作の関数を呼ぶ
-              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
-              title="この実績を削除"
-            >
+            <button onClick={(e) => handleDeleteClick(activity.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="この実績を削除">
               <Trash2 size={16} />
             </button>
           )}
         </div>
-
         <h3 className="font-bold text-lg text-gray-900 mb-2 pr-32 leading-tight">{activity.activityType || '内容未入力'}</h3>
-        
         <div className="space-y-1.5 text-xs text-gray-600 mb-3 flex-grow">
-          {activity.reportNo && (
-            <div className="flex items-center text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded-md w-max mb-1">
-              NO: {activity.reportNo}
-            </div>
-          )}
+          {activity.reportNo && <div className="flex items-center text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded-md w-max mb-1">NO: {activity.reportNo}</div>}
           <div className="flex items-center"><Calendar className="mr-2 h-4 w-4" />{activity.date}</div>
           <div className="flex items-center"><MapPin className="mr-2 h-4 w-4" />{activity.location}</div>
         </div>
@@ -265,6 +270,91 @@ export const Dashboard = () => {
             </button>
           </div>
         )}
+      </div>
+    );
+  };
+
+  // =========================================================================
+  // 詳細（表形式）ビュー用コンポーネント
+  // =========================================================================
+  const ActivityTable = ({ activitiesToRender }) => {
+    // 🚀 日付ヘッダーのクリックでソート順を切り替える関数
+    const toggleDateSort = () => {
+      setDateSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
+    };
+
+    return (
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse min-w-[800px]">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200 text-sm text-gray-700">
+                {/* 🚀 クリック可能な日付ヘッダー */}
+                <th 
+                  onClick={toggleDateSort}
+                  className="p-3 font-bold w-32 cursor-pointer hover:bg-gray-200 transition-colors select-none group"
+                  title="日付で並び替え"
+                >
+                  <div className="flex items-center text-blue-700">
+                    日付
+                    {dateSortOrder === 'desc' ? (
+                      <ChevronDown size={16} className="ml-1 text-blue-600 group-hover:text-blue-800" />
+                    ) : (
+                      <ChevronUp size={16} className="ml-1 text-blue-600 group-hover:text-blue-800" />
+                    )}
+                  </div>
+                </th>
+                <th className="p-3 font-bold w-28">報告書NO</th>
+                <th className="p-3 font-bold w-36">グループ</th>
+                <th className="p-3 font-bold w-48">活動場所</th>
+                <th className="p-3 font-bold">活動内容</th>
+                <th className="p-3 font-bold w-16 text-center">写真</th>
+                {(userRole === 'admin' || userRole === 'manager') && <th className="p-3 font-bold w-40 text-center">出力</th>}
+                {userRole === 'admin' && <th className="p-3 font-bold w-16 text-center">削除</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {activitiesToRender.map(act => {
+                const groupInfo = groupsList.find(g => g.id === act.groupId);
+                const isThisExporting = exportingId === act.id;
+                const canExport = userRole === 'admin' || userRole === 'manager';
+                const hasImage = (act.imageUrls && act.imageUrls.length > 0) || act.imageUrl;
+
+                return (
+                  <tr key={act.id} onClick={() => navigate('/activity-form', { state: { editData: act, isViewMode: true } })} className="border-b border-gray-100 hover:bg-green-50 cursor-pointer transition-colors group/row">
+                    <td className="p-3 text-sm text-gray-700">{act.date}</td>
+                    <td className="p-3 text-sm font-bold text-blue-600">{act.reportNo}</td>
+                    <td className="p-3 text-sm">{groupInfo ? groupInfo.name : <span className="text-red-500">未登録</span>}</td>
+                    <td className="p-3 text-sm text-gray-600">{act.location}</td>
+                    <td className="p-3 text-sm font-bold text-gray-900">{act.activityType}</td>
+                    <td className="p-3 text-center">
+                      {hasImage ? <span className="bg-blue-50 text-blue-600 px-2 py-1 rounded text-[10px] font-bold">あり</span> : <span className="text-gray-300 text-[10px]">なし</span>}
+                    </td>
+                    {canExport && (
+                      <td className="p-3">
+                        <div className="flex gap-1 justify-center">
+                          <button onClick={(e) => { e.stopPropagation(); handleExportSingleReport(act); }} disabled={isThisExporting} className={`px-3 py-1.5 rounded-lg font-bold text-[10px] flex items-center transition-colors ${isThisExporting ? 'bg-blue-400 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
+                            <FileSpreadsheet size={14} className="mr-1" />Excel
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); handleDirectPrint(act); }} className="px-3 py-1.5 bg-white text-gray-700 border border-gray-200 rounded-lg font-bold text-[10px] flex items-center hover:bg-gray-50 transition-colors">
+                            <Printer size={14} className="mr-1" />PDF
+                          </button>
+                        </div>
+                      </td>
+                    )}
+                    {userRole === 'admin' && (
+                      <td className="p-3 text-center">
+                        <button onClick={(e) => handleDeleteClick(act.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors">
+                          <Trash2 size={16} />
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     );
   };
@@ -317,7 +407,7 @@ export const Dashboard = () => {
       </header>
 
       <main className="p-4 max-w-7xl mx-auto no-print">
-        <div className="mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div className="mb-6 flex flex-col lg:flex-row lg:items-end justify-between gap-4">
           <div>
             <p className="text-gray-600 text-sm">こんにちは、</p>
             <h2 className="text-xl md:text-2xl font-bold text-gray-900 flex items-center">
@@ -327,6 +417,16 @@ export const Dashboard = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            
+            <div className="bg-white border border-gray-200 rounded-xl p-1 flex shadow-sm">
+              <button onClick={() => setViewStyle('card')} className={`flex items-center px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${viewStyle === 'card' ? 'bg-purple-600 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>
+                <LayoutGrid size={14} className="mr-1.5" /> 特大
+              </button>
+              <button onClick={() => setViewStyle('table')} className={`flex items-center px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${viewStyle === 'table' ? 'bg-purple-600 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>
+                <List size={14} className="mr-1.5" /> 詳細
+              </button>
+            </div>
+
             {(userRole === 'admin' || userRole === 'manager') && (
               <div className="bg-white border border-gray-200 rounded-xl p-1 flex shadow-sm">
                 <button onClick={() => setDisplayMode('list')} className={`flex items-center px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${displayMode === 'list' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>
@@ -356,15 +456,25 @@ export const Dashboard = () => {
           </div>
         ) : (
           <>
+            {/* 🚀 日付順 モード */}
             {displayMode === 'list' && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 animate-in fade-in duration-500">
-                {activities.map(act => <ActivityCard key={act.id} activity={act} />)}
+              <div className="animate-in fade-in duration-500">
+                {viewStyle === 'card' ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {/* 🚀 ソート済みの globalSortedActivities を使用 */}
+                    {globalSortedActivities.map(act => <ActivityCard key={act.id} activity={act} />)}
+                  </div>
+                ) : (
+                  <ActivityTable activitiesToRender={globalSortedActivities} />
+                )}
               </div>
             )}
 
+            {/* 🚀 グループ別 モード */}
             {displayMode === 'group' && (
               <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 {groupsList.map(group => {
+                  // 🚀 ソート済みの groupedActivities を使用
                   const acts = groupedActivities[group.id] || [];
                   if (acts.length === 0) return null;
                   return (
@@ -376,9 +486,14 @@ export const Dashboard = () => {
                           {acts.length} 件の記録
                         </span>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                        {acts.map(act => <ActivityCard key={act.id} activity={act} />)}
-                      </div>
+                      
+                      {viewStyle === 'card' ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                          {acts.map(act => <ActivityCard key={act.id} activity={act} />)}
+                        </div>
+                      ) : (
+                        <ActivityTable activitiesToRender={acts} />
+                      )}
                     </div>
                   );
                 })}
@@ -387,7 +502,12 @@ export const Dashboard = () => {
                   const unregisteredActs = Object.keys(groupedActivities)
                     .filter(gid => !groupsList.some(g => g.id === gid))
                     .flatMap(gid => groupedActivities[gid])
-                    .sort((a, b) => new Date(b.date) - new Date(a.date));
+                    .sort((a, b) => {
+                      // 未登録の配列もソート順を適用
+                      const dateA = new Date(a.date);
+                      const dateB = new Date(b.date);
+                      return dateSortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+                    });
 
                   if (unregisteredActs.length === 0) return null;
 
@@ -400,8 +520,15 @@ export const Dashboard = () => {
                           {unregisteredActs.length} 件の記録
                         </span>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 opacity-80">
-                        {unregisteredActs.map(act => <ActivityCard key={act.id} activity={act} />)}
+                      
+                      <div className="opacity-80">
+                        {viewStyle === 'card' ? (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                            {unregisteredActs.map(act => <ActivityCard key={act.id} activity={act} />)}
+                          </div>
+                        ) : (
+                          <ActivityTable activitiesToRender={unregisteredActs} />
+                        )}
                       </div>
                     </div>
                   );
@@ -412,7 +539,7 @@ export const Dashboard = () => {
         )}
       </main>
 
-      {/* 🚀 削除確認用のカスタムモーダル */}
+      {/* 削除確認モーダル */}
       {deletingActivityId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setDeletingActivityId(null)}>
           <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
@@ -427,16 +554,10 @@ export const Dashboard = () => {
               </p>
             </div>
             <div className="p-4 border-t border-gray-100 bg-gray-50 flex space-x-3">
-              <button 
-                onClick={() => setDeletingActivityId(null)} 
-                className="flex-1 py-2.5 bg-white border border-gray-300 rounded-xl font-bold text-gray-700 hover:bg-gray-100 transition-colors"
-              >
+              <button onClick={() => setDeletingActivityId(null)} className="flex-1 py-2.5 bg-white border border-gray-300 rounded-xl font-bold text-gray-700 hover:bg-gray-100 transition-colors">
                 キャンセル
               </button>
-              <button 
-                onClick={executeDelete} 
-                className="flex-1 py-2.5 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-colors flex items-center justify-center"
-              >
+              <button onClick={executeDelete} className="flex-1 py-2.5 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-colors flex items-center justify-center">
                 <Trash2 size={18} className="mr-1.5" /> 削除する
               </button>
             </div>
@@ -452,44 +573,21 @@ export const Dashboard = () => {
         return (
           <div className="hidden print:block w-full text-black bg-white font-serif">
             <h1 className="text-2xl font-bold text-center border-b-4 border-black pb-2 mb-6">活動状況写真台帳</h1>
+            {/* 印刷用テーブル省略なし */}
             <table className="w-full border-2 border-black border-collapse mb-6 text-sm">
               <tbody>
-                <tr>
-                  <th className="border border-black bg-gray-100 p-3 w-1/4 text-left">報告書NO</th>
-                  <td className="border border-black p-3" colSpan="3">{printActivity.reportNo || '（未設定）'}</td>
-                </tr>
-                <tr>
-                  <th className="border border-black bg-gray-100 p-3 w-1/4 text-left">実施年月日</th>
-                  <td className="border border-black p-3 w-1/4">{printActivity.date}</td>
-                  <th className="border border-black bg-gray-100 p-3 w-1/4 text-left">活動項目番号</th>
-                  <td className="border border-black p-3 w-1/4">{printActivity.activityNumbers?.join(', ')}</td>
-                </tr>
-                <tr>
-                  <th className="border border-black bg-gray-100 p-3 text-left">実施場所</th>
-                  <td className="border border-black p-3" colSpan="3">{printActivity.location}</td>
-                </tr>
-                <tr>
-                  <th className="border border-black bg-gray-100 p-3 text-left">活動内容</th>
-                  <td className="border border-black p-3" colSpan="3">{printActivity.activityType}</td>
-                </tr>
-                <tr>
-                  <th className="border border-black bg-gray-100 p-3 text-left">参加人数</th>
-                  <td className="border border-black p-3" colSpan="3">
-                    計 {printActivity.participants} 名 （農業者：{printActivity.participantsAgri}名 ／ 農業者以外：{printActivity.participantsNonAgri}名）
-                  </td>
-                </tr>
+                <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">報告書NO</th><td className="border border-black p-3" colSpan="3">{printActivity.reportNo || '（未設定）'}</td></tr>
+                <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">実施年月日</th><td className="border border-black p-3 w-1/4">{printActivity.date}</td><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">活動項目番号</th><td className="border border-black p-3 w-1/4">{printActivity.activityNumbers?.join(', ')}</td></tr>
+                <tr><th className="border border-black bg-gray-100 p-3 text-left">実施場所</th><td className="border border-black p-3" colSpan="3">{printActivity.location}</td></tr>
+                <tr><th className="border border-black bg-gray-100 p-3 text-left">活動内容</th><td className="border border-black p-3" colSpan="3">{printActivity.activityType}</td></tr>
+                <tr><th className="border border-black bg-gray-100 p-3 text-left">参加人数</th><td className="border border-black p-3" colSpan="3">計 {printActivity.participants} 名 （農業者：{printActivity.participantsAgri}名 ／ 農業者以外：{printActivity.participantsNonAgri}名）</td></tr>
               </tbody>
             </table>
-            
             <div className="space-y-6">
               {printImages.map((img, idx) => (
-                <div key={idx} className="break-inside-avoid">
-                  <div className="text-sm font-bold mb-1 text-left">{idx + 1}/{totalImages}枚目</div>
-                  <div className="border border-gray-400 p-1"><img src={img} alt="" className="w-full h-auto max-h-[140mm] object-contain" /></div>
-                </div>
+                <div key={idx} className="break-inside-avoid"><div className="text-sm font-bold mb-1 text-left">{idx + 1}/{totalImages}枚目</div><div className="border border-gray-400 p-1"><img src={img} alt="" className="w-full h-auto max-h-[140mm] object-contain" /></div></div>
               ))}
             </div>
-            
             <div className="mt-8 flex justify-between items-end border-t border-black pt-4">
               <div className="text-sm">組織名：{groupInfo ? groupInfo.name : '農事組合法人カマタ'}</div>
               <div className="text-sm text-right">出力日：{new Date().toLocaleDateString('ja-JP')}</div>
