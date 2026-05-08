@@ -1,24 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown } from 'lucide-react'; // 🚀 ChevronUp, ChevronDownを追加
+import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, doc, getDoc, deleteDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { db, auth } from '../firebase';
 import XlsxPopulate from 'xlsx-populate/browser/xlsx-populate';
-
-// =========================================================================
-// 機械マスタ
-// =========================================================================
-const MACHINES = [
-  { id: "1", name: "刈払機（肩掛け）", defaultPrice: 1350 },
-  { id: "2", name: "畦畔刈払機", defaultPrice: 1800 },
-  { id: "3", name: "法面刈払機", defaultPrice: 2000 },
-  { id: "4", name: "除草剤噴霧器", defaultPrice: 1350 },
-  { id: "5", name: "軽トラック", defaultPrice: 1000 },
-  { id: "6", name: "バックホー", defaultPrice: 3000 },
-  { id: "7", name: "チェーンソー", defaultPrice: 1000 },
-  { id: "8", name: "泥上げ", defaultPrice: 1050 },
-];
 
 export const Dashboard = () => {
   const navigate = useNavigate();
@@ -28,27 +14,18 @@ export const Dashboard = () => {
   const [printActivity, setPrintActivity] = useState(null);
   const [activeTab, setActiveTab] = useState('home');
   const [exportingId, setExportingId] = useState(null);
+  
   const [membersList, setMembersList] = useState([]);
+  const [machinesList, setMachinesList] = useState([]);
+  const [materialsList, setMaterialsList] = useState([]); 
   const [groupsList, setGroupsList] = useState([]);
 
-  // 表示モード (日付順: list / グループ別: group)
-  const [displayMode, setDisplayMode] = useState(() => {
-    return localStorage.getItem('dashboardDisplayMode') || 'group';
-  });
-
-  // 表示スタイル (特大/カード: card / 詳細/表形式: table)
-  const [viewStyle, setViewStyle] = useState(() => {
-    return localStorage.getItem('dashboardViewStyle') || 'card';
-  });
-
-  // 🚀 【追加】日付のソート順 (降順/新しい順: desc / 昇順/古い順: asc)
-  const [dateSortOrder, setDateSortOrder] = useState(() => {
-    return localStorage.getItem('dashboardDateSortOrder') || 'desc';
-  });
+  const [displayMode, setDisplayMode] = useState(() => localStorage.getItem('dashboardDisplayMode') || 'group');
+  const [viewStyle, setViewStyle] = useState(() => localStorage.getItem('dashboardViewStyle') || 'card');
+  const [dateSortOrder, setDateSortOrder] = useState(() => localStorage.getItem('dashboardDateSortOrder') || 'desc');
 
   useEffect(() => localStorage.setItem('dashboardDisplayMode', displayMode), [displayMode]);
   useEffect(() => localStorage.setItem('dashboardViewStyle', viewStyle), [viewStyle]);
-  // 🚀 ソート順が変わった時に保存
   useEffect(() => localStorage.setItem('dashboardDateSortOrder', dateSortOrder), [dateSortOrder]);
 
   const [currentUser, setCurrentUser] = useState(null);
@@ -57,14 +34,17 @@ export const Dashboard = () => {
   const [deletingActivityId, setDeletingActivityId] = useState(null);
 
   useEffect(() => {
-    fetch('/members.json')
-      .then(res => res.json())
-      .then(data => setMembersList(data))
-      .catch(err => console.error("メンバー情報の読み込みに失敗しました:", err));
-
+    const unsubMembers = onSnapshot(collection(db, 'members'), (snapshot) => {
+      setMembersList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+    const unsubMachines = onSnapshot(collection(db, 'machines'), (snapshot) => {
+      setMachinesList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+    const unsubMaterials = onSnapshot(collection(db, 'materials'), (snapshot) => {
+      setMaterialsList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
     const unsubscribeGroups = onSnapshot(collection(db, 'groups'), (snapshot) => {
-      const gData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setGroupsList(gData);
+      setGroupsList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
     let unsubscribeData = null;
@@ -114,11 +94,13 @@ export const Dashboard = () => {
     return () => {
       unsubscribeAuth();
       unsubscribeGroups();
+      unsubMembers();
+      unsubMachines();
+      unsubMaterials();
       if (unsubscribeData) unsubscribeData();
     };
   }, []);
 
-  // 🚀 ソート順を適用した全データ
   const globalSortedActivities = useMemo(() => {
     return [...activities].sort((a, b) => {
       const dateA = new Date(a.date);
@@ -127,7 +109,6 @@ export const Dashboard = () => {
     });
   }, [activities, dateSortOrder]);
 
-  // 🚀 ソート順を適用したグループ別データ
   const groupedActivities = useMemo(() => {
     const groups = {};
     globalSortedActivities.forEach(act => {
@@ -186,16 +167,18 @@ export const Dashboard = () => {
       if (activity.participantDetails && activity.participantDetails.length > 0) {
         activity.participantDetails.forEach((detail, index) => {
           const row = 6 + index; 
-          const member = membersList.find(m => m.id === detail.memberId);
-          const machine = MACHINES.find(m => m.id === detail.machineId);
+          const wId = detail.wageId || detail.memberId;
+          const wage = membersList.find(m => m.id === wId);
+          const machine = machinesList.find(m => m.id === detail.machineId);
+          
           let memberTotal = 0; let machineTotal = 0;
-          if (member) {
-            memberTotal = detail.workTime * member.defaultWage;
-            sheet2.cell(`A${row}`).value(member.name); 
-            sheet2.cell(`F${row}`).value(member.id); 
+          if (wage) {
+            memberTotal = detail.workTime * wage.defaultWage;
+            sheet2.cell(`A${row}`).value(detail.participantName || '名称未設定'); 
+            sheet2.cell(`F${row}`).value(wage.name); 
             sheet2.cell(`G${row}`).value(detail.workTime); 
             sheet2.cell(`J${row}`).value('時間'); 
-            sheet2.cell(`L${row}`).value(member.defaultWage); 
+            sheet2.cell(`L${row}`).value(wage.defaultWage); 
             sheet2.cell(`O${row}`).value(memberTotal); 
           }
           if (machine) {
@@ -226,9 +209,6 @@ export const Dashboard = () => {
 
   const roleLabel = userRole === 'admin' ? '管理者' : userRole === 'manager' ? '事務・役員' : '現場リーダー';
 
-  // =========================================================================
-  // 特大（カード）ビュー用コンポーネント
-  // =========================================================================
   const ActivityCard = ({ activity }) => {
     const images = activity.imageUrls || (activity.imageUrl ? [activity.imageUrl] : []);
     const isThisExporting = exportingId === activity.id;
@@ -274,11 +254,7 @@ export const Dashboard = () => {
     );
   };
 
-  // =========================================================================
-  // 詳細（表形式）ビュー用コンポーネント
-  // =========================================================================
   const ActivityTable = ({ activitiesToRender }) => {
-    // 🚀 日付ヘッダーのクリックでソート順を切り替える関数
     const toggleDateSort = () => {
       setDateSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
     };
@@ -289,19 +265,10 @@ export const Dashboard = () => {
           <table className="w-full text-left border-collapse min-w-[800px]">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200 text-sm text-gray-700">
-                {/* 🚀 クリック可能な日付ヘッダー */}
-                <th 
-                  onClick={toggleDateSort}
-                  className="p-3 font-bold w-32 cursor-pointer hover:bg-gray-200 transition-colors select-none group"
-                  title="日付で並び替え"
-                >
+                <th onClick={toggleDateSort} className="p-3 font-bold w-32 cursor-pointer hover:bg-gray-200 transition-colors select-none group" title="日付で並び替え">
                   <div className="flex items-center text-blue-700">
                     日付
-                    {dateSortOrder === 'desc' ? (
-                      <ChevronDown size={16} className="ml-1 text-blue-600 group-hover:text-blue-800" />
-                    ) : (
-                      <ChevronUp size={16} className="ml-1 text-blue-600 group-hover:text-blue-800" />
-                    )}
+                    {dateSortOrder === 'desc' ? <ChevronDown size={16} className="ml-1 text-blue-600 group-hover:text-blue-800" /> : <ChevronUp size={16} className="ml-1 text-blue-600 group-hover:text-blue-800" />}
                   </div>
                 </th>
                 <th className="p-3 font-bold w-28">報告書NO</th>
@@ -385,9 +352,14 @@ export const Dashboard = () => {
             </button>
           )}
           {userRole === 'admin' && (
-            <button onClick={() => navigate('/users')} className="flex items-center text-sm font-bold text-gray-500 hover:text-purple-600">
-              <UserCog size={18} className="mr-1"/> ユーザー管理
-            </button>
+            <>
+              <button onClick={() => navigate('/users')} className="flex items-center text-sm font-bold text-gray-500 hover:text-purple-600">
+                <UserCog size={18} className="mr-1"/> ユーザー管理
+              </button>
+              <button onClick={() => navigate('/masters')} className="flex items-center text-sm font-bold text-gray-500 hover:text-blue-600">
+                <Settings size={18} className="mr-1"/> マスタ管理
+              </button>
+            </>
           )}
           <div className="h-6 w-px bg-gray-300 mx-2"></div>
           <button onClick={handleLogout} className="flex items-center text-sm font-bold text-gray-500 hover:text-red-600">
@@ -400,7 +372,10 @@ export const Dashboard = () => {
             <button onClick={() => navigate('/groups')} className="p-2 text-gray-500 hover:text-blue-600 transition-colors"><Users size={20} /></button>
           )}
           {userRole === 'admin' && (
-            <button onClick={() => navigate('/users')} className="p-2 text-gray-500 hover:text-purple-600 transition-colors"><UserCog size={20} /></button>
+            <>
+              <button onClick={() => navigate('/users')} className="p-2 text-gray-500 hover:text-purple-600 transition-colors"><UserCog size={20} /></button>
+              <button onClick={() => navigate('/masters')} className="p-2 text-gray-500 hover:text-blue-600 transition-colors"><Settings size={20} /></button>
+            </>
           )}
           <button onClick={handleLogout} className="p-2 text-gray-500 hover:text-red-600 transition-colors"><LogOut size={20} /></button>
         </div>
@@ -456,12 +431,10 @@ export const Dashboard = () => {
           </div>
         ) : (
           <>
-            {/* 🚀 日付順 モード */}
             {displayMode === 'list' && (
               <div className="animate-in fade-in duration-500">
                 {viewStyle === 'card' ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                    {/* 🚀 ソート済みの globalSortedActivities を使用 */}
                     {globalSortedActivities.map(act => <ActivityCard key={act.id} activity={act} />)}
                   </div>
                 ) : (
@@ -470,11 +443,9 @@ export const Dashboard = () => {
               </div>
             )}
 
-            {/* 🚀 グループ別 モード */}
             {displayMode === 'group' && (
               <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 {groupsList.map(group => {
-                  // 🚀 ソート済みの groupedActivities を使用
                   const acts = groupedActivities[group.id] || [];
                   if (acts.length === 0) return null;
                   return (
@@ -503,7 +474,6 @@ export const Dashboard = () => {
                     .filter(gid => !groupsList.some(g => g.id === gid))
                     .flatMap(gid => groupedActivities[gid])
                     .sort((a, b) => {
-                      // 未登録の配列もソート順を適用
                       const dateA = new Date(a.date);
                       const dateB = new Date(b.date);
                       return dateSortOrder === 'desc' ? dateB - dateA : dateA - dateB;
@@ -539,7 +509,6 @@ export const Dashboard = () => {
         )}
       </main>
 
-      {/* 削除確認モーダル */}
       {deletingActivityId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setDeletingActivityId(null)}>
           <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
@@ -573,7 +542,6 @@ export const Dashboard = () => {
         return (
           <div className="hidden print:block w-full text-black bg-white font-serif">
             <h1 className="text-2xl font-bold text-center border-b-4 border-black pb-2 mb-6">活動状況写真台帳</h1>
-            {/* 印刷用テーブル省略なし */}
             <table className="w-full border-2 border-black border-collapse mb-6 text-sm">
               <tbody>
                 <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">報告書NO</th><td className="border border-black p-3" colSpan="3">{printActivity.reportNo || '（未設定）'}</td></tr>
