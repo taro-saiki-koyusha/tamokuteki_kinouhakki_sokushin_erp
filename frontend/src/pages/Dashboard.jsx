@@ -214,10 +214,18 @@ export const Dashboard = () => {
     const isThisExporting = exportingId === activity.id;
     const canExport = userRole === 'admin' || userRole === 'manager';
     const groupInfo = groupsList.find(g => g.id === activity.groupId);
+    
+    // 🚀 ステータスラベルの取得（過去データは入力済とする）
+    const statusLabel = activity.status || '実績入力済';
 
     return (
       <div onClick={() => navigate('/activity-form', { state: { editData: activity, isViewMode: true } })} className="bg-white rounded-2xl shadow-sm border-l-4 border-green-500 p-4 cursor-pointer hover:shadow-md transition-all flex flex-col h-full relative group">
         <div className="absolute top-3 right-3 flex items-center space-x-2 z-10">
+          {/* 🚀 ステータスバッジ */}
+          <span className={`text-[10px] px-2 py-1 rounded-md font-bold border ${statusLabel === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-600 border-green-100'}`}>
+            {statusLabel}
+          </span>
+          
           {groupInfo ? (
             <span className="bg-gray-100 text-gray-600 text-[10px] px-2 py-1 rounded-md font-bold">{groupInfo.name}</span>
           ) : (
@@ -229,7 +237,7 @@ export const Dashboard = () => {
             </button>
           )}
         </div>
-        <h3 className="font-bold text-lg text-gray-900 mb-2 pr-32 leading-tight">{activity.activityType || '内容未入力'}</h3>
+        <h3 className="font-bold text-lg text-gray-900 mb-2 pr-40 leading-tight">{activity.activityType || '内容未入力'}</h3>
         <div className="space-y-1.5 text-xs text-gray-600 mb-3 flex-grow">
           {activity.reportNo && <div className="flex items-center text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded-md w-max mb-1">NO: {activity.reportNo}</div>}
           <div className="flex items-center"><Calendar className="mr-2 h-4 w-4" />{activity.date}</div>
@@ -271,9 +279,12 @@ export const Dashboard = () => {
                     {dateSortOrder === 'desc' ? <ChevronDown size={16} className="ml-1 text-blue-600 group-hover:text-blue-800" /> : <ChevronUp size={16} className="ml-1 text-blue-600 group-hover:text-blue-800" />}
                   </div>
                 </th>
+                {/* 🚀 状態の列を追加 */}
+                <th className="p-3 font-bold w-24 text-center">状態</th>
                 <th className="p-3 font-bold w-28">報告書NO</th>
                 <th className="p-3 font-bold w-36">グループ</th>
                 <th className="p-3 font-bold w-48">活動場所</th>
+                <th className="p-3 font-bold w-24">項目番号</th>
                 <th className="p-3 font-bold">活動内容</th>
                 <th className="p-3 font-bold w-16 text-center">写真</th>
                 {(userRole === 'admin' || userRole === 'manager') && <th className="p-3 font-bold w-40 text-center">出力</th>}
@@ -286,13 +297,27 @@ export const Dashboard = () => {
                 const isThisExporting = exportingId === act.id;
                 const canExport = userRole === 'admin' || userRole === 'manager';
                 const hasImage = (act.imageUrls && act.imageUrls.length > 0) || act.imageUrl;
+                
+                // 🚀 ステータスラベルの取得
+                const statusLabel = act.status || '実績入力済';
 
                 return (
                   <tr key={act.id} onClick={() => navigate('/activity-form', { state: { editData: act, isViewMode: true } })} className="border-b border-gray-100 hover:bg-green-50 cursor-pointer transition-colors group/row">
                     <td className="p-3 text-sm text-gray-700">{act.date}</td>
+                    
+                    {/* 🚀 状態のバッジ */}
+                    <td className="p-3 text-center">
+                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${statusLabel === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-600 border-green-100'}`}>
+                        {statusLabel}
+                      </span>
+                    </td>
+
                     <td className="p-3 text-sm font-bold text-blue-600">{act.reportNo}</td>
                     <td className="p-3 text-sm">{groupInfo ? groupInfo.name : <span className="text-red-500">未登録</span>}</td>
                     <td className="p-3 text-sm text-gray-600">{act.location}</td>
+                    <td className="p-3 text-sm font-bold text-green-600">
+                      {act.activityNumbers?.join(', ')}
+                    </td>
                     <td className="p-3 text-sm font-bold text-gray-900">{act.activityType}</td>
                     <td className="p-3 text-center">
                       {hasImage ? <span className="bg-blue-50 text-blue-600 px-2 py-1 rounded text-[10px] font-bold">あり</span> : <span className="text-gray-300 text-[10px]">なし</span>}

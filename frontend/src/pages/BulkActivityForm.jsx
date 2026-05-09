@@ -81,6 +81,7 @@ export const BulkActivityForm = () => {
           .filter(s => s !== '');
 
         const submitData = {
+          status: '未実施',
           groupId: selectedGroupId,
           date: row.date,
           startTime: row.startTime,

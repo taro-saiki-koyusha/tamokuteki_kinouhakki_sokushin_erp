@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2, Calculator, Package, Plus } from 'lucide-react'; // 🚀 Package, Plus を追加
+import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2, Calculator, Package, Plus, CheckCircle } from 'lucide-react'; // 🚀 CheckCircle を追加
 import { collection, addDoc, doc, updateDoc, serverTimestamp, deleteDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -45,7 +45,7 @@ export const ActivityForm = () => {
   
   const [membersList, setMembersList] = useState([]);
   const [machinesList, setMachinesList] = useState([]);
-  const [materialsList, setMaterialsList] = useState([]); // 🚀 資材マスタ用
+  const [materialsList, setMaterialsList] = useState([]);
   const [groupsList, setGroupsList] = useState([]);
   const [systemUsers, setSystemUsers] = useState([]);
   
@@ -55,6 +55,7 @@ export const ActivityForm = () => {
 
   const [formData, setFormData] = useState(
     editData ? {
+      status: editData.status || '実績入力済',
       groupId: editData.groupId || '',
       date: editData.date,
       startTime: editData.startTime,
@@ -65,6 +66,7 @@ export const ActivityForm = () => {
       memo: editData.memo || '',
       reportNo: editData.reportNo || ''
     } : {
+      status: '実績入力済',
       groupId: '',
       date: new Date().toISOString().split('T')[0],
       startTime: '08:00',
@@ -84,11 +86,9 @@ export const ActivityForm = () => {
     const unsubMachines = onSnapshot(collection(db, 'machines'), (snapshot) => {
       setMachinesList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
-    // 🚀 資材マスタの取得を追加
     const unsubMaterials = onSnapshot(collection(db, 'materials'), (snapshot) => {
       setMaterialsList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
-
     const unsubscribeGroups = onSnapshot(collection(db, 'groups'), (snapshot) => {
       setGroupsList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
@@ -117,7 +117,10 @@ export const ActivityForm = () => {
   }, [editData]);
 
   const [participantDetails, setParticipantDetails] = useState(editData?.participantDetails || []);
-  const [materialDetails, setMaterialDetails] = useState(editData?.materialDetails || []); // 🚀 使用資材リスト用
+  const [materialDetails, setMaterialDetails] = useState(editData?.materialDetails || []); 
+
+  // 🚀 保存完了ダイアログ用のState
+  const [successModal, setSuccessModal] = useState({ show: false, message: '' });
 
   const calculateBaseHours = () => {
     if (!formData.startTime || !formData.endTime) return 0;
@@ -127,7 +130,6 @@ export const ActivityForm = () => {
     return hours > 0 ? hours : 0;
   };
 
-  // --- 参加者関連 ---
   const addParticipant = () => {
     const baseHours = calculateBaseHours();
     setParticipantDetails([...participantDetails, { participantName: '', wageId: '', workTime: baseHours, machineId: '', machineTime: 0 }]);
@@ -141,10 +143,7 @@ export const ActivityForm = () => {
   };
   const removeParticipant = (index) => setParticipantDetails(participantDetails.filter((_, i) => i !== index));
 
-  // --- 資材関連 🚀 ---
-  const addMaterial = () => {
-    setMaterialDetails([...materialDetails, { materialId: '', quantity: 1 }]);
-  };
+  const addMaterial = () => setMaterialDetails([...materialDetails, { materialId: '', quantity: 1 }]);
   const updateMaterial = (index, field, value) => {
     const newList = [...materialDetails];
     newList[index][field] = value;
@@ -152,7 +151,6 @@ export const ActivityForm = () => {
   };
   const removeMaterial = (index) => setMaterialDetails(materialDetails.filter((_, i) => i !== index));
 
-  // --- 計算関連 ---
   const summary = participantDetails.reduce((acc, p) => {
     const wId = p.wageId || p.memberId;
     if (!wId) return acc;
@@ -164,8 +162,6 @@ export const ActivityForm = () => {
 
   const { totalPersonnelCost, totalMachineCost, totalMaterialCost } = useMemo(() => {
     let pCost = 0; let mCost = 0; let matCost = 0;
-    
-    // 人件費と機械
     participantDetails.forEach(detail => {
       const wId = detail.wageId || detail.memberId;
       if (wId) {
@@ -177,19 +173,15 @@ export const ActivityForm = () => {
         if (machine) mCost += (detail.machineTime || 0) * (machine.defaultPrice || 0);
       }
     });
-
-    // 資材費 🚀
     materialDetails.forEach(detail => {
       if (detail.materialId) {
         const mat = materialsList.find(m => m.id === detail.materialId);
         if (mat) matCost += (detail.quantity || 0) * (mat.defaultPrice || 0);
       }
     });
-
     return { totalPersonnelCost: pCost, totalMachineCost: mCost, totalMaterialCost: matCost };
   }, [participantDetails, materialDetails, membersList, machinesList, materialsList]);
 
-  // --- 画像などその他のState ---
   const [existingUrls, setExistingUrls] = useState(editData?.imageUrls || (editData?.imageUrl ? [editData.imageUrl] : []));
   const [newImageFiles, setNewImageFiles] = useState([]);
   const [newPreviewUrls, setNewPreviewUrls] = useState([]);
@@ -228,12 +220,13 @@ export const ActivityForm = () => {
   const handleCancelEdit = () => {
     if (!editData) return;
     setFormData({
+      status: editData.status || '実績入力済',
       groupId: editData.groupId || '', date: editData.date, startTime: editData.startTime, endTime: editData.endTime,
       location: editData.location, activityType: editData.activityType, activityNumbers: editData.activityNumbers || [],
       memo: editData.memo || '', reportNo: editData.reportNo || ''
     });
     setParticipantDetails(editData.participantDetails || []);
-    setMaterialDetails(editData.materialDetails || []); // 🚀
+    setMaterialDetails(editData.materialDetails || []); 
     setExistingUrls(editData.imageUrls || (editData.imageUrl ? [editData.imageUrl] : []));
     setNewImageFiles([]); setNewPreviewUrls([]); setIsViewMode(true);
   };
@@ -248,7 +241,6 @@ export const ActivityForm = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.groupId) { alert('対象グループを選択してください。'); return; }
-    if (formData.activityNumbers.length === 0) { alert('活動項目番号を選択してください。'); return; }
 
     setIsSubmitting(true);
     try {
@@ -264,12 +256,12 @@ export const ActivityForm = () => {
         finalImageUrls = [...finalImageUrls, ...newlyUploadedUrls];
       }
       const validParticipants = participantDetails.filter(p => (p.wageId || p.memberId || p.participantName));
-      const validMaterials = materialDetails.filter(m => m.materialId !== ''); // 🚀
+      const validMaterials = materialDetails.filter(m => m.materialId !== ''); 
       
       const submitData = { 
         ...formData, 
         participantDetails: validParticipants, 
-        materialDetails: validMaterials, // 🚀
+        materialDetails: validMaterials, 
         participantsAgri: summary.agri, 
         participantsNonAgri: summary.nonAgri, 
         participants: totalParticipants, 
@@ -277,15 +269,24 @@ export const ActivityForm = () => {
         updatedAt: serverTimestamp() 
       };
 
-      if (editData) { await updateDoc(doc(db, 'activities', editData.id), submitData); alert('修正しました！'); } 
+      if (editData) { 
+        await updateDoc(doc(db, 'activities', editData.id), submitData); 
+        // 🚀 アラートではなく、モーダルを表示する
+        setSuccessModal({ show: true, message: '活動実績を修正しました。' });
+      } 
       else { 
         submitData.createdAt = serverTimestamp(); 
         submitData.createdBy = currentUser?.uid; 
         await addDoc(collection(db, 'activities'), submitData); 
-        alert('保存しました！'); 
+        // 🚀 アラートではなく、モーダルを表示する
+        setSuccessModal({ show: true, message: '新しい活動実績を登録しました。' });
       }
-      navigate('/dashboard');
-    } catch (error) { console.error(error); alert('保存エラー'); } finally { setIsSubmitting(false); }
+    } catch (error) { 
+      console.error(error); 
+      alert('保存エラーが発生しました。'); 
+    } finally { 
+      setIsSubmitting(false); 
+    }
   };
 
   const filteredItems = ACTIVITY_ITEMS.filter(item => item.name.includes(searchTerm) || item.id.includes(searchTerm));
@@ -300,6 +301,32 @@ export const ActivityForm = () => {
         <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/70 backdrop-blur-sm">
           <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
           <p className="text-blue-800 font-bold text-lg tracking-wider">データを保存しています...</p>
+        </div>
+      )}
+
+      {/* 🚀 保存完了モーダル */}
+      {successModal.show && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-5 flex flex-col items-center text-center">
+              <div className="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
+                <CheckCircle size={28} />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">保存完了</h3>
+              <p className="text-sm text-gray-600">{successModal.message}</p>
+            </div>
+            <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-center">
+              <button
+                onClick={() => {
+                  setSuccessModal({ show: false, message: '' });
+                  navigate('/dashboard'); // 🚀 モーダルを閉じた後にダッシュボードへ戻る
+                }}
+                className="w-full py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors"
+              >
+                ダッシュボードへ戻る
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -334,6 +361,17 @@ export const ActivityForm = () => {
             <div className="space-y-6">
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                 <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Calendar className="w-5 h-5 mr-2 text-green-600" /> 実施日時・場所</h2>
+                
+                <div className="flex space-x-4 mb-2">
+                  <div className="flex-1">
+                    <label className="block text-sm font-bold text-gray-700 mb-1">ステータス</label>
+                    <select name="status" value={formData.status} onChange={handleChange} disabled={isViewMode} className={`w-full border rounded-xl p-3 font-bold focus:ring-2 focus:ring-green-500 disabled:opacity-100 ${formData.status === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-300' : 'bg-green-50 text-green-700 border-green-300'}`}>
+                      <option value="未実施">未実施（計画用）</option>
+                      <option value="実績入力済">実績入力済（完了）</option>
+                    </select>
+                  </div>
+                </div>
+
                 <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 mb-4">
                   <label className="block text-sm font-bold text-blue-900 mb-1">対象グループ <span className="text-red-500">*</span></label>
                   <select name="groupId" value={formData.groupId} onChange={handleChange} disabled={isViewMode} className={`${inputClass} border-blue-200 focus:ring-blue-500`} required>
@@ -364,7 +402,7 @@ export const ActivityForm = () => {
                   <label className="block text-sm font-bold text-gray-700 mb-1">Excel活動項目番号 (最大6つ)</label>
                   <button type="button" onClick={() => !isViewMode && setIsDropdownOpen(!isDropdownOpen)} className={`w-full text-left bg-white border border-gray-300 rounded-xl p-3 flex justify-between items-center ${isViewMode ? 'bg-gray-100 cursor-not-allowed opacity-100' : 'focus:ring-2 focus:ring-green-500'}`}>
                     <span className={`block truncate pr-2 ${formData.activityNumbers.length === 0 ? 'text-gray-500' : (isViewMode ? 'text-gray-600 font-bold' : 'text-gray-900 font-bold')}`}>
-                      {formData.activityNumbers.length > 0 ? formData.activityNumbers.join(', ') + ' 番を選択中' : '検索・選択'}
+                      {formData.activityNumbers.length > 0 ? formData.activityNumbers.join(', ') + ' 番を選択中' : '検索・選択（任意）'}
                     </span>
                     <ChevronDown size={20} className="text-gray-400 flex-shrink-0" />
                   </button>
@@ -399,7 +437,6 @@ export const ActivityForm = () => {
 
             <div className="space-y-6">
               
-              {/* 参加者と使用機械ブロック */}
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                 <div className="flex justify-between items-center mb-4 border-b pb-3">
                   <h2 className="font-bold text-gray-800 flex items-center"><Users className="w-5 h-5 mr-2 text-green-600" /> 参加者と使用機械</h2>
@@ -408,10 +445,6 @@ export const ActivityForm = () => {
                     <span className="bg-orange-50 text-orange-700 px-2.5 py-1 rounded-full border border-orange-100">以外: {summary.nonAgri}</span>
                   </div>
                 </div>
-
-                {!isViewMode && (
-                  <p className="text-xs text-gray-500 mb-3 bg-gray-50 p-2 rounded-lg">💡 計画として登録する場合は、参加者を追加せずにこのまま保存できます。</p>
-                )}
 
                 <div className="space-y-4 max-h-[600px] overflow-y-auto pr-1">
                   {participantDetails.map((detail, index) => {
@@ -490,7 +523,7 @@ export const ActivityForm = () => {
                 </div>
               </div>
 
-              {/* 🚀 使用資材ブロック */}
+              {/* 使用資材ブロック */}
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                 <div className="flex justify-between items-center mb-4 border-b pb-3">
                   <h2 className="font-bold text-gray-800 flex items-center"><Package className="w-5 h-5 mr-2 text-green-600" /> 使用資材</h2>
