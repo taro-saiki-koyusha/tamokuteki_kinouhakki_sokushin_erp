@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2, Calculator, Package, Plus, CheckCircle } from 'lucide-react'; // 🚀 CheckCircle を追加
+import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2, Calculator, Package, Plus, CheckCircle } from 'lucide-react';
 import { collection, addDoc, doc, updateDoc, serverTimestamp, deleteDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -56,6 +56,7 @@ export const ActivityForm = () => {
   const [formData, setFormData] = useState(
     editData ? {
       status: editData.status || '実績入力済',
+      planType: editData.planType || '当初計画', // 🚀 追加
       groupId: editData.groupId || '',
       date: editData.date,
       startTime: editData.startTime,
@@ -67,6 +68,7 @@ export const ActivityForm = () => {
       reportNo: editData.reportNo || ''
     } : {
       status: '実績入力済',
+      planType: '当初計画', // 🚀 追加
       groupId: '',
       date: new Date().toISOString().split('T')[0],
       startTime: '08:00',
@@ -119,7 +121,6 @@ export const ActivityForm = () => {
   const [participantDetails, setParticipantDetails] = useState(editData?.participantDetails || []);
   const [materialDetails, setMaterialDetails] = useState(editData?.materialDetails || []); 
 
-  // 🚀 保存完了ダイアログ用のState
   const [successModal, setSuccessModal] = useState({ show: false, message: '' });
 
   const calculateBaseHours = () => {
@@ -221,6 +222,7 @@ export const ActivityForm = () => {
     if (!editData) return;
     setFormData({
       status: editData.status || '実績入力済',
+      planType: editData.planType || '当初計画', // 🚀
       groupId: editData.groupId || '', date: editData.date, startTime: editData.startTime, endTime: editData.endTime,
       location: editData.location, activityType: editData.activityType, activityNumbers: editData.activityNumbers || [],
       memo: editData.memo || '', reportNo: editData.reportNo || ''
@@ -271,14 +273,12 @@ export const ActivityForm = () => {
 
       if (editData) { 
         await updateDoc(doc(db, 'activities', editData.id), submitData); 
-        // 🚀 アラートではなく、モーダルを表示する
         setSuccessModal({ show: true, message: '活動実績を修正しました。' });
       } 
       else { 
         submitData.createdAt = serverTimestamp(); 
         submitData.createdBy = currentUser?.uid; 
         await addDoc(collection(db, 'activities'), submitData); 
-        // 🚀 アラートではなく、モーダルを表示する
         setSuccessModal({ show: true, message: '新しい活動実績を登録しました。' });
       }
     } catch (error) { 
@@ -304,7 +304,6 @@ export const ActivityForm = () => {
         </div>
       )}
 
-      {/* 🚀 保存完了モーダル */}
       {successModal.show && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200">
@@ -319,7 +318,7 @@ export const ActivityForm = () => {
               <button
                 onClick={() => {
                   setSuccessModal({ show: false, message: '' });
-                  navigate('/dashboard'); // 🚀 モーダルを閉じた後にダッシュボードへ戻る
+                  navigate('/dashboard'); 
                 }}
                 className="w-full py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors"
               >
@@ -362,12 +361,21 @@ export const ActivityForm = () => {
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                 <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Calendar className="w-5 h-5 mr-2 text-green-600" /> 実施日時・場所</h2>
                 
-                <div className="flex space-x-4 mb-2">
+                {/* 🚀 ステータスと計画区分の選択ブロック */}
+                <div className="flex flex-col sm:flex-row gap-4 mb-2">
                   <div className="flex-1">
                     <label className="block text-sm font-bold text-gray-700 mb-1">ステータス</label>
                     <select name="status" value={formData.status} onChange={handleChange} disabled={isViewMode} className={`w-full border rounded-xl p-3 font-bold focus:ring-2 focus:ring-green-500 disabled:opacity-100 ${formData.status === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-300' : 'bg-green-50 text-green-700 border-green-300'}`}>
                       <option value="未実施">未実施（計画用）</option>
                       <option value="実績入力済">実績入力済（完了）</option>
+                    </select>
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-sm font-bold text-gray-700 mb-1">計画区分</label>
+                    <select name="planType" value={formData.planType} onChange={handleChange} disabled={isViewMode} className="w-full border border-gray-300 rounded-xl p-3 font-bold focus:ring-2 focus:ring-green-500 disabled:bg-gray-100 disabled:opacity-100 bg-white text-gray-800">
+                      <option value="当初計画">当初計画</option>
+                      <option value="期中追加">期中追加</option>
+                      <option value="突発・緊急">突発・緊急</option>
                     </select>
                   </div>
                 </div>
