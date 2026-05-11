@@ -6,6 +6,23 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { db, auth } from '../firebase';
 import XlsxPopulate from 'xlsx-populate/browser/xlsx-populate';
 
+const formatTimestamp = (timestamp) => {
+  if (!timestamp) return '-';
+  if (typeof timestamp.toDate === 'function') {
+    const d = timestamp.toDate();
+    return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }
+  if (timestamp.seconds) {
+    const d = new Date(timestamp.seconds * 1000);
+    return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }
+  const d = new Date(timestamp);
+  if (!isNaN(d)) {
+    return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }
+  return '-';
+};
+
 export const Dashboard = () => {
   const navigate = useNavigate();
   const [activities, setActivities] = useState([]);
@@ -19,6 +36,7 @@ export const Dashboard = () => {
   const [machinesList, setMachinesList] = useState([]);
   const [materialsList, setMaterialsList] = useState([]); 
   const [groupsList, setGroupsList] = useState([]);
+  const [systemUsers, setSystemUsers] = useState([]); 
 
   const [displayMode, setDisplayMode] = useState(() => localStorage.getItem('dashboardDisplayMode') || 'group');
   const [viewStyle, setViewStyle] = useState(() => localStorage.getItem('dashboardViewStyle') || 'card');
@@ -31,6 +49,7 @@ export const Dashboard = () => {
   const [currentUser, setCurrentUser] = useState(null);
   const [userRole, setUserRole] = useState('reporter');
   const [userGroupIds, setUserGroupIds] = useState([]);
+  const [canEditOwn, setCanEditOwn] = useState(false);
   const [deletingActivityId, setDeletingActivityId] = useState(null);
 
   useEffect(() => {
@@ -46,6 +65,9 @@ export const Dashboard = () => {
     const unsubscribeGroups = onSnapshot(collection(db, 'groups'), (snapshot) => {
       setGroupsList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
+    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+      setSystemUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
 
     let unsubscribeData = null;
 
@@ -55,9 +77,11 @@ export const Dashboard = () => {
         const userDoc = await getDoc(doc(db, 'users', user.uid));
         const role = userDoc.exists() ? (userDoc.data().role || 'reporter') : 'reporter';
         const groupIds = userDoc.exists() ? (userDoc.data().groupIds || []) : [];
+        const allowedEdit = userDoc.exists() ? (userDoc.data().canEditOwn || false) : false; 
         
         setUserRole(role);
         setUserGroupIds(groupIds);
+        setCanEditOwn(allowedEdit); 
 
         let q;
         if (role === 'admin' || role === 'manager') {
@@ -97,6 +121,7 @@ export const Dashboard = () => {
       unsubMembers();
       unsubMachines();
       unsubMaterials();
+      unsubUsers();
       if (unsubscribeData) unsubscribeData();
     };
   }, []);
@@ -162,8 +187,10 @@ export const Dashboard = () => {
       sheet1.cell('S7').value(activity.activityNumbers?.join(', ')); 
       sheet1.cell('AA7').value(activity.activityType || '');          
       sheet1.cell('A8').value(activity.memo || '');
+      
       const sheet2 = workbook.sheet('日当借上支払明細') || workbook.sheets()[1];
       sheet2.cell('AJ3').value(activity.date); 
+      
       if (activity.participantDetails && activity.participantDetails.length > 0) {
         activity.participantDetails.forEach((detail, index) => {
           const row = 6 + index; 
@@ -172,13 +199,15 @@ export const Dashboard = () => {
           const machine = machinesList.find(m => m.id === detail.machineId);
           
           let memberTotal = 0; let machineTotal = 0;
-          if (wage) {
-            memberTotal = detail.workTime * wage.defaultWage;
-            sheet2.cell(`A${row}`).value(detail.participantName || '名称未設定'); 
-            sheet2.cell(`F${row}`).value(wage.name); 
+          
+          // 🚀 手入力の名前だけでも出力されるように強化
+          if (detail.participantName || wage) {
+            memberTotal = detail.workTime * (wage?.defaultWage || 0);
+            sheet2.cell(`A${row}`).value(detail.participantName || wage?.name || '名称未設定'); 
+            sheet2.cell(`F${row}`).value(wage?.name || '無報酬(ボランティア等)'); 
             sheet2.cell(`G${row}`).value(detail.workTime); 
             sheet2.cell(`J${row}`).value('時間'); 
-            sheet2.cell(`L${row}`).value(wage.defaultWage); 
+            sheet2.cell(`L${row}`).value(wage?.defaultWage || 0); 
             sheet2.cell(`O${row}`).value(memberTotal); 
           }
           if (machine) {
@@ -208,6 +237,7 @@ export const Dashboard = () => {
   };
 
   const roleLabel = userRole === 'admin' ? '管理者' : userRole === 'manager' ? '事務・役員' : '現場リーダー';
+  const showDeleteColumn = userRole === 'admin' || (userRole === 'reporter' && canEditOwn);
 
   const ActivityCard = ({ activity }) => {
     const images = activity.imageUrls || (activity.imageUrl ? [activity.imageUrl] : []);
@@ -216,33 +246,31 @@ export const Dashboard = () => {
     const groupInfo = groupsList.find(g => g.id === activity.groupId);
     
     const statusLabel = activity.status || '実績入力済';
-    const planTypeLabel = activity.planType || '当初計画'; // 🚀 計画区分（既存データは当初計画とする）
+    const planTypeLabel = activity.planType || '当初計画'; 
+    
+    const canDeleteAct = userRole === 'admin' || (userRole === 'reporter' && canEditOwn && activity.createdBy === currentUser?.uid);
 
     return (
       <div onClick={() => navigate('/activity-form', { state: { editData: activity, isViewMode: true } })} className="bg-white rounded-2xl shadow-sm border-l-4 border-green-500 p-4 cursor-pointer hover:shadow-md transition-all flex flex-col h-full relative group">
         <div className="absolute top-3 right-3 flex items-center space-x-2 z-10">
-          
-          {/* 🚀 計画区分バッジ */}
-          <span className={`text-[10px] px-2 py-1 rounded-md font-bold border ${
+          <span className={`text-[10px] px-2 py-1 rounded-md font-bold border whitespace-nowrap ${
             planTypeLabel === '当初計画' ? 'bg-blue-50 text-blue-600 border-blue-100' :
             planTypeLabel === '期中追加' ? 'bg-orange-50 text-orange-600 border-orange-100' :
             'bg-red-50 text-red-600 border-red-100'
           }`}>
             {planTypeLabel}
           </span>
-
-          <span className={`text-[10px] px-2 py-1 rounded-md font-bold border ${statusLabel === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-600 border-green-100'}`}>
+          <span className={`text-[10px] px-2 py-1 rounded-md font-bold border whitespace-nowrap ${statusLabel === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-600 border-green-100'}`}>
             {statusLabel}
           </span>
           
-          {userRole === 'admin' && (
+          {canDeleteAct && (
             <button onClick={(e) => handleDeleteClick(activity.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="この実績を削除">
               <Trash2 size={16} />
             </button>
           )}
         </div>
         
-        {/* 🚀 右上のバッジが被らないように pr-48 に拡幅 */}
         <h3 className="font-bold text-lg text-gray-900 mb-2 pr-48 leading-tight">{activity.activityType || '内容未入力'}</h3>
         
         <div className="space-y-1.5 text-xs text-gray-600 mb-3 flex-grow">
@@ -284,26 +312,31 @@ export const Dashboard = () => {
     return (
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[900px]">
+          <table className="w-full text-left border-collapse min-w-[1300px]">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200 text-sm text-gray-700">
-                <th onClick={toggleDateSort} className="p-3 font-bold w-32 cursor-pointer hover:bg-gray-200 transition-colors select-none group" title="日付で並び替え">
+                <th onClick={toggleDateSort} className="p-3 font-bold w-32 cursor-pointer hover:bg-gray-200 transition-colors select-none group whitespace-nowrap" title="日付で並び替え">
                   <div className="flex items-center text-blue-700">
                     日付
                     {dateSortOrder === 'desc' ? <ChevronDown size={16} className="ml-1 text-blue-600 group-hover:text-blue-800" /> : <ChevronUp size={16} className="ml-1 text-blue-600 group-hover:text-blue-800" />}
                   </div>
                 </th>
-                <th className="p-3 font-bold w-24 text-center">状態</th>
-                {/* 🚀 区分列を追加 */}
-                <th className="p-3 font-bold w-24 text-center">区分</th>
-                <th className="p-3 font-bold w-28">報告書NO</th>
-                <th className="p-3 font-bold w-36">グループ</th>
-                <th className="p-3 font-bold w-48">活動場所</th>
-                <th className="p-3 font-bold w-24">項目番号</th>
-                <th className="p-3 font-bold">活動内容</th>
-                <th className="p-3 font-bold w-16 text-center">写真</th>
-                {(userRole === 'admin' || userRole === 'manager') && <th className="p-3 font-bold w-40 text-center">出力</th>}
-                {userRole === 'admin' && <th className="p-3 font-bold w-16 text-center">削除</th>}
+                <th className="p-3 font-bold w-20 text-center whitespace-nowrap">状態</th>
+                <th className="p-3 font-bold w-20 text-center whitespace-nowrap">区分</th>
+                <th className="p-3 font-bold w-24 whitespace-nowrap">報告書NO</th>
+                <th className="p-3 font-bold w-36 whitespace-nowrap">グループ</th>
+                <th className="p-3 font-bold w-40 whitespace-nowrap">活動場所</th>
+                <th className="p-3 font-bold w-20 whitespace-nowrap">項目番号</th>
+                <th className="p-3 font-bold whitespace-nowrap">活動内容</th>
+                
+                <th className="p-3 font-bold w-24 text-center whitespace-nowrap">登録者</th>
+                <th className="p-3 font-bold w-32 text-center whitespace-nowrap">登録日時</th>
+                <th className="p-3 font-bold w-24 text-center whitespace-nowrap">更新者</th>
+                <th className="p-3 font-bold w-32 text-center whitespace-nowrap">更新日時</th>
+
+                <th className="p-3 font-bold w-12 text-center whitespace-nowrap">写真</th>
+                {(userRole === 'admin' || userRole === 'manager') && <th className="p-3 font-bold w-36 text-center whitespace-nowrap">出力</th>}
+                {showDeleteColumn && <th className="p-3 font-bold w-16 text-center whitespace-nowrap">削除</th>}
               </tr>
             </thead>
             <tbody>
@@ -314,21 +347,25 @@ export const Dashboard = () => {
                 const hasImage = (act.imageUrls && act.imageUrls.length > 0) || act.imageUrl;
                 
                 const statusLabel = act.status || '実績入力済';
-                const planTypeLabel = act.planType || '当初計画'; // 🚀
+                const planTypeLabel = act.planType || '当初計画';
+                
+                const canDeleteAct = userRole === 'admin' || (userRole === 'reporter' && canEditOwn && act.createdBy === currentUser?.uid);
+
+                const creatorName = systemUsers.find(u => u.id === act.createdBy)?.displayName || '-';
+                const updaterName = act.updatedBy ? (systemUsers.find(u => u.id === act.updatedBy)?.displayName || '-') : '-';
 
                 return (
                   <tr key={act.id} onClick={() => navigate('/activity-form', { state: { editData: act, isViewMode: true } })} className="border-b border-gray-100 hover:bg-green-50 cursor-pointer transition-colors group/row">
-                    <td className="p-3 text-sm text-gray-700">{act.date}</td>
+                    <td className="p-3 text-sm text-gray-700 whitespace-nowrap">{act.date}</td>
                     
-                    <td className="p-3 text-center">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${statusLabel === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-600 border-green-100'}`}>
+                    <td className="p-3 text-center whitespace-nowrap">
+                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold border whitespace-nowrap ${statusLabel === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-600 border-green-100'}`}>
                         {statusLabel}
                       </span>
                     </td>
 
-                    {/* 🚀 区分バッジ */}
-                    <td className="p-3 text-center">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
+                    <td className="p-3 text-center whitespace-nowrap">
+                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold border whitespace-nowrap ${
                         planTypeLabel === '当初計画' ? 'bg-blue-50 text-blue-600 border-blue-100' :
                         planTypeLabel === '期中追加' ? 'bg-orange-50 text-orange-600 border-orange-100' :
                         'bg-red-50 text-red-600 border-red-100'
@@ -337,31 +374,39 @@ export const Dashboard = () => {
                       </span>
                     </td>
 
-                    <td className="p-3 text-sm font-bold text-blue-600">{act.reportNo}</td>
-                    <td className="p-3 text-sm">{groupInfo ? groupInfo.name : <span className="text-red-500">未登録</span>}</td>
-                    <td className="p-3 text-sm text-gray-600">{act.location}</td>
-                    <td className="p-3 text-sm font-bold text-green-600">{act.activityNumbers?.join(', ')}</td>
-                    <td className="p-3 text-sm font-bold text-gray-900">{act.activityType}</td>
-                    <td className="p-3 text-center">
-                      {hasImage ? <span className="bg-blue-50 text-blue-600 px-2 py-1 rounded text-[10px] font-bold">あり</span> : <span className="text-gray-300 text-[10px]">なし</span>}
+                    <td className="p-3 text-sm font-bold text-blue-600 whitespace-nowrap">{act.reportNo}</td>
+                    <td className="p-3 text-xs whitespace-nowrap">{groupInfo ? groupInfo.name : <span className="text-red-500">未登録</span>}</td>
+                    <td className="p-3 text-xs text-gray-600 truncate max-w-[10rem]">{act.location}</td>
+                    <td className="p-3 text-xs font-bold text-green-600 whitespace-nowrap">{act.activityNumbers?.join(', ')}</td>
+                    <td className="p-3 text-sm font-bold text-gray-900 truncate max-w-[12rem]">{act.activityType}</td>
+                    
+                    <td className="p-3 text-xs text-center text-gray-600 truncate max-w-[6rem]">{creatorName}</td>
+                    <td className="p-3 text-[10px] text-center text-gray-400 whitespace-nowrap">{formatTimestamp(act.createdAt)}</td>
+                    <td className="p-3 text-xs text-center text-gray-600 truncate max-w-[6rem]">{updaterName}</td>
+                    <td className="p-3 text-[10px] text-center text-gray-400 whitespace-nowrap">{formatTimestamp(act.updatedAt)}</td>
+
+                    <td className="p-3 text-center whitespace-nowrap">
+                      {hasImage ? <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded text-[9px] font-bold">あり</span> : <span className="text-gray-300 text-[10px]">-</span>}
                     </td>
                     {canExport && (
-                      <td className="p-3">
+                      <td className="p-3 whitespace-nowrap">
                         <div className="flex gap-1 justify-center">
-                          <button onClick={(e) => { e.stopPropagation(); handleExportSingleReport(act); }} disabled={isThisExporting} className={`px-3 py-1.5 rounded-lg font-bold text-[10px] flex items-center transition-colors ${isThisExporting ? 'bg-blue-400 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
-                            <FileSpreadsheet size={14} className="mr-1" />Excel
+                          <button onClick={(e) => { e.stopPropagation(); handleExportSingleReport(act); }} disabled={isThisExporting} className={`px-2 py-1.5 rounded-lg font-bold text-[9px] flex items-center transition-colors ${isThisExporting ? 'bg-blue-400 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
+                            <FileSpreadsheet size={12} className="mr-1" />Excel
                           </button>
-                          <button onClick={(e) => { e.stopPropagation(); handleDirectPrint(act); }} className="px-3 py-1.5 bg-white text-gray-700 border border-gray-200 rounded-lg font-bold text-[10px] flex items-center hover:bg-gray-50 transition-colors">
-                            <Printer size={14} className="mr-1" />PDF
+                          <button onClick={(e) => { e.stopPropagation(); handleDirectPrint(act); }} className="px-2 py-1.5 bg-white text-gray-700 border border-gray-200 rounded-lg font-bold text-[9px] flex items-center hover:bg-gray-50 transition-colors">
+                            <Printer size={12} className="mr-1" />PDF
                           </button>
                         </div>
                       </td>
                     )}
-                    {userRole === 'admin' && (
-                      <td className="p-3 text-center">
-                        <button onClick={(e) => handleDeleteClick(act.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors">
-                          <Trash2 size={16} />
-                        </button>
+                    {showDeleteColumn && (
+                      <td className="p-3 text-center whitespace-nowrap">
+                        {canDeleteAct && (
+                          <button onClick={(e) => handleDeleteClick(act.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors">
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                       </td>
                     )}
                   </tr>
