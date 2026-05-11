@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2, Calculator, Package, Plus, CheckCircle } from 'lucide-react';
+// 🚀 MessageSquare と ListChecks を正しくインポートに追加しました！
+import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2, Calculator, Package, Plus, CheckCircle, Copy, ListChecks, MessageSquare } from 'lucide-react';
 import { collection, addDoc, doc, updateDoc, serverTimestamp, deleteDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -70,18 +71,18 @@ export const ActivityForm = () => {
   const [userRole, setUserRole] = useState('reporter');
   const [userGroups, setUserGroups] = useState([]);
   const [canEditOwn, setCanEditOwn] = useState(false);
-  const [canEditGroup, setCanEditGroup] = useState(false); // 🚀 追加：グループ編集権限
+  const [canEditGroup, setCanEditGroup] = useState(false);
 
   const [formData, setFormData] = useState(
     editData ? {
       status: editData.status || '実績入力済',
       planType: editData.planType || '当初計画',
       groupId: editData.groupId || '',
-      date: editData.date,
-      startTime: editData.startTime,
-      endTime: editData.endTime,
-      location: editData.location,
-      activityType: editData.activityType,
+      date: editData.date || new Date().toISOString().split('T')[0],
+      startTime: editData.startTime || '08:00',
+      endTime: editData.endTime || '10:00',
+      location: editData.location || '',
+      activityType: editData.activityType || '',
       activityNumbers: editData.activityNumbers || [], 
       memo: editData.memo || '',
       reportNo: editData.reportNo || ''
@@ -126,7 +127,7 @@ export const ActivityForm = () => {
           setUserRole(data.role || 'reporter');
           setUserGroups(data.groupIds || []);
           setCanEditOwn(data.canEditOwn || false);
-          setCanEditGroup(data.canEditGroup || false); // 🚀 権限を取得
+          setCanEditGroup(data.canEditGroup || false); 
 
           if (!editData && (data.groupIds || []).length > 0) {
             setFormData(prev => ({ ...prev, groupId: data.groupIds[0] }));
@@ -145,6 +146,9 @@ export const ActivityForm = () => {
   const [materialDetails, setMaterialDetails] = useState(editData?.materialDetails || []); 
 
   const [successModal, setSuccessModal] = useState({ show: false, message: '' });
+  
+  const [showRosterModal, setShowRosterModal] = useState(false);
+  const [selectedRosterIds, setSelectedRosterIds] = useState([]);
 
   const calculateBaseHours = () => {
     if (!formData.startTime || !formData.endTime) return 0;
@@ -159,6 +163,11 @@ export const ActivityForm = () => {
     setParticipantDetails([...participantDetails, { participantName: '', isAgri: true, wageId: '', workTime: baseHours, machineId: '', machineTime: 0 }]);
   };
   
+  const duplicateParticipant = (index) => {
+    const target = participantDetails[index];
+    setParticipantDetails([...participantDetails, { ...target }]);
+  };
+
   const updateParticipant = (index, field, value) => {
     const newList = [...participantDetails];
     newList[index][field] = value;
@@ -175,6 +184,28 @@ export const ActivityForm = () => {
     setParticipantDetails(newList);
   };
   const removeParticipant = (index) => setParticipantDetails(participantDetails.filter((_, i) => i !== index));
+
+  const toggleRosterSelection = (id) => {
+    setSelectedRosterIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const applyRosterSelection = () => {
+    const baseHours = calculateBaseHours();
+    const newParticipants = selectedRosterIds.map(id => {
+      const user = systemUsers.find(u => u.id === id); 
+      return {
+        participantName: user ? (user.displayName || '未設定') : '', 
+        wageId: '', 
+        isAgri: true, 
+        workTime: baseHours,
+        machineId: '',
+        machineTime: 0
+      };
+    });
+    setParticipantDetails([...participantDetails, ...newParticipants]);
+    setShowRosterModal(false);
+    setSelectedRosterIds([]);
+  };
 
   const addMaterial = () => setMaterialDetails([...materialDetails, { materialId: '', quantity: 1 }]);
   const updateMaterial = (index, field, value) => {
@@ -262,8 +293,8 @@ export const ActivityForm = () => {
     setFormData({
       status: editData.status || '実績入力済',
       planType: editData.planType || '当初計画',
-      groupId: editData.groupId || '', date: editData.date, startTime: editData.startTime, endTime: editData.endTime,
-      location: editData.location, activityType: editData.activityType, activityNumbers: editData.activityNumbers || [],
+      groupId: editData.groupId || '', date: editData.date || '', startTime: editData.startTime || '', endTime: editData.endTime || '',
+      location: editData.location || '', activityType: editData.activityType || '', activityNumbers: editData.activityNumbers || [],
       memo: editData.memo || '', reportNo: editData.reportNo || ''
     });
     setParticipantDetails(editData.participantDetails || []);
@@ -274,7 +305,7 @@ export const ActivityForm = () => {
 
   const handleDelete = async () => {
     if (window.confirm('本当にこの実績を削除しますか？')) {
-      try { await deleteDoc(doc(db, 'activities', editData.id)); alert('削除しました。'); navigate('/dashboard'); } 
+      try { await deleteDoc(doc(db, 'activities', editData.id)); navigate('/dashboard'); } 
       catch (error) { console.error(error); alert('削除エラー'); }
     }
   };
@@ -339,7 +370,6 @@ export const ActivityForm = () => {
   const filteredItems = ACTIVITY_ITEMS.filter(item => item.name.includes(searchTerm) || item.id.includes(searchTerm));
   const inputClass = "w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-green-500 disabled:bg-gray-100 disabled:text-gray-600 disabled:opacity-100";
   
-  // 🚀 編集・削除権限の判定ロジックを更新
   const isCreator = editData?.createdBy === currentUser?.uid;
   const isInSameGroup = userGroups.includes(editData?.groupId);
   const canEditOrDelete = userRole === 'admin' || userRole === 'manager' || 
@@ -376,6 +406,36 @@ export const ActivityForm = () => {
                 className="w-full py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors"
               >
                 ダッシュボードへ戻る
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showRosterModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[85vh]">
+            <div className="flex justify-between items-center p-4 border-b">
+              <h2 className="text-lg font-bold text-gray-800 flex items-center">
+                <ListChecks className="w-5 h-5 mr-2 text-purple-600" />
+                登録ユーザーから一括追加
+              </h2>
+              <button type="button" onClick={() => setShowRosterModal(false)} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-full transition-colors"><X size={20}/></button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1">
+              <div className="space-y-2">
+                {systemUsers.map(u => (
+                  <label key={u.id} className={`flex items-center p-3 rounded-xl border cursor-pointer transition-all ${selectedRosterIds.includes(u.id) ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                    <input type="checkbox" checked={selectedRosterIds.includes(u.id)} onChange={() => toggleRosterSelection(u.id)} className="w-5 h-5 text-purple-600 rounded border-gray-300 focus:ring-purple-500" />
+                    <span className="ml-3 font-bold text-gray-800">{u.displayName || '未設定'}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="p-4 border-t bg-gray-50 flex justify-between items-center">
+              <span className="text-sm font-bold text-purple-700">{selectedRosterIds.length} 名を選択中</span>
+              <button type="button" onClick={applyRosterSelection} disabled={selectedRosterIds.length === 0} className="px-6 py-2.5 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                追加する
               </button>
             </div>
           </div>
@@ -524,11 +584,19 @@ export const ActivityForm = () => {
 
                     return (
                       <div key={index} className="bg-gray-50 border border-gray-200 rounded-2xl p-4 relative group">
+                        
                         {!isViewMode && (
-                          <button type="button" onClick={() => removeParticipant(index)} className="absolute -top-2 -right-2 bg-white text-red-500 p-1.5 rounded-full border border-red-100 shadow-sm transition-opacity z-10"><Trash2 size={16} /></button>
+                          <div className="absolute -top-3 -right-2 flex space-x-1 z-10">
+                            <button type="button" onClick={() => duplicateParticipant(index)} className="bg-white text-blue-500 p-1.5 rounded-full border border-blue-100 shadow-sm transition-opacity hover:bg-blue-50" title="この行をコピー">
+                              <Copy size={16} />
+                            </button>
+                            <button type="button" onClick={() => removeParticipant(index)} className="bg-white text-red-500 p-1.5 rounded-full border border-red-100 shadow-sm transition-opacity hover:bg-red-50" title="削除">
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
                         )}
                         
-                        <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-2 mb-3">
+                        <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-2 mb-3 mt-1">
                           <div className="flex flex-1 w-full sm:w-auto gap-1.5 sm:gap-2 items-center min-w-0">
                             <select
                               value={isAgri ? 'true' : 'false'}
@@ -596,7 +664,14 @@ export const ActivityForm = () => {
                   })}
                   
                   {!isViewMode && (
-                    <button type="button" onClick={addParticipant} className="w-full py-4 border-2 border-dashed border-green-200 text-green-600 rounded-2xl font-bold flex justify-center items-center hover:bg-green-50 hover:border-green-400 transition-all"><UserPlus size={20} className="mr-2" /> 参加者を追加</button>
+                    <div className="flex flex-col sm:flex-row gap-2 mt-4">
+                      <button type="button" onClick={addParticipant} className="flex-1 py-3 border-2 border-dashed border-green-200 text-green-600 rounded-2xl font-bold flex justify-center items-center hover:bg-green-50 hover:border-green-400 transition-all">
+                        <UserPlus size={18} className="mr-2" /> 1枠追加
+                      </button>
+                      <button type="button" onClick={() => setShowRosterModal(true)} className="flex-1 py-3 border-2 border-dashed border-purple-200 text-purple-600 rounded-2xl font-bold flex justify-center items-center hover:bg-purple-50 hover:border-purple-400 transition-all">
+                        <ListChecks size={18} className="mr-2" /> 登録ユーザーから一括追加
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -619,7 +694,7 @@ export const ActivityForm = () => {
                           <button type="button" onClick={() => removeMaterial(index)} className="absolute -top-2 -right-2 bg-white text-red-500 p-1.5 rounded-full border border-red-100 shadow-sm transition-opacity z-10"><Trash2 size={16} /></button>
                         )}
                         
-                        <div className="flex-1 w-full sm:w-auto min-w-0">
+                        <div className="flex-1 w-full sm:w-auto min-w-0 mt-1">
                           <select value={detail.materialId} onChange={(e) => updateMaterial(index, 'materialId', e.target.value)} disabled={isViewMode} className={`w-full min-w-0 border border-gray-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100`}>
                             <option value="">📦 資材を選択</option>
                             {materialsList.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
@@ -737,7 +812,7 @@ export const ActivityForm = () => {
 
         <datalist id="system-users-list">
           {systemUsers.map(u => (
-            <option key={u.id} value={u.name || '名前未設定'} />
+            <option key={u.id} value={u.displayName || '名前未設定'} />
           ))}
         </datalist>
 
@@ -746,6 +821,4 @@ export const ActivityForm = () => {
   );
 };
 
-const MessageSquare = ({ size, className }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-);
+export default ActivityForm;
