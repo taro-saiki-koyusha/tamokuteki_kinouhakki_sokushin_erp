@@ -23,12 +23,12 @@ export const UserManagement = () => {
   const handleUpdate = async (e) => {
     e.preventDefault();
     try {
-      // 🚀 メールアドレス(email)は更新対象から除外し、誤上書きを防止
       await updateDoc(doc(db, 'users', editingUser.id), {
         displayName: editingUser.displayName,
         role: editingUser.role,
         groupIds: editingUser.groupIds,
-        canEditOwn: editingUser.canEditOwn || false 
+        canEditOwn: editingUser.canEditOwn || false,
+        canEditGroup: editingUser.canEditGroup || false
       });
       setEditingUser(null);
     } catch (err) {
@@ -109,6 +109,11 @@ export const UserManagement = () => {
                           自活 編集可
                         </span>
                       )}
+                      {user.role === 'reporter' && user.canEditGroup && (
+                        <span className="ml-2 px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded text-[9px] font-bold">
+                          同一グループ 編集可
+                        </span>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-xs text-gray-600">
                       {(user.groupIds || []).map(gid => {
@@ -149,7 +154,6 @@ export const UserManagement = () => {
                 />
               </div>
 
-              {/* 🚀 修正：メールアドレスを読み取り専用（グレーアウト）に変更 */}
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-1">メールアドレス</label>
                 <div className="relative">
@@ -169,31 +173,49 @@ export const UserManagement = () => {
 
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-1">システム権限</label>
+                {/* 🚀 プルダウンの説明文を実態に合わせてアップデート */}
                 <select 
                   value={editingUser.role || 'reporter'} 
                   onChange={e => setEditingUser({...editingUser, role: e.target.value})}
                   className="w-full border-2 border-purple-400 rounded-xl p-3 font-bold text-gray-800 focus:ring-2 focus:ring-purple-500 bg-white"
                 >
-                  <option value="admin">👑 システム管理者 (全権限)</option>
-                  <option value="manager">📝 事務・役員 (全グループ閲覧・出力可能)</option>
-                  <option value="reporter">🚜 現場リーダー (担当グループの入力のみ)</option>
+                  <option value="admin">👑 システム管理者 (マスタ管理を含む全機能へのアクセス)</option>
+                  <option value="manager">📝 事務・役員 (全グループの実績閲覧・編集・Excel出力)</option>
+                  <option value="reporter">🚜 現場リーダー (担当グループの実績登録 ※編集/削除は個別設定)</option>
                 </select>
 
                 {editingUser.role === 'reporter' && (
-                  <label className="flex items-center space-x-3 bg-yellow-50 p-3 rounded-xl border border-yellow-200 mt-3 cursor-pointer hover:bg-yellow-100 transition-colors">
-                    <input 
-                      type="checkbox" 
-                      checked={editingUser.canEditOwn || false} 
-                      onChange={e => setEditingUser({...editingUser, canEditOwn: e.target.checked})}
-                      className="w-5 h-5 text-yellow-600 border-gray-300 rounded focus:ring-yellow-500"
-                    />
-                    <div className="flex flex-col">
-                      <span className="text-sm font-bold text-yellow-900 flex items-center">
-                        <ShieldCheck size={16} className="mr-1" /> 自活の「編集・削除」を許可する
-                      </span>
-                      <span className="text-[10px] text-yellow-700 mt-0.5">自身が登録した実績のみ編集できるようになります。</span>
-                    </div>
-                  </label>
+                  <div className="mt-3 space-y-2">
+                    <label className="flex items-center space-x-3 bg-yellow-50 p-3 rounded-xl border border-yellow-200 cursor-pointer hover:bg-yellow-100 transition-colors">
+                      <input 
+                        type="checkbox" 
+                        checked={editingUser.canEditOwn || false} 
+                        onChange={e => setEditingUser({...editingUser, canEditOwn: e.target.checked})}
+                        className="w-5 h-5 text-yellow-600 border-gray-300 rounded focus:ring-yellow-500"
+                      />
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-yellow-900 flex items-center">
+                          <ShieldCheck size={16} className="mr-1" /> 自身が登録した活動の「編集・削除」を許可
+                        </span>
+                        <span className="text-[10px] text-yellow-700 mt-0.5">自分が登録した実績のみ編集できるようになります。</span>
+                      </div>
+                    </label>
+
+                    <label className="flex items-center space-x-3 bg-blue-50 p-3 rounded-xl border border-blue-200 cursor-pointer hover:bg-blue-100 transition-colors">
+                      <input 
+                        type="checkbox" 
+                        checked={editingUser.canEditGroup || false} 
+                        onChange={e => setEditingUser({...editingUser, canEditGroup: e.target.checked})}
+                        className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-blue-900 flex items-center">
+                          <ShieldCheck size={16} className="mr-1" /> 同一グループの活動の「編集・削除」を許可
+                        </span>
+                        <span className="text-[10px] text-blue-700 mt-0.5">所属しているグループ内であれば他人の実績も編集できるようになります。</span>
+                      </div>
+                    </label>
+                  </div>
                 )}
               </div>
 

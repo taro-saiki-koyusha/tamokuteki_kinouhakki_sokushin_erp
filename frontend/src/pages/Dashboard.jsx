@@ -50,6 +50,7 @@ export const Dashboard = () => {
   const [userRole, setUserRole] = useState('reporter');
   const [userGroupIds, setUserGroupIds] = useState([]);
   const [canEditOwn, setCanEditOwn] = useState(false);
+  const [canEditGroup, setCanEditGroup] = useState(false); // 🚀 同一グループ編集許可フラグ
   const [deletingActivityId, setDeletingActivityId] = useState(null);
 
   useEffect(() => {
@@ -77,11 +78,13 @@ export const Dashboard = () => {
         const userDoc = await getDoc(doc(db, 'users', user.uid));
         const role = userDoc.exists() ? (userDoc.data().role || 'reporter') : 'reporter';
         const groupIds = userDoc.exists() ? (userDoc.data().groupIds || []) : [];
-        const allowedEdit = userDoc.exists() ? (userDoc.data().canEditOwn || false) : false; 
+        const allowedEditOwn = userDoc.exists() ? (userDoc.data().canEditOwn || false) : false; 
+        const allowedEditGroup = userDoc.exists() ? (userDoc.data().canEditGroup || false) : false; // 🚀 権限の読み込み
         
         setUserRole(role);
         setUserGroupIds(groupIds);
-        setCanEditOwn(allowedEdit); 
+        setCanEditOwn(allowedEditOwn); 
+        setCanEditGroup(allowedEditGroup); 
 
         let q;
         if (role === 'admin' || role === 'manager') {
@@ -200,7 +203,6 @@ export const Dashboard = () => {
           
           let memberTotal = 0; let machineTotal = 0;
           
-          // 🚀 手入力の名前だけでも出力されるように強化
           if (detail.participantName || wage) {
             memberTotal = detail.workTime * (wage?.defaultWage || 0);
             sheet2.cell(`A${row}`).value(detail.participantName || wage?.name || '名称未設定'); 
@@ -237,7 +239,9 @@ export const Dashboard = () => {
   };
 
   const roleLabel = userRole === 'admin' ? '管理者' : userRole === 'manager' ? '事務・役員' : '現場リーダー';
-  const showDeleteColumn = userRole === 'admin' || (userRole === 'reporter' && canEditOwn);
+  
+  // 🚀 削除ボタン列（表全体）の表示制御
+  const showDeleteColumn = userRole === 'admin' || (userRole === 'reporter' && (canEditOwn || canEditGroup));
 
   const ActivityCard = ({ activity }) => {
     const images = activity.imageUrls || (activity.imageUrl ? [activity.imageUrl] : []);
@@ -248,7 +252,12 @@ export const Dashboard = () => {
     const statusLabel = activity.status || '実績入力済';
     const planTypeLabel = activity.planType || '当初計画'; 
     
-    const canDeleteAct = userRole === 'admin' || (userRole === 'reporter' && canEditOwn && activity.createdBy === currentUser?.uid);
+    // 🚀 各カードの削除ボタン表示制御
+    const isCreator = activity.createdBy === currentUser?.uid;
+    const isInSameGroup = userGroupIds.includes(activity.groupId);
+    const canDeleteAct = userRole === 'admin' || 
+                         (userRole === 'reporter' && canEditOwn && isCreator) ||
+                         (userRole === 'reporter' && canEditGroup && isInSameGroup);
 
     return (
       <div onClick={() => navigate('/activity-form', { state: { editData: activity, isViewMode: true } })} className="bg-white rounded-2xl shadow-sm border-l-4 border-green-500 p-4 cursor-pointer hover:shadow-md transition-all flex flex-col h-full relative group">
@@ -349,7 +358,12 @@ export const Dashboard = () => {
                 const statusLabel = act.status || '実績入力済';
                 const planTypeLabel = act.planType || '当初計画';
                 
-                const canDeleteAct = userRole === 'admin' || (userRole === 'reporter' && canEditOwn && act.createdBy === currentUser?.uid);
+                // 🚀 各行の削除権限判定
+                const isCreator = act.createdBy === currentUser?.uid;
+                const isInSameGroup = userGroupIds.includes(act.groupId);
+                const canDeleteAct = userRole === 'admin' || 
+                                     (userRole === 'reporter' && canEditOwn && isCreator) ||
+                                     (userRole === 'reporter' && canEditGroup && isInSameGroup);
 
                 const creatorName = systemUsers.find(u => u.id === act.createdBy)?.displayName || '-';
                 const updaterName = act.updatedBy ? (systemUsers.find(u => u.id === act.updatedBy)?.displayName || '-') : '-';
@@ -359,13 +373,13 @@ export const Dashboard = () => {
                     <td className="p-3 text-sm text-gray-700 whitespace-nowrap">{act.date}</td>
                     
                     <td className="p-3 text-center whitespace-nowrap">
-                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold border whitespace-nowrap ${statusLabel === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-600 border-green-100'}`}>
+                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold border ${statusLabel === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-600 border-green-100'}`}>
                         {statusLabel}
                       </span>
                     </td>
 
                     <td className="p-3 text-center whitespace-nowrap">
-                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold border whitespace-nowrap ${
+                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold border ${
                         planTypeLabel === '当初計画' ? 'bg-blue-50 text-blue-600 border-blue-100' :
                         planTypeLabel === '期中追加' ? 'bg-orange-50 text-orange-600 border-orange-100' :
                         'bg-red-50 text-red-600 border-red-100'

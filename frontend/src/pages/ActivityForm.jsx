@@ -70,6 +70,7 @@ export const ActivityForm = () => {
   const [userRole, setUserRole] = useState('reporter');
   const [userGroups, setUserGroups] = useState([]);
   const [canEditOwn, setCanEditOwn] = useState(false);
+  const [canEditGroup, setCanEditGroup] = useState(false); // 🚀 追加：グループ編集権限
 
   const [formData, setFormData] = useState(
     editData ? {
@@ -125,6 +126,7 @@ export const ActivityForm = () => {
           setUserRole(data.role || 'reporter');
           setUserGroups(data.groupIds || []);
           setCanEditOwn(data.canEditOwn || false);
+          setCanEditGroup(data.canEditGroup || false); // 🚀 権限を取得
 
           if (!editData && (data.groupIds || []).length > 0) {
             setFormData(prev => ({ ...prev, groupId: data.groupIds[0] }));
@@ -337,8 +339,13 @@ export const ActivityForm = () => {
   const filteredItems = ACTIVITY_ITEMS.filter(item => item.name.includes(searchTerm) || item.id.includes(searchTerm));
   const inputClass = "w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-green-500 disabled:bg-gray-100 disabled:text-gray-600 disabled:opacity-100";
   
+  // 🚀 編集・削除権限の判定ロジックを更新
   const isCreator = editData?.createdBy === currentUser?.uid;
-  const canEditOrDelete = userRole === 'admin' || userRole === 'manager' || (userRole === 'reporter' && canEditOwn && isCreator);
+  const isInSameGroup = userGroups.includes(editData?.groupId);
+  const canEditOrDelete = userRole === 'admin' || userRole === 'manager' || 
+    (userRole === 'reporter' && canEditOwn && isCreator) || 
+    (userRole === 'reporter' && canEditGroup && isInSameGroup);
+    
   const selectableGroups = (userRole === 'admin' || userRole === 'manager') ? groupsList : groupsList.filter(g => userGroups.includes(g.id));
 
   return (
@@ -490,7 +497,6 @@ export const ActivityForm = () => {
 
             <div className="space-y-6">
               
-              {/* 🚀 グレー枠のレイアウトを大幅に改善（折り返しを制御してはみ出しを防止） */}
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                 <div className="flex justify-between items-center mb-4 border-b pb-3">
                   <h2 className="font-bold text-gray-800 flex items-center"><Users className="w-5 h-5 mr-2 text-green-600" /> 参加者と使用機械</h2>
@@ -522,7 +528,6 @@ export const ActivityForm = () => {
                           <button type="button" onClick={() => removeParticipant(index)} className="absolute -top-2 -right-2 bg-white text-red-500 p-1.5 rounded-full border border-red-100 shadow-sm transition-opacity z-10"><Trash2 size={16} /></button>
                         )}
                         
-                        {/* 👤 参加者行：画面幅に合わせて自然に折り返す */}
                         <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-2 mb-3">
                           <div className="flex flex-1 w-full sm:w-auto gap-1.5 sm:gap-2 items-center min-w-0">
                             <select
@@ -566,7 +571,6 @@ export const ActivityForm = () => {
                           </div>
                         </div>
 
-                        {/* 🚜 機械行：画面幅に合わせて自然に折り返す */}
                         <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-2 pl-3 border-l-2 border-green-200">
                           <div className="flex flex-1 w-full sm:w-auto min-w-0">
                             <select value={detail.machineId} onChange={(e) => updateParticipant(index, 'machineId', e.target.value)} disabled={isViewMode} className="w-full min-w-0 border border-gray-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100">
