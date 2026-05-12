@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-// 🚀 MessageSquare と ListChecks を正しくインポートに追加しました！
 import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2, Calculator, Package, Plus, CheckCircle, Copy, ListChecks, MessageSquare } from 'lucide-react';
 import { collection, addDoc, doc, updateDoc, serverTimestamp, deleteDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -368,7 +367,9 @@ export const ActivityForm = () => {
   };
 
   const filteredItems = ACTIVITY_ITEMS.filter(item => item.name.includes(searchTerm) || item.id.includes(searchTerm));
-  const inputClass = "w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-green-500 disabled:bg-gray-100 disabled:text-gray-600 disabled:opacity-100";
+  
+  // 🚀 はみ出し防止のため min-w-0 と box-border を追加
+  const inputClass = "w-full min-w-0 box-border border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-green-500 disabled:bg-gray-100 disabled:text-gray-600 disabled:opacity-100";
   
   const isCreator = editData?.createdBy === currentUser?.uid;
   const isInSameGroup = userGroups.includes(editData?.groupId);
@@ -379,7 +380,8 @@ export const ActivityForm = () => {
   const selectableGroups = (userRole === 'admin' || userRole === 'manager') ? groupsList : groupsList.filter(g => userGroups.includes(g.id));
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20 md:pb-12">
+    // 🚀 overflow-x-hidden で画面全体の横はみ出しを防止
+    <div className="min-h-screen bg-gray-50 pb-20 md:pb-12 overflow-x-hidden w-full">
       {isSubmitting && (
         <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/70 backdrop-blur-sm">
           <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
@@ -417,7 +419,7 @@ export const ActivityForm = () => {
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[85vh]">
             <div className="flex justify-between items-center p-4 border-b">
               <h2 className="text-lg font-bold text-gray-800 flex items-center">
-                <ListChecks className="w-5 h-5 mr-2 text-purple-600" />
+                <Users className="w-5 h-5 mr-2 text-purple-600" />
                 登録ユーザーから一括追加
               </h2>
               <button type="button" onClick={() => setShowRosterModal(false)} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-full transition-colors"><X size={20}/></button>
@@ -466,7 +468,8 @@ export const ActivityForm = () => {
         </div>
       </header>
 
-      <main className="p-4 md:p-8 max-w-md md:max-w-6xl mx-auto">
+      {/* 🚀 w-full box-border で横幅を制御 */}
+      <main className="p-4 md:p-8 w-full max-w-md md:max-w-6xl mx-auto box-border">
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
             
@@ -475,16 +478,16 @@ export const ActivityForm = () => {
                 <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Calendar className="w-5 h-5 mr-2 text-green-600" /> 実施日時・場所</h2>
                 
                 <div className="flex flex-col sm:flex-row gap-4 mb-2">
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <label className="block text-sm font-bold text-gray-700 mb-1">ステータス</label>
-                    <select name="status" value={formData.status} onChange={handleChange} disabled={isViewMode} className={`w-full border rounded-xl p-3 font-bold focus:ring-2 focus:ring-green-500 disabled:opacity-100 ${formData.status === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-300' : 'bg-green-50 text-green-700 border-green-300'}`}>
+                    <select name="status" value={formData.status} onChange={handleChange} disabled={isViewMode} className={`w-full min-w-0 box-border border rounded-xl p-3 font-bold focus:ring-2 focus:ring-green-500 disabled:opacity-100 ${formData.status === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-300' : 'bg-green-50 text-green-700 border-green-300'}`}>
                       <option value="未実施">未実施（計画用）</option>
                       <option value="実績入力済">実績入力済（完了）</option>
                     </select>
                   </div>
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <label className="block text-sm font-bold text-gray-700 mb-1">計画区分</label>
-                    <select name="planType" value={formData.planType} onChange={handleChange} disabled={isViewMode} className="w-full border border-gray-300 rounded-xl p-3 font-bold focus:ring-2 focus:ring-green-500 disabled:bg-gray-100 disabled:opacity-100 bg-white text-gray-800">
+                    <select name="planType" value={formData.planType} onChange={handleChange} disabled={isViewMode} className="w-full min-w-0 box-border border border-gray-300 rounded-xl p-3 font-bold focus:ring-2 focus:ring-green-500 disabled:bg-gray-100 disabled:opacity-100 bg-white text-gray-800">
                       <option value="当初計画">当初計画</option>
                       <option value="期中追加">期中追加</option>
                       <option value="突発・緊急">突発・緊急</option>
@@ -501,9 +504,11 @@ export const ActivityForm = () => {
                 </div>
                 <div><label className="block text-sm font-bold text-gray-700 mb-1">報告書NO (文字列入力可)</label><input type="text" name="reportNo" value={formData.reportNo} onChange={handleChange} disabled={isViewMode} className={inputClass} placeholder="例：2026-001、第1号など" /></div>
                 <div><label className="block text-sm font-bold text-gray-700 mb-1">日付</label><input type="date" name="date" value={formData.date} onChange={handleChange} disabled={isViewMode} className={inputClass} required /></div>
-                <div className="flex space-x-4">
-                  <div className="flex-1"><label className="block text-sm font-bold text-gray-700 mb-1">開始</label><input type="time" name="startTime" value={formData.startTime} onChange={handleChange} disabled={isViewMode} className={inputClass} required /></div>
-                  <div className="flex-1"><label className="block text-sm font-bold text-gray-700 mb-1">終了</label><input type="time" name="endTime" value={formData.endTime} onChange={handleChange} disabled={isViewMode} className={inputClass} required /></div>
+                
+                {/* 🚀 スマホで横並びにするとキツいのでギャップを調整し min-w-0 を付与 */}
+                <div className="flex space-x-3 sm:space-x-4">
+                  <div className="flex-1 min-w-0"><label className="block text-sm font-bold text-gray-700 mb-1">開始</label><input type="time" name="startTime" value={formData.startTime} onChange={handleChange} disabled={isViewMode} className={inputClass} required /></div>
+                  <div className="flex-1 min-w-0"><label className="block text-sm font-bold text-gray-700 mb-1">終了</label><input type="time" name="endTime" value={formData.endTime} onChange={handleChange} disabled={isViewMode} className={inputClass} required /></div>
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">活動場所</label>
@@ -520,7 +525,7 @@ export const ActivityForm = () => {
                 <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Sprout className="w-5 h-5 mr-2 text-green-600" /> 活動内容</h2>
                 <div className="relative">
                   <label className="block text-sm font-bold text-gray-700 mb-1">Excel活動項目番号 (最大6つ)</label>
-                  <button type="button" onClick={() => !isViewMode && setIsDropdownOpen(!isDropdownOpen)} className={`w-full text-left bg-white border border-gray-300 rounded-xl p-3 flex justify-between items-center ${isViewMode ? 'bg-gray-100 cursor-not-allowed opacity-100' : 'focus:ring-2 focus:ring-green-500'}`}>
+                  <button type="button" onClick={() => !isViewMode && setIsDropdownOpen(!isDropdownOpen)} className={`w-full min-w-0 box-border text-left bg-white border border-gray-300 rounded-xl p-3 flex justify-between items-center ${isViewMode ? 'bg-gray-100 cursor-not-allowed opacity-100' : 'focus:ring-2 focus:ring-green-500'}`}>
                     <span className={`block truncate pr-2 ${formData.activityNumbers.length === 0 ? 'text-gray-500' : (isViewMode ? 'text-gray-600 font-bold' : 'text-gray-900 font-bold')}`}>
                       {formData.activityNumbers.length > 0 ? formData.activityNumbers.join(', ') + ' 番を選択中' : '検索・選択（任意）'}
                     </span>
@@ -530,7 +535,7 @@ export const ActivityForm = () => {
                     <>
                       <div className="fixed inset-0 z-10" onClick={() => setIsDropdownOpen(false)}></div>
                       <div className="absolute z-40 mt-1 w-full bg-white border border-gray-200 shadow-2xl rounded-xl overflow-hidden">
-                        <div className="p-2 border-b bg-gray-50 flex items-center"><Search size={16} className="text-gray-400 mr-2 ml-1" /><input type="text" placeholder="キーワード検索..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full py-1.5 bg-transparent border-none focus:ring-0 text-sm" /></div>
+                        <div className="p-2 border-b bg-gray-50 flex items-center"><Search size={16} className="text-gray-400 mr-2 ml-1" /><input type="text" placeholder="キーワード検索..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full min-w-0 box-border py-1.5 bg-transparent border-none focus:ring-0 text-sm" /></div>
                         <div className="max-h-60 overflow-y-auto p-2 space-y-1">
                           {filteredItems.map(item => {
                             const isSelected = formData.activityNumbers.includes(item.id);
@@ -585,8 +590,9 @@ export const ActivityForm = () => {
                     return (
                       <div key={index} className="bg-gray-50 border border-gray-200 rounded-2xl p-4 relative group">
                         
+                        {/* 🚀 スマホでボタンがはみ出さないように配置を調整 */}
                         {!isViewMode && (
-                          <div className="absolute -top-3 -right-2 flex space-x-1 z-10">
+                          <div className="absolute -top-3 right-0 sm:-right-2 flex space-x-1 z-10">
                             <button type="button" onClick={() => duplicateParticipant(index)} className="bg-white text-blue-500 p-1.5 rounded-full border border-blue-100 shadow-sm transition-opacity hover:bg-blue-50" title="この行をコピー">
                               <Copy size={16} />
                             </button>
@@ -602,7 +608,7 @@ export const ActivityForm = () => {
                               value={isAgri ? 'true' : 'false'}
                               onChange={(e) => updateParticipant(index, 'isAgri', e.target.value === 'true')}
                               disabled={isViewMode}
-                              className={`w-[4.5rem] sm:w-[5.5rem] shrink-0 border border-gray-300 rounded-xl p-1.5 sm:p-2.5 text-[10px] sm:text-xs font-bold focus:ring-2 focus:ring-green-500 disabled:opacity-100 cursor-pointer ${isAgri ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-700'}`}
+                              className={`w-[4.5rem] sm:w-[5.5rem] shrink-0 box-border border border-gray-300 rounded-xl p-1.5 sm:p-2.5 text-[10px] sm:text-xs font-bold focus:ring-2 focus:ring-green-500 disabled:opacity-100 cursor-pointer ${isAgri ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-700'}`}
                             >
                               <option value="true">農業者</option>
                               <option value="false">以外</option>
@@ -615,21 +621,21 @@ export const ActivityForm = () => {
                               value={detail.participantName || ''} 
                               onChange={(e) => updateParticipant(index, 'participantName', e.target.value)} 
                               disabled={isViewMode} 
-                              className={`flex-1 w-full min-w-0 border border-gray-300 rounded-xl p-2 sm:p-2.5 text-xs sm:text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100`} 
+                              className={`flex-1 w-full min-w-0 box-border border border-gray-300 rounded-xl p-2 sm:p-2.5 text-xs sm:text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100`} 
                             />
                             <select 
                               value={wId || ''} 
                               onChange={(e) => updateParticipant(index, 'wageId', e.target.value)} 
                               disabled={isViewMode} 
-                              className={`flex-1 w-full min-w-0 border border-gray-300 rounded-xl p-2 sm:p-2.5 text-xs sm:text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100`}
+                              className={`flex-1 w-full min-w-0 box-border border border-gray-300 rounded-xl p-2 sm:p-2.5 text-xs sm:text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100`}
                             >
                               <option value="">💰 単価を選択</option>
                               {membersList.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                             </select>
                           </div>
                           <div className="flex gap-2 items-center justify-end shrink-0 w-full sm:w-auto ml-auto">
-                            <div className={`w-20 md:w-24 flex items-center border border-gray-300 rounded-xl px-2 ${isViewMode ? 'bg-white' : 'bg-white'}`}>
-                              <input type="number" step="0.5" min="0" value={detail.workTime} onChange={(e) => updateParticipant(index, 'workTime', parseFloat(e.target.value))} disabled={isViewMode} className="w-full min-w-0 py-2.5 text-sm text-center border-none focus:ring-0 disabled:bg-transparent disabled:text-gray-600 disabled:opacity-100" />
+                            <div className={`w-20 md:w-24 flex items-center border border-gray-300 rounded-xl px-2 box-border ${isViewMode ? 'bg-white' : 'bg-white'}`}>
+                              <input type="number" step="0.5" min="0" value={detail.workTime} onChange={(e) => updateParticipant(index, 'workTime', parseFloat(e.target.value))} disabled={isViewMode} className="w-full min-w-0 box-border py-2.5 text-sm text-center border-none focus:ring-0 disabled:bg-transparent disabled:text-gray-600 disabled:opacity-100" />
                               <span className="text-xs text-gray-400">h</span>
                             </div>
                             <div className="w-16 md:w-20 flex flex-col items-end justify-center leading-tight">
@@ -641,15 +647,15 @@ export const ActivityForm = () => {
 
                         <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-2 pl-3 border-l-2 border-green-200">
                           <div className="flex flex-1 w-full sm:w-auto min-w-0">
-                            <select value={detail.machineId} onChange={(e) => updateParticipant(index, 'machineId', e.target.value)} disabled={isViewMode} className="w-full min-w-0 border border-gray-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100">
+                            <select value={detail.machineId} onChange={(e) => updateParticipant(index, 'machineId', e.target.value)} disabled={isViewMode} className="w-full min-w-0 box-border border border-gray-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100">
                               <option value="">🚜 使用機械なし</option>
                               {machinesList.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                             </select>
                           </div>
                           {detail.machineId && (
                             <div className="flex gap-2 items-center justify-end shrink-0 w-full sm:w-auto ml-auto">
-                              <div className={`w-20 md:w-24 flex items-center border border-green-200 rounded-xl px-2 shrink-0 ${isViewMode ? 'bg-green-50' : 'bg-green-50'}`}>
-                                <input type="number" step="0.5" min="0" value={detail.machineTime} onChange={(e) => updateParticipant(index, 'machineTime', parseFloat(e.target.value))} disabled={isViewMode} className="w-full min-w-0 py-2.5 text-sm text-center bg-transparent border-none focus:ring-0 font-bold text-green-700 disabled:opacity-100" />
+                              <div className={`w-20 md:w-24 flex items-center border border-green-200 rounded-xl px-2 shrink-0 box-border ${isViewMode ? 'bg-green-50' : 'bg-green-50'}`}>
+                                <input type="number" step="0.5" min="0" value={detail.machineTime} onChange={(e) => updateParticipant(index, 'machineTime', parseFloat(e.target.value))} disabled={isViewMode} className="w-full min-w-0 box-border py-2.5 text-sm text-center bg-transparent border-none focus:ring-0 font-bold text-green-700 disabled:opacity-100" />
                                 <span className="text-xs text-green-600">h</span>
                               </div>
                               <div className="w-16 md:w-20 flex flex-col items-end justify-center leading-tight">
@@ -665,10 +671,10 @@ export const ActivityForm = () => {
                   
                   {!isViewMode && (
                     <div className="flex flex-col sm:flex-row gap-2 mt-4">
-                      <button type="button" onClick={addParticipant} className="flex-1 py-3 border-2 border-dashed border-green-200 text-green-600 rounded-2xl font-bold flex justify-center items-center hover:bg-green-50 hover:border-green-400 transition-all">
+                      <button type="button" onClick={addParticipant} className="flex-1 py-3 box-border border-2 border-dashed border-green-200 text-green-600 rounded-2xl font-bold flex justify-center items-center hover:bg-green-50 hover:border-green-400 transition-all">
                         <UserPlus size={18} className="mr-2" /> 1枠追加
                       </button>
-                      <button type="button" onClick={() => setShowRosterModal(true)} className="flex-1 py-3 border-2 border-dashed border-purple-200 text-purple-600 rounded-2xl font-bold flex justify-center items-center hover:bg-purple-50 hover:border-purple-400 transition-all">
+                      <button type="button" onClick={() => setShowRosterModal(true)} className="flex-1 py-3 box-border border-2 border-dashed border-purple-200 text-purple-600 rounded-2xl font-bold flex justify-center items-center hover:bg-purple-50 hover:border-purple-400 transition-all">
                         <ListChecks size={18} className="mr-2" /> 登録ユーザーから一括追加
                       </button>
                     </div>
@@ -691,19 +697,19 @@ export const ActivityForm = () => {
                     return (
                       <div key={index} className="bg-gray-50 border border-gray-200 rounded-2xl p-4 relative group flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-2">
                         {!isViewMode && (
-                          <button type="button" onClick={() => removeMaterial(index)} className="absolute -top-2 -right-2 bg-white text-red-500 p-1.5 rounded-full border border-red-100 shadow-sm transition-opacity z-10"><Trash2 size={16} /></button>
+                          <button type="button" onClick={() => removeMaterial(index)} className="absolute -top-2 right-0 sm:-right-2 bg-white text-red-500 p-1.5 rounded-full border border-red-100 shadow-sm transition-opacity z-10"><Trash2 size={16} /></button>
                         )}
                         
                         <div className="flex-1 w-full sm:w-auto min-w-0 mt-1">
-                          <select value={detail.materialId} onChange={(e) => updateMaterial(index, 'materialId', e.target.value)} disabled={isViewMode} className={`w-full min-w-0 border border-gray-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100`}>
+                          <select value={detail.materialId} onChange={(e) => updateMaterial(index, 'materialId', e.target.value)} disabled={isViewMode} className={`w-full min-w-0 box-border border border-gray-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100`}>
                             <option value="">📦 資材を選択</option>
                             {materialsList.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                           </select>
                         </div>
                         
                         <div className="flex gap-2 items-center justify-end shrink-0 w-full sm:w-auto ml-auto">
-                          <div className={`w-24 md:w-28 flex items-center border border-gray-300 rounded-xl px-2 ${isViewMode ? 'bg-white' : 'bg-white'}`}>
-                            <input type="number" step="1" min="0" value={detail.quantity} onChange={(e) => updateMaterial(index, 'quantity', parseFloat(e.target.value))} disabled={isViewMode} className="w-full min-w-0 py-2.5 text-sm text-center border-none focus:ring-0 disabled:bg-transparent disabled:text-gray-600 disabled:opacity-100" />
+                          <div className={`w-24 md:w-28 flex items-center border border-gray-300 rounded-xl px-2 box-border ${isViewMode ? 'bg-white' : 'bg-white'}`}>
+                            <input type="number" step="1" min="0" value={detail.quantity} onChange={(e) => updateMaterial(index, 'quantity', parseFloat(e.target.value))} disabled={isViewMode} className="w-full min-w-0 box-border py-2.5 text-sm text-center border-none focus:ring-0 disabled:bg-transparent disabled:text-gray-600 disabled:opacity-100" />
                             <span className="text-xs text-gray-400 whitespace-nowrap">{matUnit}</span>
                           </div>
                           <div className="w-16 md:w-20 flex flex-col items-end justify-center leading-tight">
@@ -716,7 +722,7 @@ export const ActivityForm = () => {
                   })}
                   
                   {!isViewMode && (
-                    <button type="button" onClick={addMaterial} className="w-full py-3 border-2 border-dashed border-gray-300 text-gray-600 rounded-xl font-bold flex justify-center items-center hover:bg-gray-100 transition-all"><Plus size={18} className="mr-2" /> 資材を追加</button>
+                    <button type="button" onClick={addMaterial} className="w-full py-3 box-border border-2 border-dashed border-gray-300 text-gray-600 rounded-xl font-bold flex justify-center items-center hover:bg-gray-100 transition-all"><Plus size={18} className="mr-2" /> 資材を追加</button>
                   )}
                 </div>
               </div>
@@ -748,7 +754,8 @@ export const ActivityForm = () => {
             <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                 <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Camera className="w-5 h-5 mr-2 text-green-600" /> 現場写真</h2>
-                <div className="grid grid-cols-4 md:grid-cols-6 gap-3">
+                {/* 🚀 スマホで4列だと窮屈なので 3列に変更 */}
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
                   {existingUrls.map((url, i) => (
                     <div key={`ex-${i}`} className="relative aspect-square rounded-xl overflow-hidden border border-gray-200">
                       <img src={url} alt="" className="w-full h-full object-cover" />
