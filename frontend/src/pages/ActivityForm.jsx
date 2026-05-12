@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2, Calculator, Package, Plus, CheckCircle, Copy, ListChecks, MessageSquare } from 'lucide-react';
+// 🚀 Downloadアイコンを追加しました
+import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2, Calculator, Package, Plus, CheckCircle, Copy, ListChecks, MessageSquare, Download } from 'lucide-react';
 import { collection, addDoc, doc, updateDoc, serverTimestamp, deleteDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -71,6 +72,9 @@ export const ActivityForm = () => {
   const [userGroups, setUserGroups] = useState([]);
   const [canEditOwn, setCanEditOwn] = useState(false);
   const [canEditGroup, setCanEditGroup] = useState(false);
+
+  // 🚀 拡大画像表示用のState
+  const [enlargedImage, setEnlargedImage] = useState(null);
 
   const [formData, setFormData] = useState(
     editData ? {
@@ -287,6 +291,28 @@ export const ActivityForm = () => {
     setNewPreviewUrls(prev => prev.filter((_, i) => i !== index));
   };
 
+  // 🚀 画像ダウンロード関数
+  const handleDownloadImage = async (url) => {
+    try {
+      // Firebase Storage等から画像をBlobとして取得
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      // ファイル名は現在のタイムスタンプを付与
+      a.download = `photo_${Date.now()}.jpg`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      console.error("画像のダウンロードに失敗しました:", error);
+      // fetch(CORS制限など)で失敗した場合は、別タブで開くフォールバック
+      window.open(url, '_blank');
+    }
+  };
+
   const handleCancelEdit = () => {
     if (!editData) return;
     setFormData({
@@ -304,7 +330,7 @@ export const ActivityForm = () => {
 
   const handleDelete = async () => {
     if (window.confirm('本当にこの実績を削除しますか？')) {
-      try { await deleteDoc(doc(db, 'activities', editData.id)); navigate('/dashboard'); } 
+      try { await deleteDoc(doc(db, 'activities', editData.id)); alert('削除しました。'); navigate('/dashboard'); } 
       catch (error) { console.error(error); alert('削除エラー'); }
     }
   };
@@ -367,8 +393,6 @@ export const ActivityForm = () => {
   };
 
   const filteredItems = ACTIVITY_ITEMS.filter(item => item.name.includes(searchTerm) || item.id.includes(searchTerm));
-  
-  // 🚀 はみ出し防止のため min-w-0 と box-border を追加
   const inputClass = "w-full min-w-0 box-border border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-green-500 disabled:bg-gray-100 disabled:text-gray-600 disabled:opacity-100";
   
   const isCreator = editData?.createdBy === currentUser?.uid;
@@ -380,12 +404,43 @@ export const ActivityForm = () => {
   const selectableGroups = (userRole === 'admin' || userRole === 'manager') ? groupsList : groupsList.filter(g => userGroups.includes(g.id));
 
   return (
-    // 🚀 overflow-x-hidden で画面全体の横はみ出しを防止
     <div className="min-h-screen bg-gray-50 pb-20 md:pb-12 overflow-x-hidden w-full">
       {isSubmitting && (
         <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/70 backdrop-blur-sm">
           <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
           <p className="text-blue-800 font-bold text-lg tracking-wider">データを保存しています...</p>
+        </div>
+      )}
+
+      {/* 🚀 拡大画像表示モーダル */}
+      {enlargedImage && (
+        <div 
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-in fade-in duration-200" 
+          onClick={() => setEnlargedImage(null)}
+        >
+          <button 
+            className="absolute top-4 right-4 md:top-8 md:right-8 text-white hover:text-gray-300 p-2 z-50 bg-black/50 rounded-full transition-colors"
+            onClick={() => setEnlargedImage(null)}
+          >
+            <X size={28} />
+          </button>
+          
+          <img 
+            src={enlargedImage} 
+            alt="Enlarged" 
+            className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl" 
+            onClick={(e) => e.stopPropagation()} 
+          />
+          
+          <div className="absolute bottom-8 flex space-x-4">
+            <button 
+              onClick={(e) => { e.stopPropagation(); handleDownloadImage(enlargedImage); }} 
+              className="flex items-center px-6 py-3 bg-white/20 hover:bg-white/30 text-white rounded-xl backdrop-blur-md transition-all active:scale-95 font-bold shadow-lg border border-white/30"
+            >
+              <Download size={20} className="mr-2" />
+              ダウンロード
+            </button>
+          </div>
         </div>
       )}
 
@@ -468,7 +523,6 @@ export const ActivityForm = () => {
         </div>
       </header>
 
-      {/* 🚀 w-full box-border で横幅を制御 */}
       <main className="p-4 md:p-8 w-full max-w-md md:max-w-6xl mx-auto box-border">
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
@@ -505,7 +559,6 @@ export const ActivityForm = () => {
                 <div><label className="block text-sm font-bold text-gray-700 mb-1">報告書NO (文字列入力可)</label><input type="text" name="reportNo" value={formData.reportNo} onChange={handleChange} disabled={isViewMode} className={inputClass} placeholder="例：2026-001、第1号など" /></div>
                 <div><label className="block text-sm font-bold text-gray-700 mb-1">日付</label><input type="date" name="date" value={formData.date} onChange={handleChange} disabled={isViewMode} className={inputClass} required /></div>
                 
-                {/* 🚀 スマホで横並びにするとキツいのでギャップを調整し min-w-0 を付与 */}
                 <div className="flex space-x-3 sm:space-x-4">
                   <div className="flex-1 min-w-0"><label className="block text-sm font-bold text-gray-700 mb-1">開始</label><input type="time" name="startTime" value={formData.startTime} onChange={handleChange} disabled={isViewMode} className={inputClass} required /></div>
                   <div className="flex-1 min-w-0"><label className="block text-sm font-bold text-gray-700 mb-1">終了</label><input type="time" name="endTime" value={formData.endTime} onChange={handleChange} disabled={isViewMode} className={inputClass} required /></div>
@@ -590,7 +643,6 @@ export const ActivityForm = () => {
                     return (
                       <div key={index} className="bg-gray-50 border border-gray-200 rounded-2xl p-4 relative group">
                         
-                        {/* 🚀 スマホでボタンがはみ出さないように配置を調整 */}
                         {!isViewMode && (
                           <div className="absolute -top-3 right-0 sm:-right-2 flex space-x-1 z-10">
                             <button type="button" onClick={() => duplicateParticipant(index)} className="bg-white text-blue-500 p-1.5 rounded-full border border-blue-100 shadow-sm transition-opacity hover:bg-blue-50" title="この行をコピー">
@@ -675,7 +727,7 @@ export const ActivityForm = () => {
                         <UserPlus size={18} className="mr-2" /> 1枠追加
                       </button>
                       <button type="button" onClick={() => setShowRosterModal(true)} className="flex-1 py-3 box-border border-2 border-dashed border-purple-200 text-purple-600 rounded-2xl font-bold flex justify-center items-center hover:bg-purple-50 hover:border-purple-400 transition-all">
-                        <ListChecks size={18} className="mr-2" /> 登録ユーザーから一括追加
+                        <Users size={18} className="mr-2" /> 登録ユーザーから一括追加
                       </button>
                     </div>
                   )}
@@ -754,21 +806,31 @@ export const ActivityForm = () => {
             <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                 <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Camera className="w-5 h-5 mr-2 text-green-600" /> 現場写真</h2>
-                {/* 🚀 スマホで4列だと窮屈なので 3列に変更 */}
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
+                  
+                  {/* 🚀 クリックして拡大するように変更＆ホバー効果追加 */}
                   {existingUrls.map((url, i) => (
-                    <div key={`ex-${i}`} className="relative aspect-square rounded-xl overflow-hidden border border-gray-200">
-                      <img src={url} alt="" className="w-full h-full object-cover" />
+                    <div 
+                      key={`ex-${i}`} 
+                      className="relative aspect-square rounded-xl overflow-hidden border border-gray-200 cursor-pointer group"
+                      onClick={() => setEnlargedImage(url)}
+                    >
+                      <img src={url} alt="" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
                       {!isViewMode && (
-                        <button type="button" onClick={() => removeExistingUrl(i)} className="absolute top-1 right-1 bg-black/50 text-white p-1 rounded-full z-10"><X size={12} /></button>
+                        <button type="button" onClick={(e) => { e.stopPropagation(); removeExistingUrl(i); }} className="absolute top-1 right-1 bg-black/50 text-white p-1 rounded-full z-10 hover:bg-red-500 transition-colors"><X size={12} /></button>
                       )}
                     </div>
                   ))}
+                  
                   {newPreviewUrls.map((url, i) => (
-                    <div key={`new-${i}`} className="relative aspect-square rounded-xl overflow-hidden border-2 border-green-400">
-                      <img src={url} alt="" className="w-full h-full object-cover" />
+                    <div 
+                      key={`new-${i}`} 
+                      className="relative aspect-square rounded-xl overflow-hidden border-2 border-green-400 cursor-pointer group"
+                      onClick={() => setEnlargedImage(url)}
+                    >
+                      <img src={url} alt="" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
                       {!isViewMode && (
-                        <button type="button" onClick={() => removeNewImage(i)} className="absolute top-1 right-1 bg-black/50 text-white p-1 rounded-full z-10"><X size={12} /></button>
+                        <button type="button" onClick={(e) => { e.stopPropagation(); removeNewImage(i); }} className="absolute top-1 right-1 bg-black/50 text-white p-1 rounded-full z-10 hover:bg-red-500 transition-colors"><X size={12} /></button>
                       )}
                     </div>
                   ))}
