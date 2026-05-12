@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, doc, updateDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
-import { ArrowLeft, UserCog, Edit, Trash2, X, ShieldCheck, Mail } from 'lucide-react';
+import { ArrowLeft, UserCog, Edit, Trash2, X, ShieldCheck, Mail, Wallet, Plus, CheckCircle } from 'lucide-react';
 import { db } from '../firebase';
 
 export const UserManagement = () => {
@@ -28,7 +28,31 @@ export const UserManagement = () => {
         role: editingUser.role,
         groupIds: editingUser.groupIds,
         canEditOwn: editingUser.canEditOwn || false,
-        canEditGroup: editingUser.canEditGroup || false
+        canEditGroup: editingUser.canEditGroup || false,
+        
+        // 🚀 メインの振込先口座指定（bank1 または bank2）
+        primaryBankAccount: editingUser.primaryBankAccount || 'bank1',
+        
+        bank1IsYucho: editingUser.bank1IsYucho || false,
+        bank1Code: editingUser.bank1Code || '',
+        bank1Name: editingUser.bank1Name || '',
+        bank1BranchCode: editingUser.bank1BranchCode || '',
+        bank1Branch: editingUser.bank1Branch || '',
+        bank1Type: editingUser.bank1Type || '普通',
+        bank1Number: editingUser.bank1Number || '',
+        bank1Holder: editingUser.bank1Holder || '',
+        bank1HolderKana: editingUser.bank1HolderKana || '',
+        
+        bank2Enabled: editingUser.bank2Enabled || false,
+        bank2IsYucho: editingUser.bank2IsYucho || false,
+        bank2Code: editingUser.bank2Code || '',
+        bank2Name: editingUser.bank2Name || '',
+        bank2BranchCode: editingUser.bank2BranchCode || '',
+        bank2Branch: editingUser.bank2Branch || '',
+        bank2Type: editingUser.bank2Type || '普通',
+        bank2Number: editingUser.bank2Number || '',
+        bank2Holder: editingUser.bank2Holder || '',
+        bank2HolderKana: editingUser.bank2HolderKana || ''
       });
       setEditingUser(null);
     } catch (err) {
@@ -77,11 +101,12 @@ export const UserManagement = () => {
             <h2 className="font-bold text-gray-700">登録ユーザー一覧</h2>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[800px]">
+            <table className="w-full text-left border-collapse min-w-[950px]">
               <thead>
                 <tr className="text-xs text-gray-400 uppercase tracking-wider border-b">
                   <th className="px-6 py-3 font-bold">表示名</th>
                   <th className="px-6 py-3 font-bold">メールアドレス</th>
+                  <th className="px-6 py-3 font-bold text-center">口座情報</th>
                   <th className="px-6 py-3 font-bold">権限</th>
                   <th className="px-6 py-3 font-bold">担当グループ</th>
                   <th className="px-6 py-3 font-bold text-center w-24">操作</th>
@@ -94,6 +119,14 @@ export const UserManagement = () => {
                     
                     <td className="px-6 py-4 text-sm text-gray-600">
                       {user.email || <span className="text-gray-400 text-xs">未設定</span>}
+                    </td>
+
+                    <td className="px-6 py-4 text-center">
+                      {(user.bank1Number || (user.bank2Enabled && user.bank2Number)) ? (
+                        <span className="bg-blue-50 text-blue-600 border border-blue-200 px-2 py-1 rounded text-[10px] font-bold">登録済</span>
+                      ) : (
+                        <span className="text-gray-300 text-[10px]">未登録</span>
+                      )}
                     </td>
 
                     <td className="px-6 py-4 text-sm">
@@ -137,13 +170,13 @@ export const UserManagement = () => {
 
       {editingUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center p-4 border-b">
+          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh]">
+            <div className="flex justify-between items-center p-4 border-b shrink-0">
               <h2 className="text-lg font-bold text-gray-800">ユーザー情報の修正</h2>
               <button onClick={() => setEditingUser(null)} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-full transition-colors"><X size={20}/></button>
             </div>
             
-            <div className="p-5 space-y-5">
+            <div className="p-5 space-y-6 overflow-y-auto flex-1">
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-1">表示名</label>
                 <input 
@@ -171,9 +204,246 @@ export const UserManagement = () => {
                 <p className="text-[10px] text-gray-400 mt-1 text-right">※ログインIDとして使用されているため、ここでは変更できません。</p>
               </div>
 
+              <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-5">
+                <h3 className="text-sm font-bold text-gray-700 flex items-center border-b border-gray-200 pb-2">
+                  <Wallet size={16} className="mr-1.5 text-gray-500" />
+                  振込口座情報
+                </h3>
+                
+                {/* 🏦 口座情報 1 */}
+                <div className={`border rounded-lg p-3 space-y-3 transition-colors relative ${editingUser.primaryBankAccount !== 'bank2' ? 'bg-purple-50/30 border-purple-400 shadow-sm ring-1 ring-purple-400' : 'bg-white border-gray-200 shadow-sm'}`}>
+                  <div className="flex justify-between items-center border-b border-gray-100 pb-2 mb-2">
+                    <h4 className="text-xs font-bold text-gray-700">口座情報 1</h4>
+                    {/* 🚀 振込先指定ラジオボタン */}
+                    <label className="flex items-center space-x-1.5 cursor-pointer bg-white px-2 py-1 rounded border border-gray-200 shadow-sm hover:bg-gray-50 transition-colors">
+                      <input 
+                        type="radio" 
+                        name="primaryBank" 
+                        checked={editingUser.primaryBankAccount !== 'bank2'} 
+                        onChange={() => setEditingUser({...editingUser, primaryBankAccount: 'bank1'})} 
+                        className="w-4 h-4 text-purple-600 focus:ring-purple-500 border-gray-300" 
+                      />
+                      <span className={`text-[10px] font-bold ${editingUser.primaryBankAccount !== 'bank2' ? 'text-purple-700' : 'text-gray-500'}`}>振込先に指定</span>
+                    </label>
+                  </div>
+                  
+                  <div className="flex space-x-4 mb-2">
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <input type="radio" checked={!editingUser.bank1IsYucho} onChange={() => setEditingUser({...editingUser, bank1IsYucho: false})} className="w-4 h-4 text-purple-600 focus:ring-purple-500 border-gray-300" />
+                      <span className="text-xs font-bold text-gray-700">ゆうちょ銀行以外</span>
+                    </label>
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <input type="radio" checked={editingUser.bank1IsYucho} onChange={() => setEditingUser({...editingUser, bank1IsYucho: true})} className="w-4 h-4 text-purple-600 focus:ring-purple-500 border-gray-300" />
+                      <span className="text-xs font-bold text-gray-700">ゆうちょ銀行</span>
+                    </label>
+                  </div>
+
+                  {!editingUser.bank1IsYucho ? (
+                    <>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="flex space-x-2">
+                          <div className="w-1/3">
+                            <label className="block text-[10px] text-gray-500 mb-0.5">銀行番号</label>
+                            <input type="text" value={editingUser.bank1Code || ''} onChange={e => setEditingUser({...editingUser, bank1Code: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm font-mono focus:ring-1 focus:ring-purple-500" placeholder="0001" />
+                          </div>
+                          <div className="w-2/3">
+                            <label className="block text-[10px] text-gray-500 mb-0.5">金融機関名</label>
+                            <input type="text" value={editingUser.bank1Name || ''} onChange={e => setEditingUser({...editingUser, bank1Name: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-purple-500" placeholder="例: ○○銀行" />
+                          </div>
+                        </div>
+                        <div className="flex space-x-2">
+                          <div className="w-1/3">
+                            <label className="block text-[10px] text-gray-500 mb-0.5">支店番号</label>
+                            <input type="text" value={editingUser.bank1BranchCode || ''} onChange={e => setEditingUser({...editingUser, bank1BranchCode: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm font-mono focus:ring-1 focus:ring-purple-500" placeholder="123" />
+                          </div>
+                          <div className="w-2/3">
+                            <label className="block text-[10px] text-gray-500 mb-0.5">支店名</label>
+                            <input type="text" value={editingUser.bank1Branch || ''} onChange={e => setEditingUser({...editingUser, bank1Branch: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-purple-500" placeholder="例: ××支店" />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="col-span-1">
+                          <label className="block text-[10px] text-gray-500 mb-0.5">種目</label>
+                          <select value={editingUser.bank1Type || '普通'} onChange={e => setEditingUser({...editingUser, bank1Type: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm bg-white focus:ring-1 focus:ring-purple-500">
+                            <option value="普通">普通</option>
+                            <option value="当座">当座</option>
+                          </select>
+                        </div>
+                        <div className="col-span-2">
+                          <label className="block text-[10px] text-gray-500 mb-0.5">口座番号</label>
+                          <input type="text" value={editingUser.bank1Number || ''} onChange={e => setEditingUser({...editingUser, bank1Number: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm font-mono focus:ring-1 focus:ring-purple-500" placeholder="1234567" />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] text-gray-500 mb-0.5">口座名義人</label>
+                          <input type="text" value={editingUser.bank1Holder || ''} onChange={e => setEditingUser({...editingUser, bank1Holder: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-purple-500" placeholder="山田 太郎" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-gray-500 mb-0.5">フリガナ</label>
+                          <input type="text" value={editingUser.bank1HolderKana || ''} onChange={e => setEditingUser({...editingUser, bank1HolderKana: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-purple-500" placeholder="ヤマダ タロウ" />
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="col-span-1">
+                          <label className="block text-[10px] text-gray-500 mb-0.5">店番（3桁）</label>
+                          <input type="text" value={editingUser.bank1BranchCode || ''} onChange={e => setEditingUser({...editingUser, bank1BranchCode: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm font-mono focus:ring-1 focus:ring-purple-500" placeholder="123" />
+                        </div>
+                        <div className="col-span-1">
+                          <label className="block text-[10px] text-gray-500 mb-0.5">種目</label>
+                          <select value={editingUser.bank1Type || '普通'} onChange={e => setEditingUser({...editingUser, bank1Type: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm bg-white focus:ring-1 focus:ring-purple-500">
+                            <option value="普通">普通</option>
+                            <option value="当座">当座</option>
+                          </select>
+                        </div>
+                        <div className="col-span-1">
+                          <label className="block text-[10px] text-gray-500 mb-0.5">口座番号</label>
+                          <input type="text" value={editingUser.bank1Number || ''} onChange={e => setEditingUser({...editingUser, bank1Number: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm font-mono focus:ring-1 focus:ring-purple-500" placeholder="1234567" />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] text-gray-500 mb-0.5">口座名義人</label>
+                          <input type="text" value={editingUser.bank1Holder || ''} onChange={e => setEditingUser({...editingUser, bank1Holder: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-purple-500" placeholder="山田 太郎" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-gray-500 mb-0.5">フリガナ</label>
+                          <input type="text" value={editingUser.bank1HolderKana || ''} onChange={e => setEditingUser({...editingUser, bank1HolderKana: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-purple-500" placeholder="ヤマダ タロウ" />
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* 🏦 口座情報 2（予備） */}
+                {!editingUser.bank2Enabled ? (
+                  <button type="button" onClick={() => setEditingUser({...editingUser, bank2Enabled: true})} className="w-full py-3 border-2 border-dashed border-gray-300 text-gray-600 rounded-lg text-xs font-bold hover:bg-white transition-colors flex items-center justify-center">
+                    <Plus size={16} className="mr-1" /> 口座情報 2（予備）を追加する
+                  </button>
+                ) : (
+                  <div className={`border rounded-lg p-3 space-y-3 transition-colors relative ${editingUser.primaryBankAccount === 'bank2' ? 'bg-purple-50/30 border-purple-400 shadow-sm ring-1 ring-purple-400' : 'bg-white border-gray-200 shadow-sm'}`}>
+                    <div className="flex justify-between items-center border-b border-gray-100 pb-2 mb-2">
+                      <div className="flex items-center space-x-3">
+                        <h4 className="text-xs font-bold text-gray-700">口座情報 2</h4>
+                        {/* 🚀 振込先指定ラジオボタン */}
+                        <label className="flex items-center space-x-1.5 cursor-pointer bg-white px-2 py-1 rounded border border-gray-200 shadow-sm hover:bg-gray-50 transition-colors">
+                          <input 
+                            type="radio" 
+                            name="primaryBank" 
+                            checked={editingUser.primaryBankAccount === 'bank2'} 
+                            onChange={() => setEditingUser({...editingUser, primaryBankAccount: 'bank2'})} 
+                            className="w-4 h-4 text-purple-600 focus:ring-purple-500 border-gray-300" 
+                          />
+                          <span className={`text-[10px] font-bold ${editingUser.primaryBankAccount === 'bank2' ? 'text-purple-700' : 'text-gray-500'}`}>振込先に指定</span>
+                        </label>
+                      </div>
+                      
+                      {/* 削除された場合は自動でbank1をメインに戻す */}
+                      <button type="button" onClick={() => setEditingUser({...editingUser, bank2Enabled: false, primaryBankAccount: 'bank1'})} className="text-red-500 hover:bg-red-50 p-1.5 rounded transition-colors" title="削除">
+                        <Trash2 size={14}/>
+                      </button>
+                    </div>
+
+                    <div className="flex space-x-4 mb-2">
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input type="radio" checked={!editingUser.bank2IsYucho} onChange={() => setEditingUser({...editingUser, bank2IsYucho: false})} className="w-4 h-4 text-purple-600 focus:ring-purple-500 border-gray-300" />
+                        <span className="text-xs font-bold text-gray-700">ゆうちょ銀行以外</span>
+                      </label>
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input type="radio" checked={editingUser.bank2IsYucho} onChange={() => setEditingUser({...editingUser, bank2IsYucho: true})} className="w-4 h-4 text-purple-600 focus:ring-purple-500 border-gray-300" />
+                        <span className="text-xs font-bold text-gray-700">ゆうちょ銀行</span>
+                      </label>
+                    </div>
+
+                    {!editingUser.bank2IsYucho ? (
+                      <>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="flex space-x-2">
+                            <div className="w-1/3">
+                              <label className="block text-[10px] text-gray-500 mb-0.5">銀行番号</label>
+                              <input type="text" value={editingUser.bank2Code || ''} onChange={e => setEditingUser({...editingUser, bank2Code: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm font-mono focus:ring-1 focus:ring-purple-500" placeholder="0001" />
+                            </div>
+                            <div className="w-2/3">
+                              <label className="block text-[10px] text-gray-500 mb-0.5">金融機関名</label>
+                              <input type="text" value={editingUser.bank2Name || ''} onChange={e => setEditingUser({...editingUser, bank2Name: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-purple-500" placeholder="例: ○○銀行" />
+                            </div>
+                          </div>
+                          <div className="flex space-x-2">
+                            <div className="w-1/3">
+                              <label className="block text-[10px] text-gray-500 mb-0.5">支店番号</label>
+                              <input type="text" value={editingUser.bank2BranchCode || ''} onChange={e => setEditingUser({...editingUser, bank2BranchCode: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm font-mono focus:ring-1 focus:ring-purple-500" placeholder="123" />
+                            </div>
+                            <div className="w-2/3">
+                              <label className="block text-[10px] text-gray-500 mb-0.5">支店名</label>
+                              <input type="text" value={editingUser.bank2Branch || ''} onChange={e => setEditingUser({...editingUser, bank2Branch: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-purple-500" placeholder="例: ××支店" />
+                            </div>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="col-span-1">
+                            <label className="block text-[10px] text-gray-500 mb-0.5">種目</label>
+                            <select value={editingUser.bank2Type || '普通'} onChange={e => setEditingUser({...editingUser, bank2Type: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm bg-white focus:ring-1 focus:ring-purple-500">
+                              <option value="普通">普通</option>
+                              <option value="当座">当座</option>
+                            </select>
+                          </div>
+                          <div className="col-span-2">
+                            <label className="block text-[10px] text-gray-500 mb-0.5">口座番号</label>
+                            <input type="text" value={editingUser.bank2Number || ''} onChange={e => setEditingUser({...editingUser, bank2Number: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm font-mono focus:ring-1 focus:ring-purple-500" placeholder="1234567" />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] text-gray-500 mb-0.5">口座名義人</label>
+                            <input type="text" value={editingUser.bank2Holder || ''} onChange={e => setEditingUser({...editingUser, bank2Holder: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-purple-500" placeholder="山田 太郎" />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-gray-500 mb-0.5">フリガナ</label>
+                            <input type="text" value={editingUser.bank2HolderKana || ''} onChange={e => setEditingUser({...editingUser, bank2HolderKana: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-purple-500" placeholder="ヤマダ タロウ" />
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="col-span-1">
+                            <label className="block text-[10px] text-gray-500 mb-0.5">店番（3桁）</label>
+                            <input type="text" value={editingUser.bank2BranchCode || ''} onChange={e => setEditingUser({...editingUser, bank2BranchCode: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm font-mono focus:ring-1 focus:ring-purple-500" placeholder="123" />
+                          </div>
+                          <div className="col-span-1">
+                            <label className="block text-[10px] text-gray-500 mb-0.5">種目</label>
+                            <select value={editingUser.bank2Type || '普通'} onChange={e => setEditingUser({...editingUser, bank2Type: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm bg-white focus:ring-1 focus:ring-purple-500">
+                              <option value="普通">普通</option>
+                              <option value="当座">当座</option>
+                            </select>
+                          </div>
+                          <div className="col-span-1">
+                            <label className="block text-[10px] text-gray-500 mb-0.5">口座番号</label>
+                            <input type="text" value={editingUser.bank2Number || ''} onChange={e => setEditingUser({...editingUser, bank2Number: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm font-mono focus:ring-1 focus:ring-purple-500" placeholder="1234567" />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] text-gray-500 mb-0.5">口座名義人</label>
+                            <input type="text" value={editingUser.bank2Holder || ''} onChange={e => setEditingUser({...editingUser, bank2Holder: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-purple-500" placeholder="山田 太郎" />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-gray-500 mb-0.5">フリガナ</label>
+                            <input type="text" value={editingUser.bank2HolderKana || ''} onChange={e => setEditingUser({...editingUser, bank2HolderKana: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-purple-500" placeholder="ヤマダ タロウ" />
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-1">システム権限</label>
-                {/* 🚀 プルダウンの説明文を実態に合わせてアップデート */}
                 <select 
                   value={editingUser.role || 'reporter'} 
                   onChange={e => setEditingUser({...editingUser, role: e.target.value})}
@@ -221,11 +491,11 @@ export const UserManagement = () => {
 
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2">担当グループ</label>
-                <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-xl p-2 space-y-1 bg-gray-50">
+                <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-xl p-2 space-y-1 bg-white">
                   {groupsList.map(g => {
                     const isChecked = (editingUser.groupIds || []).includes(g.id);
                     return (
-                      <label key={g.id} className="flex items-center space-x-3 p-2 hover:bg-white rounded-lg cursor-pointer transition-colors">
+                      <label key={g.id} className="flex items-center space-x-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer transition-colors">
                         <input 
                           type="checkbox" 
                           checked={isChecked} 
@@ -240,7 +510,7 @@ export const UserManagement = () => {
               </div>
             </div>
 
-            <div className="p-4 border-t flex space-x-3 bg-gray-50">
+            <div className="p-4 border-t flex space-x-3 bg-gray-50 shrink-0">
               <button onClick={() => setEditingUser(null)} className="flex-1 py-3 border border-gray-300 bg-white rounded-xl font-bold text-gray-700 hover:bg-gray-100 transition-colors">
                 キャンセル
               </button>
