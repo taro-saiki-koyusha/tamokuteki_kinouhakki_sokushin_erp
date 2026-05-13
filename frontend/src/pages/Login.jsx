@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sprout, LogIn, AlertCircle, Mail, Lock, UserPlus } from 'lucide-react';
+import { Sprout, LogIn, AlertCircle, Mail, Lock, UserPlus, Phone } from 'lucide-react'; // 🚀 Phoneアイコンを追加
 import { useNavigate } from 'react-router-dom';
 import { signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'; 
@@ -10,9 +10,9 @@ export const Login = () => {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   
-  // 🚀 メールアドレス認証用のState
-  const [isSignUp, setIsSignUp] = useState(false); // ログインと新規登録の切り替え
-  const [email, setEmail] = useState('');
+  // 🚀 メールアドレス・電話番号認証用のState
+  const [isSignUp, setIsSignUp] = useState(false); 
+  const [loginIdInput, setLoginIdInput] = useState(''); // 🚀 変数名を email から loginIdInput に変更
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
 
@@ -46,28 +46,43 @@ export const Login = () => {
     }
   };
 
-  // 🚀 メールアドレスでのログイン/登録
+  // 🚀 メールアドレス/電話番号でのログイン/登録処理
   const handleEmailAuth = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     try {
+      let finalLoginId = loginIdInput;
+      
+      // 🚀 @が含まれていない場合は「電話番号」として扱う
+      if (!loginIdInput.includes('@')) {
+        if (isSignUp) {
+          // 一般ユーザーが電話番号で新規登録しようとした場合は弾く
+          setError("電話番号での新規登録はシステム管理者のみ可能です。管理者にアカウント作成をご依頼ください。");
+          setLoading(false);
+          return;
+        }
+        // ハイフン等を除去してダミーメールアドレスを生成
+        const cleanPhone = loginIdInput.replace(/[^0-9]/g, '');
+        finalLoginId = `${cleanPhone}@kamata.local`;
+      }
+
       if (isSignUp) {
-        // 新規登録
-        const result = await createUserWithEmailAndPassword(auth, email, password);
+        // 新規登録（メールアドレスのみ）
+        const result = await createUserWithEmailAndPassword(auth, finalLoginId, password);
         await updateProfile(result.user, { displayName: displayName });
         await createUserData(result.user, displayName);
         alert("アカウントを作成しました。管理者の承認をお待ちください。");
       } else {
-        // ログイン
-        await signInWithEmailAndPassword(auth, email, password);
+        // ログイン（メールアドレス or 変換済み電話番号）
+        await signInWithEmailAndPassword(auth, finalLoginId, password);
       }
       navigate('/dashboard');
     } catch (err) {
       console.error(err);
       if (err.code === 'auth/email-already-in-use') setError("このメールアドレスは既に登録されています。");
       else if (err.code === 'auth/weak-password') setError("パスワードは6文字以上で入力してください。");
-      else if (err.code === 'auth/invalid-credential') setError("メールアドレスまたはパスワードが正しくありません。");
+      else if (err.code === 'auth/invalid-credential') setError("ログインIDまたはパスワードが正しくありません。");
       else setError("認証に失敗しました。");
     } finally {
       setLoading(false);
@@ -92,22 +107,35 @@ export const Login = () => {
             </div>
           )}
 
-          {/* メールアドレスフォーム */}
+          {/* フォーム */}
           <form onSubmit={handleEmailAuth} className="space-y-4 mb-6">
             {isSignUp && (
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-1">お名前</label>
                 <div className="relative">
                   <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500" placeholder="農園 太郎" required={isSignUp} />
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center"><Mail className="h-4 w-4 text-gray-400" /></div>
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center"><UserPlus className="h-4 w-4 text-gray-400" /></div>
                 </div>
               </div>
             )}
             <div>
-              <label className="block text-sm font-bold text-gray-700 mb-1">メールアドレス</label>
+              {/* 🚀 ラベルとプレースホルダー、type属性を修正 */}
+              <label className="block text-sm font-bold text-gray-700 mb-1">
+                {isSignUp ? 'メールアドレス' : 'ログインID (メール または 電話番号)'}
+              </label>
               <div className="relative">
-                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500" placeholder="example@mail.com" required />
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center"><Mail className="h-4 w-4 text-gray-400" /></div>
+                <input 
+                  type="text" // 🚀 type="email" から変更して電話番号も入れられるようにしました
+                  value={loginIdInput} 
+                  onChange={(e) => setLoginIdInput(e.target.value)} 
+                  className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500" 
+                  placeholder={isSignUp ? "example@mail.com" : "example@mail.com または 09012345678"} 
+                  required 
+                />
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center">
+                  {/* 電話番号っぽければ電話アイコン、そうでなければメールアイコンに変化します */}
+                  {loginIdInput.includes('@') || loginIdInput === '' ? <Mail className="h-4 w-4 text-gray-400" /> : <Phone className="h-4 w-4 text-gray-400" />}
+                </div>
               </div>
             </div>
             <div>
@@ -120,12 +148,12 @@ export const Login = () => {
 
             <button type="submit" disabled={loading} className="w-full flex justify-center items-center py-3 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 transition-all shadow-md active:scale-95">
               {isSignUp ? <UserPlus className="mr-2 h-5 w-5" /> : <LogIn className="mr-2 h-5 w-5" />}
-              {loading ? '通信中...' : (isSignUp ? 'アカウントを作成する' : 'メールアドレスでログイン')}
+              {loading ? '通信中...' : (isSignUp ? 'アカウントを作成する' : 'ログイン')}
             </button>
           </form>
 
           <div className="text-center mb-6">
-            <button onClick={() => setIsSignUp(!isSignUp)} className="text-sm text-green-600 font-bold hover:underline">
+            <button onClick={() => { setIsSignUp(!isSignUp); setError(null); }} className="text-sm text-green-600 font-bold hover:underline">
               {isSignUp ? '既にアカウントをお持ちの方はこちら' : '初めての方はこちら（新規登録）'}
             </button>
           </div>
