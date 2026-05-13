@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-// 🚀 Downloadアイコンを追加しました
 import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2, Calculator, Package, Plus, CheckCircle, Copy, ListChecks, MessageSquare, Download } from 'lucide-react';
 import { collection, addDoc, doc, updateDoc, serverTimestamp, deleteDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -73,13 +72,13 @@ export const ActivityForm = () => {
   const [canEditOwn, setCanEditOwn] = useState(false);
   const [canEditGroup, setCanEditGroup] = useState(false);
 
-  // 🚀 拡大画像表示用のState
   const [enlargedImage, setEnlargedImage] = useState(null);
 
   const [formData, setFormData] = useState(
     editData ? {
       status: editData.status || '実績入力済',
       planType: editData.planType || '当初計画',
+      isEssential: editData.isEssential || false, // 🚀 補助金必須フラグを追加
       groupId: editData.groupId || '',
       date: editData.date || new Date().toISOString().split('T')[0],
       startTime: editData.startTime || '08:00',
@@ -92,6 +91,7 @@ export const ActivityForm = () => {
     } : {
       status: '実績入力済',
       planType: '当初計画',
+      isEssential: false, // 🚀
       groupId: '',
       date: new Date().toISOString().split('T')[0],
       startTime: '08:00',
@@ -291,16 +291,13 @@ export const ActivityForm = () => {
     setNewPreviewUrls(prev => prev.filter((_, i) => i !== index));
   };
 
-  // 🚀 画像ダウンロード関数
   const handleDownloadImage = async (url) => {
     try {
-      // Firebase Storage等から画像をBlobとして取得
       const response = await fetch(url);
       const blob = await response.blob();
       const blobUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = blobUrl;
-      // ファイル名は現在のタイムスタンプを付与
       a.download = `photo_${Date.now()}.jpg`;
       document.body.appendChild(a);
       a.click();
@@ -308,7 +305,6 @@ export const ActivityForm = () => {
       window.URL.revokeObjectURL(blobUrl);
     } catch (error) {
       console.error("画像のダウンロードに失敗しました:", error);
-      // fetch(CORS制限など)で失敗した場合は、別タブで開くフォールバック
       window.open(url, '_blank');
     }
   };
@@ -318,6 +314,7 @@ export const ActivityForm = () => {
     setFormData({
       status: editData.status || '実績入力済',
       planType: editData.planType || '当初計画',
+      isEssential: editData.isEssential || false, // 🚀
       groupId: editData.groupId || '', date: editData.date || '', startTime: editData.startTime || '', endTime: editData.endTime || '',
       location: editData.location || '', activityType: editData.activityType || '', activityNumbers: editData.activityNumbers || [],
       memo: editData.memo || '', reportNo: editData.reportNo || ''
@@ -330,7 +327,7 @@ export const ActivityForm = () => {
 
   const handleDelete = async () => {
     if (window.confirm('本当にこの実績を削除しますか？')) {
-      try { await deleteDoc(doc(db, 'activities', editData.id)); alert('削除しました。'); navigate('/dashboard'); } 
+      try { await deleteDoc(doc(db, 'activities', editData.id)); navigate('/dashboard'); } 
       catch (error) { console.error(error); alert('削除エラー'); }
     }
   };
@@ -412,7 +409,6 @@ export const ActivityForm = () => {
         </div>
       )}
 
-      {/* 🚀 拡大画像表示モーダル */}
       {enlargedImage && (
         <div 
           className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-in fade-in duration-200" 
@@ -576,6 +572,25 @@ export const ActivityForm = () => {
 
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                 <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Sprout className="w-5 h-5 mr-2 text-green-600" /> 活動内容</h2>
+                
+                {/* 🚀 必須フラグのチェックボックス */}
+                <div className="bg-yellow-50 p-3 rounded-xl border border-yellow-200">
+                  <label className="flex items-center space-x-3 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      name="isEssential"
+                      checked={formData.isEssential} 
+                      onChange={(e) => setFormData({...formData, isEssential: e.target.checked})}
+                      disabled={isViewMode}
+                      className="w-5 h-5 text-yellow-600 border-gray-300 rounded focus:ring-yellow-500 disabled:opacity-50" 
+                    />
+                    <div className="flex flex-col">
+                      <span className="text-sm font-bold text-yellow-900">この活動を「補助金必須作業」として設定する</span>
+                      <span className="text-[10px] text-yellow-700 mt-0.5">補助金申請の要件となる重要な活動の場合はチェックを入れてください。</span>
+                    </div>
+                  </label>
+                </div>
+
                 <div className="relative">
                   <label className="block text-sm font-bold text-gray-700 mb-1">Excel活動項目番号 (最大6つ)</label>
                   <button type="button" onClick={() => !isViewMode && setIsDropdownOpen(!isDropdownOpen)} className={`w-full min-w-0 box-border text-left bg-white border border-gray-300 rounded-xl p-3 flex justify-between items-center ${isViewMode ? 'bg-gray-100 cursor-not-allowed opacity-100' : 'focus:ring-2 focus:ring-green-500'}`}>
@@ -807,8 +822,6 @@ export const ActivityForm = () => {
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                 <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Camera className="w-5 h-5 mr-2 text-green-600" /> 現場写真</h2>
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
-                  
-                  {/* 🚀 クリックして拡大するように変更＆ホバー効果追加 */}
                   {existingUrls.map((url, i) => (
                     <div 
                       key={`ex-${i}`} 
@@ -821,7 +834,6 @@ export const ActivityForm = () => {
                       )}
                     </div>
                   ))}
-                  
                   {newPreviewUrls.map((url, i) => (
                     <div 
                       key={`new-${i}`} 

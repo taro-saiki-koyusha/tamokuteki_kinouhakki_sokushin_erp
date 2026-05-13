@@ -50,7 +50,7 @@ export const Dashboard = () => {
   const [userRole, setUserRole] = useState('reporter');
   const [userGroupIds, setUserGroupIds] = useState([]);
   const [canEditOwn, setCanEditOwn] = useState(false);
-  const [canEditGroup, setCanEditGroup] = useState(false); // 🚀 同一グループ編集許可フラグ
+  const [canEditGroup, setCanEditGroup] = useState(false);
   const [deletingActivityId, setDeletingActivityId] = useState(null);
 
   useEffect(() => {
@@ -79,7 +79,7 @@ export const Dashboard = () => {
         const role = userDoc.exists() ? (userDoc.data().role || 'reporter') : 'reporter';
         const groupIds = userDoc.exists() ? (userDoc.data().groupIds || []) : [];
         const allowedEditOwn = userDoc.exists() ? (userDoc.data().canEditOwn || false) : false; 
-        const allowedEditGroup = userDoc.exists() ? (userDoc.data().canEditGroup || false) : false; // 🚀 権限の読み込み
+        const allowedEditGroup = userDoc.exists() ? (userDoc.data().canEditGroup || false) : false;
         
         setUserRole(role);
         setUserGroupIds(groupIds);
@@ -239,8 +239,6 @@ export const Dashboard = () => {
   };
 
   const roleLabel = userRole === 'admin' ? '管理者' : userRole === 'manager' ? '事務・役員' : '現場リーダー';
-  
-  // 🚀 削除ボタン列（表全体）の表示制御
   const showDeleteColumn = userRole === 'admin' || (userRole === 'reporter' && (canEditOwn || canEditGroup));
 
   const ActivityCard = ({ activity }) => {
@@ -252,7 +250,6 @@ export const Dashboard = () => {
     const statusLabel = activity.status || '実績入力済';
     const planTypeLabel = activity.planType || '当初計画'; 
     
-    // 🚀 各カードの削除ボタン表示制御
     const isCreator = activity.createdBy === currentUser?.uid;
     const isInSameGroup = userGroupIds.includes(activity.groupId);
     const canDeleteAct = userRole === 'admin' || 
@@ -261,26 +258,33 @@ export const Dashboard = () => {
 
     return (
       <div onClick={() => navigate('/activity-form', { state: { editData: activity, isViewMode: true } })} className="bg-white rounded-2xl shadow-sm border-l-4 border-green-500 p-4 cursor-pointer hover:shadow-md transition-all flex flex-col h-full relative group">
-        <div className="absolute top-3 right-3 flex items-center space-x-2 z-10">
-          <span className={`text-[10px] px-2 py-1 rounded-md font-bold border whitespace-nowrap ${
-            planTypeLabel === '当初計画' ? 'bg-blue-50 text-blue-600 border-blue-100' :
-            planTypeLabel === '期中追加' ? 'bg-orange-50 text-orange-600 border-orange-100' :
-            'bg-red-50 text-red-600 border-red-100'
-          }`}>
-            {planTypeLabel}
-          </span>
-          <span className={`text-[10px] px-2 py-1 rounded-md font-bold border whitespace-nowrap ${statusLabel === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-600 border-green-100'}`}>
-            {statusLabel}
-          </span>
-          
-          {canDeleteAct && (
-            <button onClick={(e) => handleDeleteClick(activity.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="この実績を削除">
-              <Trash2 size={16} />
-            </button>
+        <div className="absolute top-3 right-3 flex flex-col items-end space-y-1.5 z-10">
+          <div className="flex space-x-2">
+            <span className={`text-[10px] px-2 py-1 rounded-md font-bold border whitespace-nowrap ${
+              planTypeLabel === '当初計画' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+              planTypeLabel === '期中追加' ? 'bg-orange-50 text-orange-600 border-orange-100' :
+              'bg-red-50 text-red-600 border-red-100'
+            }`}>
+              {planTypeLabel}
+            </span>
+            <span className={`text-[10px] px-2 py-1 rounded-md font-bold border whitespace-nowrap ${statusLabel === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-600 border-green-100'}`}>
+              {statusLabel}
+            </span>
+            {canDeleteAct && (
+              <button onClick={(e) => handleDeleteClick(activity.id, e)} className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="この実績を削除">
+                <Trash2 size={16} />
+              </button>
+            )}
+          </div>
+          {/* 🚀 必須作業のバッジ */}
+          {activity.isEssential && (
+            <span className="text-[10px] px-2 py-1 rounded-md font-bold border whitespace-nowrap bg-yellow-50 text-yellow-700 border-yellow-200">
+              必須作業
+            </span>
           )}
         </div>
         
-        <h3 className="font-bold text-lg text-gray-900 mb-2 pr-48 leading-tight">{activity.activityType || '内容未入力'}</h3>
+        <h3 className="font-bold text-lg text-gray-900 mb-2 pr-40 leading-tight mt-1">{activity.activityType || '内容未入力'}</h3>
         
         <div className="space-y-1.5 text-xs text-gray-600 mb-3 flex-grow">
           <div className="flex items-center">
@@ -331,7 +335,7 @@ export const Dashboard = () => {
                   </div>
                 </th>
                 <th className="p-3 font-bold w-20 text-center whitespace-nowrap">状態</th>
-                <th className="p-3 font-bold w-20 text-center whitespace-nowrap">区分</th>
+                <th className="p-3 font-bold w-24 text-center whitespace-nowrap">区分</th> {/* 🚀 幅を少し拡張 */}
                 <th className="p-3 font-bold w-24 whitespace-nowrap">報告書NO</th>
                 <th className="p-3 font-bold w-36 whitespace-nowrap">グループ</th>
                 <th className="p-3 font-bold w-40 whitespace-nowrap">活動場所</th>
@@ -358,7 +362,6 @@ export const Dashboard = () => {
                 const statusLabel = act.status || '実績入力済';
                 const planTypeLabel = act.planType || '当初計画';
                 
-                // 🚀 各行の削除権限判定
                 const isCreator = act.createdBy === currentUser?.uid;
                 const isInSameGroup = userGroupIds.includes(act.groupId);
                 const canDeleteAct = userRole === 'admin' || 
@@ -373,19 +376,27 @@ export const Dashboard = () => {
                     <td className="p-3 text-sm text-gray-700 whitespace-nowrap">{act.date}</td>
                     
                     <td className="p-3 text-center whitespace-nowrap">
-                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold border ${statusLabel === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-600 border-green-100'}`}>
+                      <span className={`px-2 py-1 rounded-full text-[9px] font-bold border whitespace-nowrap ${statusLabel === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-600 border-green-100'}`}>
                         {statusLabel}
                       </span>
                     </td>
 
+                    {/* 🚀 区分セルの中に必須フラグの表示も追加 */}
                     <td className="p-3 text-center whitespace-nowrap">
-                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold border ${
-                        planTypeLabel === '当初計画' ? 'bg-blue-50 text-blue-600 border-blue-100' :
-                        planTypeLabel === '期中追加' ? 'bg-orange-50 text-orange-600 border-orange-100' :
-                        'bg-red-50 text-red-600 border-red-100'
-                      }`}>
-                        {planTypeLabel}
-                      </span>
+                      <div className="flex flex-col items-center space-y-1">
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border whitespace-nowrap ${
+                          planTypeLabel === '当初計画' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                          planTypeLabel === '期中追加' ? 'bg-orange-50 text-orange-600 border-orange-100' :
+                          'bg-red-50 text-red-600 border-red-100'
+                        }`}>
+                          {planTypeLabel}
+                        </span>
+                        {act.isEssential && (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold border whitespace-nowrap bg-yellow-50 text-yellow-700 border-yellow-200">
+                            必須作業
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     <td className="p-3 text-sm font-bold text-blue-600 whitespace-nowrap">{act.reportNo}</td>
