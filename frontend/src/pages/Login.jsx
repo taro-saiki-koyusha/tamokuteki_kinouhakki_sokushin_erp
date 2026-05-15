@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sprout, LogIn, AlertCircle, Mail, Lock, UserPlus, Phone } from 'lucide-react'; // 🚀 Phoneアイコンを追加
+import { Sprout, LogIn, AlertCircle, Mail, Lock, UserPlus, Phone } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'; 
@@ -10,9 +10,8 @@ export const Login = () => {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   
-  // 🚀 メールアドレス・電話番号認証用のState
   const [isSignUp, setIsSignUp] = useState(false); 
-  const [loginIdInput, setLoginIdInput] = useState(''); // 🚀 変数名を email から loginIdInput に変更
+  const [loginIdInput, setLoginIdInput] = useState(''); 
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
 
@@ -46,15 +45,28 @@ export const Login = () => {
     }
   };
 
-  // 🚀 メールアドレス/電話番号でのログイン/登録処理
+  // メールアドレス/電話番号でのログイン/登録処理
   const handleEmailAuth = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
+
+    // 🚀 厳密な空欄チェック（スペースのみの入力なども弾く）
+    if (isSignUp && (!displayName.trim() || !loginIdInput.trim() || !password.trim())) {
+      setError("すべての項目（お名前、メールアドレス、パスワード）を入力してください。");
+      setLoading(false);
+      return;
+    }
+    if (!isSignUp && (!loginIdInput.trim() || !password.trim())) {
+      setError("ログインIDとパスワードを入力してください。");
+      setLoading(false);
+      return;
+    }
+
     try {
       let finalLoginId = loginIdInput;
       
-      // 🚀 @が含まれていない場合は「電話番号」として扱う
+      // @が含まれていない場合は「電話番号」として扱う
       if (!loginIdInput.includes('@')) {
         if (isSignUp) {
           // 一般ユーザーが電話番号で新規登録しようとした場合は弾く
@@ -70,8 +82,8 @@ export const Login = () => {
       if (isSignUp) {
         // 新規登録（メールアドレスのみ）
         const result = await createUserWithEmailAndPassword(auth, finalLoginId, password);
-        await updateProfile(result.user, { displayName: displayName });
-        await createUserData(result.user, displayName);
+        await updateProfile(result.user, { displayName: displayName.trim() });
+        await createUserData(result.user, displayName.trim());
         alert("アカウントを作成しました。管理者の承認をお待ちください。");
       } else {
         // ログイン（メールアドレス or 変換済み電話番号）
@@ -111,7 +123,9 @@ export const Login = () => {
           <form onSubmit={handleEmailAuth} className="space-y-4 mb-6">
             {isSignUp && (
               <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">お名前</label>
+                <label className="block text-sm font-bold text-gray-700 mb-1">
+                  お名前 <span className="text-red-500">*</span>
+                </label>
                 <div className="relative">
                   <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500" placeholder="農園 太郎" required={isSignUp} />
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center"><UserPlus className="h-4 w-4 text-gray-400" /></div>
@@ -119,13 +133,12 @@ export const Login = () => {
               </div>
             )}
             <div>
-              {/* 🚀 ラベルとプレースホルダー、type属性を修正 */}
               <label className="block text-sm font-bold text-gray-700 mb-1">
-                {isSignUp ? 'メールアドレス' : 'ログインID (メール または 電話番号)'}
+                {isSignUp ? 'メールアドレス' : 'ログインID (メール または 電話番号)'} <span className="text-red-500">*</span>
               </label>
               <div className="relative">
                 <input 
-                  type="text" // 🚀 type="email" から変更して電話番号も入れられるようにしました
+                  type="text" 
                   value={loginIdInput} 
                   onChange={(e) => setLoginIdInput(e.target.value)} 
                   className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500" 
@@ -133,13 +146,14 @@ export const Login = () => {
                   required 
                 />
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center">
-                  {/* 電話番号っぽければ電話アイコン、そうでなければメールアイコンに変化します */}
                   {loginIdInput.includes('@') || loginIdInput === '' ? <Mail className="h-4 w-4 text-gray-400" /> : <Phone className="h-4 w-4 text-gray-400" />}
                 </div>
               </div>
             </div>
             <div>
-              <label className="block text-sm font-bold text-gray-700 mb-1">パスワード</label>
+              <label className="block text-sm font-bold text-gray-700 mb-1">
+                パスワード <span className="text-red-500">*</span>
+              </label>
               <div className="relative">
                 <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500" placeholder="••••••••" required />
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center"><Lock className="h-4 w-4 text-gray-400" /></div>
@@ -153,7 +167,7 @@ export const Login = () => {
           </form>
 
           <div className="text-center mb-6">
-            <button onClick={() => { setIsSignUp(!isSignUp); setError(null); }} className="text-sm text-green-600 font-bold hover:underline">
+            <button type="button" onClick={() => { setIsSignUp(!isSignUp); setError(null); }} className="text-sm text-green-600 font-bold hover:underline">
               {isSignUp ? '既にアカウントをお持ちの方はこちら' : '初めての方はこちら（新規登録）'}
             </button>
           </div>
@@ -163,7 +177,7 @@ export const Login = () => {
             <div className="relative flex justify-center text-sm"><span className="px-2 bg-white text-gray-400">またはGoogleでログイン</span></div>
           </div>
 
-          <button onClick={handleGoogleLogin} disabled={loading} className="w-full flex justify-center items-center py-3 border border-gray-300 rounded-xl font-bold text-gray-700 bg-white hover:bg-gray-50 transition-all shadow-sm">
+          <button type="button" onClick={handleGoogleLogin} disabled={loading} className="w-full flex justify-center items-center py-3 border border-gray-300 rounded-xl font-bold text-gray-700 bg-white hover:bg-gray-50 transition-all shadow-sm">
             <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="" className="w-5 h-5 mr-2" />
             Googleアカウントを使用
           </button>

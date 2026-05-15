@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, doc, updateDoc, deleteDoc, onSnapshot, setDoc } from 'firebase/firestore'; // 🚀 setDocを追加
-import { ArrowLeft, UserCog, Edit, Trash2, X, ShieldCheck, Mail, Wallet, Plus, CheckCircle, UserPlus, Phone } from 'lucide-react'; // 🚀 UserPlus, Phoneを追加
-import { db, auth } from '../firebase'; // 🚀 authを追加
-import { initializeApp, deleteApp } from 'firebase/app'; // 🚀 管理者がログアウトしないための裏技用
+import { collection, doc, updateDoc, deleteDoc, onSnapshot, setDoc } from 'firebase/firestore'; 
+import { ArrowLeft, UserCog, Edit, Trash2, X, ShieldCheck, Mail, Wallet, Plus, CheckCircle, UserPlus, Phone } from 'lucide-react'; 
+import { db, auth } from '../firebase'; 
+import { initializeApp, deleteApp } from 'firebase/app'; 
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 
 export const UserManagement = () => {
@@ -11,11 +11,14 @@ export const UserManagement = () => {
   const [usersList, setUsersList] = useState([]);
   const [groupsList, setGroupsList] = useState([]);
   const [editingUser, setEditingUser] = useState(null);
-  const [currentUserRole, setCurrentUserRole] = useState('reporter');
+  const [currentUserRole, setCurrentUserRole] = useState('reporter'); 
 
-  // 🚀 新規ユーザー登録用のState
+  // 新規ユーザー登録用のState
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  // 🚀 登録完了メッセージ用のStateを追加
+  const [successModal, setSuccessModal] = useState({ show: false, loginId: '', password: '' });
+
   const [newUser, setNewUser] = useState({
     displayName: '',
     phone: '',
@@ -27,7 +30,6 @@ export const UserManagement = () => {
   });
 
   useEffect(() => {
-    // 現在のログインユーザーの権限を取得（新規追加ボタンの表示制御のため）
     const fetchRole = async () => {
       if (auth.currentUser) {
         onSnapshot(doc(db, 'users', auth.currentUser.uid), (doc) => {
@@ -55,7 +57,9 @@ export const UserManagement = () => {
         groupIds: editingUser.groupIds,
         canEditOwn: editingUser.canEditOwn || false,
         canEditGroup: editingUser.canEditGroup || false,
+        
         primaryBankAccount: editingUser.primaryBankAccount || 'bank1',
+        
         bank1IsYucho: editingUser.bank1IsYucho || false,
         bank1Code: editingUser.bank1Code || '',
         bank1Name: editingUser.bank1Name || '',
@@ -65,6 +69,7 @@ export const UserManagement = () => {
         bank1Number: editingUser.bank1Number || '',
         bank1Holder: editingUser.bank1Holder || '',
         bank1HolderKana: editingUser.bank1HolderKana || '',
+        
         bank2Enabled: editingUser.bank2Enabled || false,
         bank2IsYucho: editingUser.bank2IsYucho || false,
         bank2Code: editingUser.bank2Code || '',
@@ -90,7 +95,6 @@ export const UserManagement = () => {
     }
   };
 
-  // 🚀 電話番号による新規ユーザー作成（バックグラウンド処理）
   const handleCreateUser = async (e) => {
     e.preventDefault();
     if (!newUser.displayName || !newUser.phone || !newUser.password) {
@@ -104,21 +108,17 @@ export const UserManagement = () => {
 
     setIsCreating(true);
     try {
-      // 1. 電話番号のハイフンを抜き、架空のメールアドレスを作成
       const cleanPhone = newUser.phone.replace(/[^0-9]/g, '');
       const dummyEmail = `${cleanPhone}@kamata.local`;
 
-      // 2. 現在の管理者がログアウトしないように、一時的なFirebaseアプリを生成してユーザー登録
       const tempApp = initializeApp(auth.app.options, `temp_${Date.now()}`);
       const tempAuth = getAuth(tempApp);
-      
       const userCredential = await createUserWithEmailAndPassword(tempAuth, dummyEmail, newUser.password);
       
-      // 3. 成功したらFirestoreにユーザー情報を書き込む
       await setDoc(doc(db, 'users', userCredential.user.uid), {
         displayName: newUser.displayName,
-        email: dummyEmail, // 連絡用ではなくログインIDとして保存
-        isPhoneAccount: true, // 電話番号アカウントである目印
+        email: dummyEmail, 
+        isPhoneAccount: true, 
         role: newUser.role,
         groupIds: newUser.groupIds,
         canEditOwn: newUser.canEditOwn,
@@ -126,10 +126,10 @@ export const UserManagement = () => {
         createdAt: new Date()
       });
 
-      // 4. 一時アプリを削除して完了
       await deleteApp(tempApp);
       
-      alert("ユーザーを作成しました！\nログインID: " + cleanPhone + "\nパスワード: " + newUser.password);
+      // 🚀 alert をやめて専用のモーダルを表示
+      setSuccessModal({ show: true, loginId: cleanPhone, password: newUser.password });
       setIsAddingUser(false);
       setNewUser({ displayName: '', phone: '', password: '', role: 'reporter', groupIds: [], canEditOwn: false, canEditGroup: false });
     } catch (error) {
@@ -166,6 +166,45 @@ export const UserManagement = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
+      
+      {/* 🚀 新しく追加した「ユーザー作成完了」の専用モーダル */}
+      {successModal.show && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-6 flex flex-col items-center text-center">
+              <div className="w-14 h-14 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center mb-4">
+                <CheckCircle size={32} />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-4">ユーザーを作成しました！</h3>
+              
+              <div className="w-full bg-gray-50 border border-gray-200 rounded-xl p-4 text-left space-y-3">
+                <div>
+                  <span className="text-xs font-bold text-gray-500 block mb-0.5">ログインID (電話番号)</span>
+                  <span className="text-lg font-mono font-bold text-purple-700 tracking-wider">{successModal.loginId}</span>
+                </div>
+                <div className="h-px bg-gray-200 w-full"></div>
+                <div>
+                  <span className="text-xs font-bold text-gray-500 block mb-0.5">パスワード</span>
+                  <span className="text-lg font-mono font-bold text-gray-800 tracking-wider">{successModal.password}</span>
+                </div>
+              </div>
+              
+              <p className="text-xs text-gray-500 mt-5 font-bold">
+                ※この情報をユーザーにお伝えください。<br/>（スクリーンショット推奨）
+              </p>
+            </div>
+            <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-center">
+              <button
+                onClick={() => setSuccessModal({ show: false, loginId: '', password: '' })}
+                className="w-full py-3 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 transition-all shadow-md active:scale-95"
+              >
+                確認して閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <header className="bg-white shadow-sm px-4 py-3 flex items-center sticky top-0 z-30">
         <button onClick={() => navigate('/dashboard')} className="mr-4 text-gray-500 hover:text-gray-700">
           <ArrowLeft size={24} />
@@ -178,7 +217,6 @@ export const UserManagement = () => {
 
       <main className="p-4 max-w-6xl mx-auto mt-4">
         
-        {/* 🚀 管理者のみに表示される「新規ユーザー追加」ボタン */}
         {currentUserRole === 'admin' && (
           <div className="mb-4 flex justify-end">
             <button 
@@ -209,7 +247,6 @@ export const UserManagement = () => {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {usersList.map((user) => {
-                  // 電話番号アカウントの場合は「@kamata.local」を隠して表示する
                   const displayId = user.isPhoneAccount && user.email 
                     ? user.email.replace('@kamata.local', '') 
                     : user.email;
@@ -239,6 +276,16 @@ export const UserManagement = () => {
                       }`}>
                         {getRoleLabel(user.role)}
                       </span>
+                      {user.role === 'reporter' && user.canEditOwn && (
+                        <span className="ml-2 px-2 py-0.5 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded text-[9px] font-bold">
+                          自活 編集可
+                        </span>
+                      )}
+                      {user.role === 'reporter' && user.canEditGroup && (
+                        <span className="ml-2 px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded text-[9px] font-bold">
+                          同一グループ 編集可
+                        </span>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-xs text-gray-600">
                       {(user.groupIds || []).map(gid => {
@@ -260,9 +307,9 @@ export const UserManagement = () => {
         </div>
       </main>
 
-      {/* 🚀 新規ユーザー追加モーダル */}
+      {/* 新規ユーザー追加モーダル */}
       {isAddingUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh]">
             <div className="flex justify-between items-center p-4 border-b shrink-0 bg-purple-50">
               <h2 className="text-lg font-bold text-purple-900 flex items-center"><UserPlus size={20} className="mr-2"/> 新規ユーザー追加</h2>
@@ -337,7 +384,7 @@ export const UserManagement = () => {
         </div>
       )}
 
-      {/* 以下、既存の編集モーダル */}
+      {/* ユーザー編集モーダル */}
       {editingUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh]">
@@ -374,7 +421,7 @@ export const UserManagement = () => {
                 <p className="text-[10px] text-gray-400 mt-1 text-right">※システム内部のIDとして使用されているため、変更できません。</p>
               </div>
 
-              {/* 口座情報は既存のまま */}
+              {/* 口座情報 */}
               <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-5">
                 <h3 className="text-sm font-bold text-gray-700 flex items-center border-b border-gray-200 pb-2">
                   <Wallet size={16} className="mr-1.5 text-gray-500" />
