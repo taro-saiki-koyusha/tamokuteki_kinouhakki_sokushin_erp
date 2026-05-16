@@ -561,12 +561,27 @@ export const ActivityForm = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">活動場所</label>
-                  <select name="location" value={formData.location} onChange={handleChange} disabled={isViewMode} className={inputClass} required>
-                    <option value="">選択してください</option>
-                    <option value="鎌田排水機場用地">鎌田排水機場用地</option>
-                    <option value="内郷地区水路">内郷地区水路</option>
-                    <option value="その他">その他</option>
-                  </select>
+                  <input 
+                    type="text" 
+                    name="location" 
+                    list="location-list"
+                    value={formData.location} 
+                    onChange={handleChange} 
+                    disabled={isViewMode} 
+                    className={inputClass} 
+                    placeholder="例：鎌田排水機場用地、山田さんの田んぼ横" 
+                    required 
+                  />
+                  <datalist id="location-list">
+                    {/* 💡 ここによく使う場所を書いておくと、入力時に候補として出ます */}
+                    <option value="鎌田地区農道" />
+                    <option value="鎌田地区水路" />
+                    <option value="鎌田地区ポンプ第1場" />
+                    <option value="鎌田地区ポンプ第2場" />
+                    <option value="鎌田地区ポンプ第3場" />
+                    <option value="鎌田地区排水機場" />
+                    <option value="内郷地区水路" />
+                  </datalist>
                 </div>
               </div>
 
