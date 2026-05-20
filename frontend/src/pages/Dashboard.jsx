@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown } from 'lucide-react';
+import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link } from 'lucide-react'; 
 import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, doc, getDoc, deleteDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -167,6 +167,18 @@ export const Dashboard = () => {
     }
   };
 
+  // 🚀 コピーするURLの生成規則をクエリから綺麗なスラッシュ区切りパスに修正しました
+  const handleCopyLink = (activity, e) => {
+    e.stopPropagation(); 
+    const link = `${window.location.origin}/activity-form/${activity.id}`;
+    navigator.clipboard.writeText(link).then(() => {
+      alert("この活動の専用リンクをコピーしました！\nメールやLINE等に貼り付けて共有できます。");
+    }).catch(err => {
+      console.error("コピー失敗:", err);
+      alert("リンクのコピーに失敗しました。");
+    });
+  };
+
   const handleExportSingleReport = async (activity) => {
     setExportingId(activity.id); 
     try {
@@ -174,11 +186,12 @@ export const Dashboard = () => {
       if (!response.ok) throw new Error('テンプレートが見つかりません');
       const arrayBuffer = await response.arrayBuffer();
       const workbook = await XlsxPopulate.fromDataAsync(arrayBuffer);
-      const sheet1 = workbook.sheet('活動報告書') || workbook.sheets()[0];
       const [startH, startM] = activity.startTime.split(':').map(Number);
       const [endH, endM] = activity.endTime.split(':').map(Number);
       let duration = (endH + endM / 60) - (startH + startM / 60);
       if (duration < 0) duration += 24;
+      
+      const sheet1 = workbook.sheet('活動報告書') || workbook.sheets()[0];
       sheet1.cell('AH3').value(activity.reportNo || ''); 
       sheet1.cell('A7').value(activity.date); 
       sheet1.cell('C7').value(activity.startTime); 
@@ -257,36 +270,38 @@ export const Dashboard = () => {
                          (userRole === 'reporter' && canEditGroup && isInSameGroup);
 
     return (
-      <div onClick={() => navigate('/activity-form', { state: { editData: activity, isViewMode: true } })} className="bg-white rounded-2xl shadow-sm border-l-4 border-green-500 p-4 cursor-pointer hover:shadow-md transition-all flex flex-col h-full relative group">
-        <div className="absolute top-3 right-3 flex flex-col items-end space-y-1.5 z-10">
-          <div className="flex space-x-2">
-            <span className={`text-[10px] px-2 py-1 rounded-md font-bold border whitespace-nowrap ${
-              planTypeLabel === '当初計画' ? 'bg-blue-50 text-blue-600 border-blue-100' :
-              planTypeLabel === '期中追加' ? 'bg-orange-50 text-orange-600 border-orange-100' :
-              'bg-red-50 text-red-600 border-red-100'
-            }`}>
-              {planTypeLabel}
-            </span>
-            <span className={`text-[10px] px-2 py-1 rounded-md font-bold border whitespace-nowrap ${statusLabel === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-600 border-green-100'}`}>
-              {statusLabel}
-            </span>
-            {canDeleteAct && (
-              <button onClick={(e) => handleDeleteClick(activity.id, e)} className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="この実績を削除">
-                <Trash2 size={16} />
-              </button>
-            )}
-          </div>
-          {/* 🚀 必須作業のバッジ */}
-          {activity.isEssential && (
-            <span className="text-[10px] px-2 py-1 rounded-md font-bold border whitespace-nowrap bg-yellow-50 text-yellow-700 border-yellow-200">
-              必須作業
-            </span>
+      <div onClick={() => navigate(`/activity-form/${activity.id}`, { state: { editData: activity, isViewMode: true } })} className="bg-white rounded-2xl shadow-sm border-l-4 border-green-500 p-4 cursor-pointer hover:shadow-md transition-all flex flex-col h-full relative group">
+        <div className="absolute top-3 right-3 flex items-center space-x-1.5 z-10">
+          <span className={`text-[10px] px-2 py-1 rounded-md font-bold border whitespace-nowrap ${
+            planTypeLabel === '当初計画' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+            planTypeLabel === '期中追加' ? 'bg-orange-50 text-orange-600 border-orange-100' :
+            'bg-red-50 text-red-600 border-red-100'
+          }`}>
+            {planTypeLabel}
+          </span>
+          <span className={`text-[10px] px-2 py-1 rounded-md font-bold border whitespace-nowrap ${statusLabel === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-600 border-green-100'}`}>
+            {statusLabel}
+          </span>
+          
+          <button onClick={(e) => handleCopyLink(activity, e)} className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-md transition-colors" title="リンクをコピー">
+            <Link size={15} />
+          </button>
+
+          {canDeleteAct && (
+            <button onClick={(e) => handleDeleteClick(activity.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="この実績を削除">
+              <Trash2 size={16} />
+            </button>
           )}
         </div>
         
-        <h3 className="font-bold text-lg text-gray-900 mb-2 pr-40 leading-tight mt-1">{activity.activityType || '内容未入力'}</h3>
+        <div className="flex flex-col items-start space-y-1 mt-1">
+          <h3 className="font-bold text-lg text-gray-900 leading-tight pr-40">{activity.activityType || '内容未入力'}</h3>
+          {activity.isEssential && (
+            <span className="text-[9px] bg-yellow-50 text-yellow-700 border border-yellow-200 px-1.5 py-0.5 rounded font-bold">必須作業</span>
+          )}
+        </div>
         
-        <div className="space-y-1.5 text-xs text-gray-600 mb-3 flex-grow">
+        <div className="space-y-1.5 text-xs text-gray-600 mb-3 mt-3 flex-grow">
           <div className="flex items-center">
             {groupInfo ? (
               <span className="bg-gray-100 text-gray-600 text-[10px] px-2 py-1 rounded-md font-bold mb-1">{groupInfo.name}</span>
@@ -325,7 +340,7 @@ export const Dashboard = () => {
     return (
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[1300px]">
+          <table className="w-full text-left border-collapse min-w-[1350px]">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200 text-sm text-gray-700">
                 <th onClick={toggleDateSort} className="p-3 font-bold w-32 cursor-pointer hover:bg-gray-200 transition-colors select-none group whitespace-nowrap" title="日付で並び替え">
@@ -335,7 +350,7 @@ export const Dashboard = () => {
                   </div>
                 </th>
                 <th className="p-3 font-bold w-20 text-center whitespace-nowrap">状態</th>
-                <th className="p-3 font-bold w-24 text-center whitespace-nowrap">区分</th> {/* 🚀 幅を少し拡張 */}
+                <th className="p-3 font-bold w-24 text-center whitespace-nowrap">区分</th>
                 <th className="p-3 font-bold w-24 whitespace-nowrap">報告書NO</th>
                 <th className="p-3 font-bold w-36 whitespace-nowrap">グループ</th>
                 <th className="p-3 font-bold w-40 whitespace-nowrap">活動場所</th>
@@ -348,6 +363,7 @@ export const Dashboard = () => {
                 <th className="p-3 font-bold w-32 text-center whitespace-nowrap">更新日時</th>
 
                 <th className="p-3 font-bold w-12 text-center whitespace-nowrap">写真</th>
+                <th className="p-3 font-bold w-16 text-center whitespace-nowrap">リンク</th> 
                 {(userRole === 'admin' || userRole === 'manager') && <th className="p-3 font-bold w-36 text-center whitespace-nowrap">出力</th>}
                 {showDeleteColumn && <th className="p-3 font-bold w-16 text-center whitespace-nowrap">削除</th>}
               </tr>
@@ -372,7 +388,7 @@ export const Dashboard = () => {
                 const updaterName = act.updatedBy ? (systemUsers.find(u => u.id === act.updatedBy)?.displayName || '-') : '-';
 
                 return (
-                  <tr key={act.id} onClick={() => navigate('/activity-form', { state: { editData: act, isViewMode: true } })} className="border-b border-gray-100 hover:bg-green-50 cursor-pointer transition-colors group/row">
+                  <tr key={act.id} onClick={() => navigate(`/activity-form/${act.id}`, { state: { editData: act, isViewMode: true } })} className="border-b border-gray-100 hover:bg-green-50 cursor-pointer transition-colors group/row">
                     <td className="p-3 text-sm text-gray-700 whitespace-nowrap">{act.date}</td>
                     
                     <td className="p-3 text-center whitespace-nowrap">
@@ -381,7 +397,6 @@ export const Dashboard = () => {
                       </span>
                     </td>
 
-                    {/* 🚀 区分セルの中に必須フラグの表示も追加 */}
                     <td className="p-3 text-center whitespace-nowrap">
                       <div className="flex flex-col items-center space-y-1">
                         <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border whitespace-nowrap ${
@@ -392,7 +407,7 @@ export const Dashboard = () => {
                           {planTypeLabel}
                         </span>
                         {act.isEssential && (
-                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold border whitespace-nowrap bg-yellow-50 text-yellow-700 border-yellow-200">
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold border bg-yellow-50 text-yellow-700 border-yellow-200">
                             必須作業
                           </span>
                         )}
@@ -413,6 +428,13 @@ export const Dashboard = () => {
                     <td className="p-3 text-center whitespace-nowrap">
                       {hasImage ? <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded text-[9px] font-bold">あり</span> : <span className="text-gray-300 text-[10px]">-</span>}
                     </td>
+
+                    <td className="p-3 text-center whitespace-nowrap">
+                      <button onClick={(e) => handleCopyLink(act, e)} className="p-1.5 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded transition-colors" title="リンクをコピー">
+                        <Link size={14} />
+                      </button>
+                    </td>
+
                     {canExport && (
                       <td className="p-3 whitespace-nowrap">
                         <div className="flex gap-1 justify-center">

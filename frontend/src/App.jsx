@@ -14,7 +14,11 @@ function App() {
       <Routes>
         <Route path="/" element={<Login />} />
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/activity-form" element={<ActivityForm />} /> 
+        
+        {/* 🚀 IDなし(新規登録) と IDあり(個別リンク表示) の両方を共存させます */}
+        <Route path="/activity-form" element={<ActivityForm />} />
+        <Route path="/activity-form/:id" element={<ActivityForm />} />
+        
         <Route path="/bulk-activity" element={<BulkActivityForm />} />
         <Route path="/groups" element={<GroupManagement />} />
         <Route path="/users" element={<UserManagement />} />

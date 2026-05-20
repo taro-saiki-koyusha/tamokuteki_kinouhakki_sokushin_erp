@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2, Calculator, Package, Plus, CheckCircle, Copy, ListChecks, MessageSquare, Download } from 'lucide-react';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
+import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2, Calculator, Package, Plus, CheckCircle, Copy, ListChecks, MessageSquare, Download, Link as LinkIcon } from 'lucide-react';
 import { collection, addDoc, doc, updateDoc, serverTimestamp, deleteDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -19,8 +19,8 @@ const ACTIVITY_ITEMS = [
   { id: "28", name: "年度活動計画の策定" }, { id: "29", name: "機能診断・補修技術等に関する研修" }, { id: "30", name: "農用地の軽微な補修等" },
   { id: "31", name: "水路の軽微な補修等" }, { id: "32", name: "農道の軽微な補修等" }, { id: "33", name: "ため池の軽微な補修等" },
   { id: "34", name: "生物多様性保全計画の策定" }, { id: "35", name: "水質保全計画、農地保全計画の策定" }, { id: "36", name: "景観形成計画、生活環境保全計画の策定" },
-  { id: "37", name: "水田貯留計画、地下水かん養計画の策定" }, { id: "38", name: "資源循環計画の策定" }, { id: "39", name: "生物の生息状況の把握（生態系保全）" },
-  { id: "40", name: "外来種の駆除（生態系保全）" }, { id: "41", name: "その他（生態系保全）" }, { id: "42", name: "水質モニタリングの実施・記録管理（水質保全）" },
+  { id: "37", name: "水田貯留機能向上活動（水田貯留機能増進・地下水かん養）" }, { id: "38", name: "資源循環計画の策定" }, { id: "39", name: "生物の生息状況の把握（生態系保全）" },
+  { id: "40", name: "外来種の駆除（生態系保全）" }, { id: "41", name: "資源維持支払（その他）" }, { id: "42", name: "水質モニタリングの実施・記録管理（水質保全）" },
   { id: "43", name: "畑からの土砂流出対策（水質保全）" }, { id: "44", name: "その他（水質保全）" }, { id: "45", name: "植栽等の景観形成活動（景観形成・生活環境保全）" },
   { id: "46", name: "施設等の定期的な巡回点検・清掃（景観形成・生活環境保全）" }, { id: "47", name: "その他（景観形成・生活環境保全）" }, { id: "48", name: "水田の貯留機能向上活動（水田貯留機能増進・地下水かん養）" },
   { id: "49", name: "地下水かん養活動、水源かん養林の保全（水田貯留機能増進・地下水かん養）" }, { id: "50", name: "地域資源の活用・資源循環活動（資源循環）" }, { id: "51", name: "啓発・普及活動" },
@@ -56,9 +56,11 @@ const formatTimestamp = (timestamp) => {
 export const ActivityForm = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const editData = location.state?.editData;
+  const { id } = useParams();
   
+  const [editData, setEditData] = useState(location.state?.editData || null);
   const [isViewMode, setIsViewMode] = useState(location.state?.isViewMode || false);
+  const [isLoadingDirect, setIsLoadingDirect] = useState(false);
   
   const [membersList, setMembersList] = useState([]);
   const [machinesList, setMachinesList] = useState([]);
@@ -73,58 +75,80 @@ export const ActivityForm = () => {
   const [canEditGroup, setCanEditGroup] = useState(false);
 
   const [enlargedImage, setEnlargedImage] = useState(null);
+  const [existingUrls, setExistingUrls] = useState([]);
+  const [newImageFiles, setNewImageFiles] = useState([]);
+  const [newPreviewUrls, setNewPreviewUrls] = useState([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
-  const [formData, setFormData] = useState(
-    editData ? {
-      status: editData.status || '実績入力済',
-      planType: editData.planType || '当初計画',
-      isEssential: editData.isEssential || false, // 🚀 補助金必須フラグを追加
-      groupId: editData.groupId || '',
-      date: editData.date || new Date().toISOString().split('T')[0],
-      startTime: editData.startTime || '08:00',
-      endTime: editData.endTime || '10:00',
-      location: editData.location || '',
-      activityType: editData.activityType || '',
-      activityNumbers: editData.activityNumbers || [], 
-      memo: editData.memo || '',
-      reportNo: editData.reportNo || ''
-    } : {
-      status: '実績入力済',
-      planType: '当初計画',
-      isEssential: false, // 🚀
-      groupId: '',
-      date: new Date().toISOString().split('T')[0],
-      startTime: '08:00',
-      endTime: '10:00',
-      location: '',
-      activityType: '',
-      activityNumbers: [],
-      memo: '',
-      reportNo: ''
-    }
-  );
+  const [formData, setFormData] = useState({
+    status: '実績入力済', planType: '当初計画', isEssential: false, groupId: '',
+    date: new Date().toISOString().split('T')[0], startTime: '08:00', endTime: '10:00',
+    location: '', activityType: '', activityNumbers: [], memo: '', reportNo: ''
+  });
+
+  const [participantDetails, setParticipantDetails] = useState([]);
+  const [materialDetails, setMaterialDetails] = useState([]); 
 
   useEffect(() => {
-    const unsubMembers = onSnapshot(collection(db, 'members'), (snapshot) => {
-      setMembersList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-    const unsubMachines = onSnapshot(collection(db, 'machines'), (snapshot) => {
-      setMachinesList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-    const unsubMaterials = onSnapshot(collection(db, 'materials'), (snapshot) => {
-      setMaterialsList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-    const unsubscribeGroups = onSnapshot(collection(db, 'groups'), (snapshot) => {
-      setGroupsList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
-      setSystemUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+    if (id && !location.state?.editData) {
+      setIsLoadingDirect(true);
+      const fetchActivityDirect = async () => {
+        try {
+          const docRef = doc(db, 'activities', id);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            setEditData({ id: docSnap.id, ...data });
+            setIsViewMode(true);
+            setFormData({
+              status: data.status || '実績入力済',
+              planType: data.planType || '当初計画',
+              isEssential: data.isEssential || false,
+              groupId: data.groupId || '',
+              date: data.date || '',
+              startTime: data.startTime || '08:00',
+              endTime: data.endTime || '10:00',
+              location: data.location || '',
+              activityType: data.activityType || '',
+              activityNumbers: data.activityNumbers || [], 
+              memo: data.memo || '',
+              reportNo: data.reportNo || ''
+            });
+            setParticipantDetails(data.participantDetails || []);
+            setMaterialDetails(data.materialDetails || []); 
+            setExistingUrls(data.imageUrls || (data.imageUrl ? [data.imageUrl] : []));
+          } else {
+            alert('指定された活動実績が見つかりません。');
+            navigate('/dashboard');
+          }
+        } catch (error) { console.error(error); } finally { setIsLoadingDirect(false); }
+      };
+      fetchActivityDirect();
+    } else if (location.state?.editData) {
+      const d = location.state.editData;
+      setFormData({
+        status: d.status || '実績入力済', planType: d.planType || '当初計画', isEssential: d.isEssential || false, groupId: d.groupId || '',
+        date: d.date, startTime: d.startTime, endTime: d.endTime, location: d.location, activityType: d.activityType,
+        activityNumbers: d.activityNumbers || [], memo: d.memo || '', reportNo: d.reportNo || ''
+      });
+      setParticipantDetails(d.participantDetails || []);
+      setMaterialDetails(d.materialDetails || []); 
+      setExistingUrls(d.imageUrls || (d.imageUrl ? [d.imageUrl] : []));
+    }
+  }, [id, location.state, navigate]);
 
-    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
-      setCurrentUser(user);
-      if (user) {
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
+  useEffect(() => {
+    const unsubMembers = onSnapshot(collection(db, 'members'), (s) => setMembersList(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubMachines = onSnapshot(collection(db, 'machines'), (s) => setMachinesList(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubMaterials = onSnapshot(collection(db, 'materials'), (s) => setMaterialsList(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubGroups = onSnapshot(collection(db, 'groups'), (s) => setGroupsList(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubUsers = onSnapshot(collection(db, 'users'), (s) => setSystemUsers(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubAuth = onAuthStateChanged(auth, async (u) => {
+      setCurrentUser(u);
+      if (u) {
+        const userDoc = await getDoc(doc(db, 'users', u.uid));
         if (userDoc.exists()) {
           const data = userDoc.data();
           setUserRole(data.role || 'reporter');
@@ -132,7 +156,7 @@ export const ActivityForm = () => {
           setCanEditOwn(data.canEditOwn || false);
           setCanEditGroup(data.canEditGroup || false); 
 
-          if (!editData && (data.groupIds || []).length > 0) {
+          if (!id && !location.state?.editData && (data.groupIds || []).length > 0) {
             setFormData(prev => ({ ...prev, groupId: data.groupIds[0] }));
           }
         } else {
@@ -140,16 +164,10 @@ export const ActivityForm = () => {
         }
       }
     });
-    return () => {
-      unsubscribeAuth(); unsubscribeGroups(); unsubMembers(); unsubMachines(); unsubMaterials(); unsubUsers();
-    };
-  }, [editData]);
-
-  const [participantDetails, setParticipantDetails] = useState(editData?.participantDetails || []);
-  const [materialDetails, setMaterialDetails] = useState(editData?.materialDetails || []); 
+    return () => { unsubAuth(); unsubGroups(); unsubMembers(); unsubMachines(); unsubMaterials(); unsubUsers(); };
+  }, [id, location.state]);
 
   const [successModal, setSuccessModal] = useState({ show: false, message: '' });
-  
   const [showRosterModal, setShowRosterModal] = useState(false);
   const [selectedRosterIds, setSelectedRosterIds] = useState([]);
 
@@ -176,34 +194,23 @@ export const ActivityForm = () => {
     newList[index][field] = value;
     if (field === 'machineId' && value !== '' && newList[index].machineTime === 0) newList[index].machineTime = newList[index].workTime;
     if (field === 'machineId' && value === '') newList[index].machineTime = 0;
-    
     if (field === 'wageId' && value !== '') {
       const wage = membersList.find(m => m.id === value);
-      if (wage && wage.isAgri !== undefined) {
-        newList[index].isAgri = wage.isAgri;
-      }
+      if (wage && wage.isAgri !== undefined) newList[index].isAgri = wage.isAgri;
     }
-    
     setParticipantDetails(newList);
   };
   const removeParticipant = (index) => setParticipantDetails(participantDetails.filter((_, i) => i !== index));
 
-  const toggleRosterSelection = (id) => {
-    setSelectedRosterIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const toggleRosterSelection = (userId) => {
+    setSelectedRosterIds(prev => prev.includes(userId) ? prev.filter(x => x !== userId) : [...prev, userId]);
   };
 
   const applyRosterSelection = () => {
     const baseHours = calculateBaseHours();
-    const newParticipants = selectedRosterIds.map(id => {
-      const user = systemUsers.find(u => u.id === id); 
-      return {
-        participantName: user ? (user.displayName || '未設定') : '', 
-        wageId: '', 
-        isAgri: true, 
-        workTime: baseHours,
-        machineId: '',
-        machineTime: 0
-      };
+    const newParticipants = selectedRosterIds.map(userId => {
+      const user = systemUsers.find(u => u.id === userId); 
+      return { participantName: user ? (user.displayName || '未設定') : '', wageId: '', isAgri: true, workTime: baseHours, machineId: '', machineTime: 0 };
     });
     setParticipantDetails([...participantDetails, ...newParticipants]);
     setShowRosterModal(false);
@@ -256,26 +263,18 @@ export const ActivityForm = () => {
     return { totalPersonnelCost: pCost, totalMachineCost: mCost, totalMaterialCost: matCost };
   }, [participantDetails, materialDetails, membersList, machinesList, materialsList]);
 
-  const [existingUrls, setExistingUrls] = useState(editData?.imageUrls || (editData?.imageUrl ? [editData.imageUrl] : []));
-  const [newImageFiles, setNewImageFiles] = useState([]);
-  const [newPreviewUrls, setNewPreviewUrls] = useState([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
-  const handleActivityNumberToggle = (id) => {
+  const handleActivityNumberToggle = (activityId) => {
     setFormData(prev => {
-      const isSelected = prev.activityNumbers.includes(id);
-      if (isSelected) return { ...prev, activityNumbers: prev.activityNumbers.filter(num => num !== id) };
+      const isSelected = prev.activityNumbers.includes(activityId);
+      if (isSelected) return { ...prev, activityNumbers: prev.activityNumbers.filter(num => num !== activityId) };
       if (prev.activityNumbers.length >= 6) return prev; 
-      const newSelection = [...prev.activityNumbers, id];
+      const newSelection = [...prev.activityNumbers, activityId];
       newSelection.sort((a, b) => ACTIVITY_ITEMS.findIndex(item => item.id === a) - ACTIVITY_ITEMS.findIndex(item => item.id === b));
       return { ...prev, activityNumbers: newSelection };
     });
   };
-
   const handleImageChange = (e) => {
     const files = Array.from(e.target.files);
     if (files.length > 0) {
@@ -314,7 +313,7 @@ export const ActivityForm = () => {
     setFormData({
       status: editData.status || '実績入力済',
       planType: editData.planType || '当初計画',
-      isEssential: editData.isEssential || false, // 🚀
+      isEssential: editData.isEssential || false,
       groupId: editData.groupId || '', date: editData.date || '', startTime: editData.startTime || '', endTime: editData.endTime || '',
       location: editData.location || '', activityType: editData.activityType || '', activityNumbers: editData.activityNumbers || [],
       memo: editData.memo || '', reportNo: editData.reportNo || ''
@@ -330,6 +329,18 @@ export const ActivityForm = () => {
       try { await deleteDoc(doc(db, 'activities', editData.id)); navigate('/dashboard'); } 
       catch (error) { console.error(error); alert('削除エラー'); }
     }
+  };
+
+  // 🚀 個別の活動リンクをコピーする機能
+  const handleCopyLink = () => {
+    if (!editData?.id) return;
+    const link = `${window.location.origin}/activity-form/${editData.id}`;
+    navigator.clipboard.writeText(link).then(() => {
+      alert("この活動の専用リンクをコピーしました！\nメールやLINE等に貼り付けて共有できます。");
+    }).catch(err => {
+      console.error("コピー失敗:", err);
+      alert("リンクのコピーに失敗しました。");
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -402,10 +413,12 @@ export const ActivityForm = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20 md:pb-12 overflow-x-hidden w-full">
-      {isSubmitting && (
+      {(isSubmitting || isLoadingDirect) && (
         <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/70 backdrop-blur-sm">
           <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
-          <p className="text-blue-800 font-bold text-lg tracking-wider">データを保存しています...</p>
+          <p className="text-blue-800 font-bold text-lg tracking-wider">
+            {isLoadingDirect ? '共有された活動データを読み込んでいます...' : 'データを保存しています...'}
+          </p>
         </div>
       )}
 
@@ -507,6 +520,13 @@ export const ActivityForm = () => {
         </div>
         
         <div className="flex space-x-2 md:space-x-3">
+          {/* 🚀 追加：詳細画面からもリンクコピーできるようにボタンを配置 */}
+          {editData && (
+            <button type="button" onClick={handleCopyLink} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-purple-50 text-purple-600 rounded-lg font-bold hover:bg-purple-100 transition-colors text-sm md:text-base">
+              <LinkIcon size={18} className="md:mr-1.5" /> <span className="hidden md:inline">リンクをコピー</span>
+            </button>
+          )}
+
           {editData && isViewMode && canEditOrDelete && (
             <>
               <button type="button" onClick={() => setIsViewMode(false)} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-blue-50 text-blue-600 rounded-lg font-bold hover:bg-blue-100 transition-colors text-sm md:text-base"><Edit size={18} className="mr-1.5" /> 編集</button>
@@ -569,18 +589,17 @@ export const ActivityForm = () => {
                     onChange={handleChange} 
                     disabled={isViewMode} 
                     className={inputClass} 
-                    placeholder="例：鎌田排水機場用地、山田さんの田んぼ横" 
+                    placeholder="例：鎌田地区農道" 
                     required 
                   />
+                  {/* 🚀 復活させた活動場所のリスト */}
                   <datalist id="location-list">
-                    {/* 💡 ここによく使う場所を書いておくと、入力時に候補として出ます */}
                     <option value="鎌田地区農道" />
                     <option value="鎌田地区水路" />
                     <option value="鎌田地区ポンプ第1場" />
                     <option value="鎌田地区ポンプ第2場" />
                     <option value="鎌田地区ポンプ第3場" />
                     <option value="鎌田地区排水機場" />
-                    <option value="内郷地区水路" />
                   </datalist>
                 </div>
               </div>
@@ -588,7 +607,6 @@ export const ActivityForm = () => {
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                 <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Sprout className="w-5 h-5 mr-2 text-green-600" /> 活動内容</h2>
                 
-                {/* 🚀 必須フラグのチェックボックス */}
                 <div className="bg-yellow-50 p-3 rounded-xl border border-yellow-200">
                   <label className="flex items-center space-x-3 cursor-pointer">
                     <input 
