@@ -6,35 +6,8 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged } from 'firebase/auth';
 import { db, storage, auth } from '../firebase'; 
 
-const ACTIVITY_ITEMS = [
-  { id: "1", name: "点検" }, { id: "2", name: "年度活動計画の策定" }, { id: "3", name: "事務・組織運営等に関する研修、機械の安全使用に関する研修" },
-  { id: "4", name: "遊休農地発生防止のための保全管理" }, { id: "5", name: "畦畔・法面・防風林の草刈り" }, { id: "6", name: "鳥獣害防護柵等の保守管理" },
-  { id: "7", name: "水路の草刈り" }, { id: "8", name: "水路の泥上げ" }, { id: "9", name: "水路附帯施設の保守管理" },
-  { id: "10", name: "農道の草刈り" }, { id: "11", name: "農道側溝の泥上げ" }, { id: "12", name: "路面の維持" },
-  { id: "13", name: "ため池の草刈り" }, { id: "14", name: "ため池の泥上げ" }, { id: "15", name: "ため池附帯施設の保守管理" },
-  { id: "16", name: "異常気象時の対応" }, { id: "17", name: "農業者の検討会の開催" }, { id: "18", name: "農業者に対する意向調査、現地調査" },
-  { id: "19", name: "不在村地主との連絡体制の整備等" }, { id: "20", name: "集落外住民や地域住民との意見交換等" }, { id: "21", name: "地域住民等に対する意向調査等" },
-  { id: "22", name: "有識者等による研修会、検討会の開催" }, { id: "23", name: "その他" }, { id: "24", name: "農用地の機能診断" },
-  { id: "25", name: "水路の機能診断" }, { id: "26", name: "農道の機能診断" }, { id: "27", name: "ため池の機能診断" },
-  { id: "28", name: "年度活動計画の策定" }, { id: "29", name: "機能診断・補修技術等に関する研修" }, { id: "30", name: "農用地の軽微な補修等" },
-  { id: "31", name: "水路の軽微な補修等" }, { id: "32", name: "農道の軽微な補修等" }, { id: "33", name: "ため池の軽微な補修等" },
-  { id: "34", name: "生物多様性保全計画の策定" }, { id: "35", name: "水質保全計画、農地保全計画の策定" }, { id: "36", name: "景観形成計画、生活環境保全計画の策定" },
-  { id: "37", name: "水田貯留機能向上活動（水田貯留機能増進・地下水かん養）" }, { id: "38", name: "資源循環計画の策定" }, { id: "39", name: "生物の生息状況の把握（生態系保全）" },
-  { id: "40", name: "外来種の駆除（生態系保全）" }, { id: "41", name: "資源維持支払（その他）" }, { id: "42", name: "水質モニタリングの実施・記録管理（水質保全）" },
-  { id: "43", name: "畑からの土砂流出対策（水質保全）" }, { id: "44", name: "その他（水質保全）" }, { id: "45", name: "植栽等の景観形成活動（景観形成・生活環境保全）" },
-  { id: "46", name: "施設等の定期的な巡回点検・清掃（景観形成・生活環境保全）" }, { id: "47", name: "その他（景観形成・生活環境保全）" }, { id: "48", name: "水田の貯留機能向上活動（水田貯留機能増進・地下水かん養）" },
-  { id: "49", name: "地下水かん養活動、水源かん養林の保全（水田貯留機能増進・地下水かん養）" }, { id: "50", name: "地域資源の活用・資源循環活動（資源循環）" }, { id: "51", name: "啓発・普及活動" },
-  { id: "52", name: "遊休農地の有効活用" }, { id: "53", name: "鳥獣被害防止対策及び環境改善活動の強化" }, { id: "54", name: "地域住民による直営施工" },
-  { id: "55", name: "防災・減災力の強化" }, { id: "56", name: "農村環境保全活動の幅広い展開" }, { id: "57", name: "やすらぎ・福祉及び教育機能の活用" },
-  { id: "58", name: "農村文化の伝承を通じた農村コミュニティの強化" }, { id: "58-2", name: "広域活動組織における活動支援班による活動の実施" }, { id: "58-3", name: "水管理を通じた環境負荷低減活動の強化" },
-  { id: "59", name: "都道府県、市町村が特に認める活動" }, { id: "60", name: "広報活動・農村関係人口の拡大" }, { id: "61", name: "水路の補修" },
-  { id: "62", name: "水路の更新等" }, { id: "63", name: "農道の補修" }, { id: "64", name: "農道の更新等" },
-  { id: "65", name: "ため池の補修" }, { id: "66", name: "ため池（附帯施設）の更新等" }, { id: "100", name: "融雪剤の散布" },
-  { id: "101", name: "除排雪" }, { id: "102", name: "農用地の溝切り" }, { id: "103", name: "融雪剤の散布" },
-  { id: "104", name: "除排雪" }, { id: "105", name: "積雪被害防止" }, { id: "106", name: "配水操作" },
-  { id: "107", name: "融雪剤の散布" }, { id: "108", name: "除排雪" }, { id: "109", name: "農地に係る施設の補修・更新等" },
-  { id: "110", name: "排水桝等の補修・更新等" }, { id: "200", name: "事務処理" }, { id: "300", name: "会議" }
-];
+// 🚀 別ファイルから定数を読み込む
+import { ACTIVITY_ITEMS, LOCATION_OPTIONS } from '../constants';
 
 const formatTimestamp = (timestamp) => {
   if (!timestamp) return '-';
@@ -56,11 +29,11 @@ const formatTimestamp = (timestamp) => {
 export const ActivityForm = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { id } = useParams();
+  const { id } = useParams(); 
   
   const [editData, setEditData] = useState(location.state?.editData || null);
   const [isViewMode, setIsViewMode] = useState(location.state?.isViewMode || false);
-  const [isLoadingDirect, setIsLoadingDirect] = useState(false);
+  const [isLoadingDirect, setIsLoadingDirect] = useState(false); 
   
   const [membersList, setMembersList] = useState([]);
   const [machinesList, setMachinesList] = useState([]);
@@ -145,6 +118,7 @@ export const ActivityForm = () => {
     const unsubMaterials = onSnapshot(collection(db, 'materials'), (s) => setMaterialsList(s.docs.map(d => ({ id: d.id, ...d.data() }))));
     const unsubGroups = onSnapshot(collection(db, 'groups'), (s) => setGroupsList(s.docs.map(d => ({ id: d.id, ...d.data() }))));
     const unsubUsers = onSnapshot(collection(db, 'users'), (s) => setSystemUsers(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+    
     const unsubAuth = onAuthStateChanged(auth, async (u) => {
       setCurrentUser(u);
       if (u) {
@@ -275,6 +249,7 @@ export const ActivityForm = () => {
       return { ...prev, activityNumbers: newSelection };
     });
   };
+
   const handleImageChange = (e) => {
     const files = Array.from(e.target.files);
     if (files.length > 0) {
@@ -303,7 +278,7 @@ export const ActivityForm = () => {
       document.body.removeChild(a);
       window.URL.revokeObjectURL(blobUrl);
     } catch (error) {
-      console.error("画像のダウンロードに失敗しました:", error);
+      console.error("ダウンロード失敗:", error);
       window.open(url, '_blank');
     }
   };
@@ -311,9 +286,7 @@ export const ActivityForm = () => {
   const handleCancelEdit = () => {
     if (!editData) return;
     setFormData({
-      status: editData.status || '実績入力済',
-      planType: editData.planType || '当初計画',
-      isEssential: editData.isEssential || false,
+      status: editData.status || '実績入力済', planType: editData.planType || '当初計画', isEssential: editData.isEssential || false,
       groupId: editData.groupId || '', date: editData.date || '', startTime: editData.startTime || '', endTime: editData.endTime || '',
       location: editData.location || '', activityType: editData.activityType || '', activityNumbers: editData.activityNumbers || [],
       memo: editData.memo || '', reportNo: editData.reportNo || ''
@@ -331,16 +304,10 @@ export const ActivityForm = () => {
     }
   };
 
-  // 🚀 個別の活動リンクをコピーする機能
   const handleCopyLink = () => {
     if (!editData?.id) return;
     const link = `${window.location.origin}/activity-form/${editData.id}`;
-    navigator.clipboard.writeText(link).then(() => {
-      alert("この活動の専用リンクをコピーしました！\nメールやLINE等に貼り付けて共有できます。");
-    }).catch(err => {
-      console.error("コピー失敗:", err);
-      alert("リンクのコピーに失敗しました。");
-    });
+    navigator.clipboard.writeText(link).then(() => alert("リンクをコピーしました！")).catch(() => alert("コピー失敗"));
   };
 
   const handleSubmit = async (e) => {
@@ -417,7 +384,7 @@ export const ActivityForm = () => {
         <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/70 backdrop-blur-sm">
           <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
           <p className="text-blue-800 font-bold text-lg tracking-wider">
-            {isLoadingDirect ? '共有された活動データを読み込んでいます...' : 'データを保存しています...'}
+            {isLoadingDirect ? 'データを読み込んでいます...' : 'データを保存しています...'}
           </p>
         </div>
       )}
@@ -520,7 +487,6 @@ export const ActivityForm = () => {
         </div>
         
         <div className="flex space-x-2 md:space-x-3">
-          {/* 🚀 追加：詳細画面からもリンクコピーできるようにボタンを配置 */}
           {editData && (
             <button type="button" onClick={handleCopyLink} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-purple-50 text-purple-600 rounded-lg font-bold hover:bg-purple-100 transition-colors text-sm md:text-base">
               <LinkIcon size={18} className="md:mr-1.5" /> <span className="hidden md:inline">リンクをコピー</span>
@@ -592,14 +558,11 @@ export const ActivityForm = () => {
                     placeholder="例：鎌田地区農道" 
                     required 
                   />
-                  {/* 🚀 復活させた活動場所のリスト */}
+                  {/* 🚀 別ファイル（定数）から読み込んだ場所のリスト */}
                   <datalist id="location-list">
-                    <option value="鎌田地区農道" />
-                    <option value="鎌田地区水路" />
-                    <option value="鎌田地区ポンプ第1場" />
-                    <option value="鎌田地区ポンプ第2場" />
-                    <option value="鎌田地区ポンプ第3場" />
-                    <option value="鎌田地区排水機場" />
+                    {LOCATION_OPTIONS.map(loc => (
+                      <option key={loc} value={loc} />
+                    ))}
                   </datalist>
                 </div>
               </div>
@@ -638,6 +601,7 @@ export const ActivityForm = () => {
                       <div className="absolute z-40 mt-1 w-full bg-white border border-gray-200 shadow-2xl rounded-xl overflow-hidden">
                         <div className="p-2 border-b bg-gray-50 flex items-center"><Search size={16} className="text-gray-400 mr-2 ml-1" /><input type="text" placeholder="キーワード検索..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full min-w-0 box-border py-1.5 bg-transparent border-none focus:ring-0 text-sm" /></div>
                         <div className="max-h-60 overflow-y-auto p-2 space-y-1">
+                          {/* 🚀 別ファイル（定数）から読み込んだ活動項目リスト */}
                           {filteredItems.map(item => {
                             const isSelected = formData.activityNumbers.includes(item.id);
                             const isDisabled = !isSelected && formData.activityNumbers.length >= 6;
