@@ -167,7 +167,6 @@ export const Dashboard = () => {
     }
   };
 
-  // 🚀 コピーするURLの生成規則をクエリから綺麗なスラッシュ区切りパスに修正しました
   const handleCopyLink = (activity, e) => {
     e.stopPropagation(); 
     const link = `${window.location.origin}/activity-form/${activity.id}`;
@@ -339,8 +338,8 @@ export const Dashboard = () => {
 
     return (
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[1350px]">
+        <div className="overflow-x-auto relative">
+          <table className="w-full text-left border-collapse min-w-[1200px]">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200 text-sm text-gray-700">
                 <th onClick={toggleDateSort} className="p-3 font-bold w-32 cursor-pointer hover:bg-gray-200 transition-colors select-none group whitespace-nowrap" title="日付で並び替え">
@@ -356,16 +355,12 @@ export const Dashboard = () => {
                 <th className="p-3 font-bold w-40 whitespace-nowrap">活動場所</th>
                 <th className="p-3 font-bold w-20 whitespace-nowrap">項目番号</th>
                 <th className="p-3 font-bold whitespace-nowrap">活動内容</th>
-                
                 <th className="p-3 font-bold w-24 text-center whitespace-nowrap">登録者</th>
-                <th className="p-3 font-bold w-32 text-center whitespace-nowrap">登録日時</th>
-                <th className="p-3 font-bold w-24 text-center whitespace-nowrap">更新者</th>
-                <th className="p-3 font-bold w-32 text-center whitespace-nowrap">更新日時</th>
-
                 <th className="p-3 font-bold w-12 text-center whitespace-nowrap">写真</th>
-                <th className="p-3 font-bold w-16 text-center whitespace-nowrap">リンク</th> 
-                {(userRole === 'admin' || userRole === 'manager') && <th className="p-3 font-bold w-36 text-center whitespace-nowrap">出力</th>}
-                {showDeleteColumn && <th className="p-3 font-bold w-16 text-center whitespace-nowrap">削除</th>}
+                
+                <th className="p-3 font-bold w-48 text-center whitespace-nowrap sticky right-0 bg-gray-100 shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-200">
+                  操作
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -385,7 +380,6 @@ export const Dashboard = () => {
                                      (userRole === 'reporter' && canEditGroup && isInSameGroup);
 
                 const creatorName = systemUsers.find(u => u.id === act.createdBy)?.displayName || '-';
-                const updaterName = act.updatedBy ? (systemUsers.find(u => u.id === act.updatedBy)?.displayName || '-') : '-';
 
                 return (
                   <tr key={act.id} onClick={() => navigate(`/activity-form/${act.id}`, { state: { editData: act, isViewMode: true } })} className="border-b border-gray-100 hover:bg-green-50 cursor-pointer transition-colors group/row">
@@ -416,46 +410,40 @@ export const Dashboard = () => {
 
                     <td className="p-3 text-sm font-bold text-blue-600 whitespace-nowrap">{act.reportNo}</td>
                     <td className="p-3 text-xs whitespace-nowrap">{groupInfo ? groupInfo.name : <span className="text-red-500">未登録</span>}</td>
-                    <td className="p-3 text-xs text-gray-600 truncate max-w-[10rem]">{act.location}</td>
+                    <td className="p-3 text-xs text-gray-600 truncate max-w-[10rem]" title={act.location}>{act.location}</td>
                     <td className="p-3 text-xs font-bold text-green-600 whitespace-nowrap">{act.activityNumbers?.join(', ')}</td>
-                    <td className="p-3 text-sm font-bold text-gray-900 truncate max-w-[12rem]">{act.activityType}</td>
+                    <td className="p-3 text-sm font-bold text-gray-900 truncate max-w-[12rem]" title={act.activityType}>{act.activityType}</td>
                     
                     <td className="p-3 text-xs text-center text-gray-600 truncate max-w-[6rem]">{creatorName}</td>
-                    <td className="p-3 text-[10px] text-center text-gray-400 whitespace-nowrap">{formatTimestamp(act.createdAt)}</td>
-                    <td className="p-3 text-xs text-center text-gray-600 truncate max-w-[6rem]">{updaterName}</td>
-                    <td className="p-3 text-[10px] text-center text-gray-400 whitespace-nowrap">{formatTimestamp(act.updatedAt)}</td>
-
+                    
                     <td className="p-3 text-center whitespace-nowrap">
                       {hasImage ? <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded text-[9px] font-bold">あり</span> : <span className="text-gray-300 text-[10px]">-</span>}
                     </td>
 
-                    <td className="p-3 text-center whitespace-nowrap">
-                      <button onClick={(e) => handleCopyLink(act, e)} className="p-1.5 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded transition-colors" title="リンクをコピー">
-                        <Link size={14} />
-                      </button>
-                    </td>
+                    <td className="p-3 text-center whitespace-nowrap sticky right-0 bg-white group-hover/row:bg-green-50 transition-colors shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-100">
+                      <div className="flex gap-1.5 justify-center items-center">
+                        <button onClick={(e) => handleCopyLink(act, e)} className="p-1.5 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded transition-colors" title="リンクをコピー">
+                          <Link size={14} />
+                        </button>
 
-                    {canExport && (
-                      <td className="p-3 whitespace-nowrap">
-                        <div className="flex gap-1 justify-center">
-                          <button onClick={(e) => { e.stopPropagation(); handleExportSingleReport(act); }} disabled={isThisExporting} className={`px-2 py-1.5 rounded-lg font-bold text-[9px] flex items-center transition-colors ${isThisExporting ? 'bg-blue-400 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
-                            <FileSpreadsheet size={12} className="mr-1" />Excel
-                          </button>
-                          <button onClick={(e) => { e.stopPropagation(); handleDirectPrint(act); }} className="px-2 py-1.5 bg-white text-gray-700 border border-gray-200 rounded-lg font-bold text-[9px] flex items-center hover:bg-gray-50 transition-colors">
-                            <Printer size={12} className="mr-1" />PDF
-                          </button>
-                        </div>
-                      </td>
-                    )}
-                    {showDeleteColumn && (
-                      <td className="p-3 text-center whitespace-nowrap">
-                        {canDeleteAct && (
-                          <button onClick={(e) => handleDeleteClick(act.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors">
+                        {canExport && (
+                          <>
+                            <button onClick={(e) => { e.stopPropagation(); handleExportSingleReport(act); }} disabled={isThisExporting} className={`px-2 py-1.5 rounded-lg font-bold text-[9px] flex items-center transition-colors ${isThisExporting ? 'bg-blue-400 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`} title="Excel出力">
+                              <FileSpreadsheet size={12} className="mr-1" />Excel
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); handleDirectPrint(act); }} className="px-2 py-1.5 bg-white text-gray-700 border border-gray-300 rounded-lg font-bold text-[9px] flex items-center hover:bg-gray-50 transition-colors" title="PDF出力">
+                              <Printer size={12} className="mr-1" />PDF
+                            </button>
+                          </>
+                        )}
+
+                        {showDeleteColumn && canDeleteAct && (
+                          <button onClick={(e) => handleDeleteClick(act.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="削除">
                             <Trash2 size={14} />
                           </button>
                         )}
-                      </td>
-                    )}
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
@@ -553,8 +541,9 @@ export const Dashboard = () => {
               </div>
             )}
             
+            {/* 🚀 名称を「一括計画」から「一括登録」に変更 */}
             <button onClick={() => navigate('/bulk-activity')} className="flex items-center bg-blue-100 text-blue-700 border border-blue-200 px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm hover:bg-blue-200 active:scale-95 transition-all">
-              <LayoutList size={18} className="mr-1.5" /> 一括計画
+              <LayoutList size={18} className="mr-1.5" /> 一括登録
             </button>
 
             <button onClick={() => navigate('/activity-form')} className="flex items-center bg-green-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-md hover:bg-green-700 active:scale-95 transition-all">
