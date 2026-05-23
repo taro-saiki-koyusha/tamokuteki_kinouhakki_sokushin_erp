@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link } from 'lucide-react'; 
 import { useNavigate } from 'react-router-dom';
-import { collection, query, onSnapshot, doc, getDoc, deleteDoc } from 'firebase/firestore';
+// 🚀 where を上部で正しくインポートするように修正（スマホでの動作安定化）
+import { collection, query, onSnapshot, doc, getDoc, deleteDoc, where } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { db, auth } from '../firebase';
 import XlsxPopulate from 'xlsx-populate/browser/xlsx-populate';
@@ -53,6 +54,14 @@ export const Dashboard = () => {
   const [canEditGroup, setCanEditGroup] = useState(false);
   const [deletingActivityId, setDeletingActivityId] = useState(null);
 
+  // 🚀 スマホ等での「永遠に読み込み中」を防ぐための強制タイムアウト（10秒）
+  useEffect(() => {
+    const fallbackTimer = setTimeout(() => {
+      setLoading(false);
+    }, 10000);
+    return () => clearTimeout(fallbackTimer);
+  }, []);
+
   useEffect(() => {
     const unsubMembers = onSnapshot(collection(db, 'members'), (snapshot) => {
       setMembersList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -75,43 +84,45 @@ export const Dashboard = () => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
       if (user) {
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        const role = userDoc.exists() ? (userDoc.data().role || 'reporter') : 'reporter';
-        const groupIds = userDoc.exists() ? (userDoc.data().groupIds || []) : [];
-        const allowedEditOwn = userDoc.exists() ? (userDoc.data().canEditOwn || false) : false; 
-        const allowedEditGroup = userDoc.exists() ? (userDoc.data().canEditGroup || false) : false;
-        
-        setUserRole(role);
-        setUserGroupIds(groupIds);
-        setCanEditOwn(allowedEditOwn); 
-        setCanEditGroup(allowedEditGroup); 
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          const role = userDoc.exists() ? (userDoc.data().role || 'reporter') : 'reporter';
+          const groupIds = userDoc.exists() ? (userDoc.data().groupIds || []) : [];
+          const allowedEditOwn = userDoc.exists() ? (userDoc.data().canEditOwn || false) : false; 
+          const allowedEditGroup = userDoc.exists() ? (userDoc.data().canEditGroup || false) : false;
+          
+          setUserRole(role);
+          setUserGroupIds(groupIds);
+          setCanEditOwn(allowedEditOwn); 
+          setCanEditGroup(allowedEditGroup); 
 
-        let q;
-        if (role === 'admin' || role === 'manager') {
-          q = query(collection(db, 'activities'));
-        } else {
-          if (groupIds.length === 0) {
-            setActivities([]);
-            setLoading(false);
-            return;
-          }
-          import('firebase/firestore').then(({ where }) => {
-            q = query(collection(db, 'activities'), where('groupId', 'in', groupIds));
-            unsubscribeData = onSnapshot(q, (querySnapshot) => {
-              const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-              setActivities(data);
+          let q;
+          if (role === 'admin' || role === 'manager') {
+            q = query(collection(db, 'activities'));
+          } else {
+            if (groupIds.length === 0) {
+              setActivities([]);
               setLoading(false);
-            });
+              return;
+            }
+            // 🚀 動的インポートを廃止し、安全なクエリ構築に修正
+            q = query(collection(db, 'activities'), where('groupId', 'in', groupIds));
+          }
+
+          unsubscribeData = onSnapshot(q, (querySnapshot) => {
+            const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setActivities(data);
+            setLoading(false);
+          }, (error) => {
+            // 🚀 エラー時も確実にロード画面を終わらせる
+            console.error("Firestore onSnapshot Error:", error);
+            setLoading(false);
           });
-          return; 
-        }
 
-        unsubscribeData = onSnapshot(q, (querySnapshot) => {
-          const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          setActivities(data);
+        } catch (error) {
+          console.error("User fetch error:", error);
           setLoading(false);
-        });
-
+        }
       } else {
         setActivities([]);
         setLoading(false);
@@ -541,7 +552,6 @@ export const Dashboard = () => {
               </div>
             )}
             
-            {/* 🚀 名称を「一括計画」から「一括登録」に変更 */}
             <button onClick={() => navigate('/bulk-activity')} className="flex items-center bg-blue-100 text-blue-700 border border-blue-200 px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm hover:bg-blue-200 active:scale-95 transition-all">
               <LayoutList size={18} className="mr-1.5" /> 一括登録
             </button>
