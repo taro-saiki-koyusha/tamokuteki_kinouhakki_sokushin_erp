@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link } from 'lucide-react'; 
 import { useNavigate } from 'react-router-dom';
-// 🚀 where を上部で正しくインポートするように修正（スマホでの動作安定化）
 import { collection, query, onSnapshot, doc, getDoc, deleteDoc, where } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { db, auth } from '../firebase';
@@ -54,7 +53,6 @@ export const Dashboard = () => {
   const [canEditGroup, setCanEditGroup] = useState(false);
   const [deletingActivityId, setDeletingActivityId] = useState(null);
 
-  // 🚀 スマホ等での「永遠に読み込み中」を防ぐための強制タイムアウト（10秒）
   useEffect(() => {
     const fallbackTimer = setTimeout(() => {
       setLoading(false);
@@ -105,7 +103,6 @@ export const Dashboard = () => {
               setLoading(false);
               return;
             }
-            // 🚀 動的インポートを廃止し、安全なクエリ構築に修正
             q = query(collection(db, 'activities'), where('groupId', 'in', groupIds));
           }
 
@@ -114,7 +111,6 @@ export const Dashboard = () => {
             setActivities(data);
             setLoading(false);
           }, (error) => {
-            // 🚀 エラー時も確実にロード画面を終わらせる
             console.error("Firestore onSnapshot Error:", error);
             setLoading(false);
           });
@@ -359,13 +355,14 @@ export const Dashboard = () => {
                     {dateSortOrder === 'desc' ? <ChevronDown size={16} className="ml-1 text-blue-600 group-hover:text-blue-800" /> : <ChevronUp size={16} className="ml-1 text-blue-600 group-hover:text-blue-800" />}
                   </div>
                 </th>
+                {/* 🚀 「活動内容」を日付の隣に移動 */}
+                <th className="p-3 font-bold whitespace-nowrap">活動内容</th>
                 <th className="p-3 font-bold w-20 text-center whitespace-nowrap">状態</th>
                 <th className="p-3 font-bold w-24 text-center whitespace-nowrap">区分</th>
                 <th className="p-3 font-bold w-24 whitespace-nowrap">報告書NO</th>
                 <th className="p-3 font-bold w-36 whitespace-nowrap">グループ</th>
                 <th className="p-3 font-bold w-40 whitespace-nowrap">活動場所</th>
                 <th className="p-3 font-bold w-20 whitespace-nowrap">項目番号</th>
-                <th className="p-3 font-bold whitespace-nowrap">活動内容</th>
                 <th className="p-3 font-bold w-24 text-center whitespace-nowrap">登録者</th>
                 <th className="p-3 font-bold w-12 text-center whitespace-nowrap">写真</th>
                 
@@ -396,6 +393,9 @@ export const Dashboard = () => {
                   <tr key={act.id} onClick={() => navigate(`/activity-form/${act.id}`, { state: { editData: act, isViewMode: true } })} className="border-b border-gray-100 hover:bg-green-50 cursor-pointer transition-colors group/row">
                     <td className="p-3 text-sm text-gray-700 whitespace-nowrap">{act.date}</td>
                     
+                    {/* 🚀 「活動内容」を日付の隣に移動 */}
+                    <td className="p-3 text-sm font-bold text-gray-900 truncate max-w-[12rem]" title={act.activityType}>{act.activityType}</td>
+                    
                     <td className="p-3 text-center whitespace-nowrap">
                       <span className={`px-2 py-1 rounded-full text-[9px] font-bold border whitespace-nowrap ${statusLabel === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-600 border-green-100'}`}>
                         {statusLabel}
@@ -423,7 +423,6 @@ export const Dashboard = () => {
                     <td className="p-3 text-xs whitespace-nowrap">{groupInfo ? groupInfo.name : <span className="text-red-500">未登録</span>}</td>
                     <td className="p-3 text-xs text-gray-600 truncate max-w-[10rem]" title={act.location}>{act.location}</td>
                     <td className="p-3 text-xs font-bold text-green-600 whitespace-nowrap">{act.activityNumbers?.join(', ')}</td>
-                    <td className="p-3 text-sm font-bold text-gray-900 truncate max-w-[12rem]" title={act.activityType}>{act.activityType}</td>
                     
                     <td className="p-3 text-xs text-center text-gray-600 truncate max-w-[6rem]">{creatorName}</td>
                     
