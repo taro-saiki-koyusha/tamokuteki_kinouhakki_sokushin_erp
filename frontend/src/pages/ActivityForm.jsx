@@ -166,14 +166,19 @@ export const ActivityForm = () => {
   const updateParticipant = (index, field, value) => {
     const newList = [...participantDetails];
     newList[index][field] = value;
-    if (field === 'machineId' && value !== '' && newList[index].machineTime === 0) newList[index].machineTime = newList[index].workTime;
-    if (field === 'machineId' && value === '') newList[index].machineTime = 0;
-    if (field === 'wageId' && value !== '') {
-      const wage = membersList.find(m => m.id === value);
-      if (wage && wage.isAgri !== undefined) newList[index].isAgri = wage.isAgri;
+    
+    if (field === 'machineId' && value !== '' && newList[index].machineTime === 0) {
+      newList[index].machineTime = newList[index].workTime;
     }
+    if (field === 'machineId' && value === '') {
+      newList[index].machineTime = 0;
+    }
+    
+    // 🚀 単価（wageId）変更時に「農業者/以外（isAgri）」を勝手に上書きする処理を削除しました
+    
     setParticipantDetails(newList);
   };
+  
   const removeParticipant = (index) => setParticipantDetails(participantDetails.filter((_, i) => i !== index));
 
   const toggleRosterSelection = (userId) => {
@@ -558,7 +563,6 @@ export const ActivityForm = () => {
                     placeholder="例：鎌田地区農道" 
                     required 
                   />
-                  {/* 🚀 別ファイル（定数）から読み込んだ場所のリスト */}
                   <datalist id="location-list">
                     {LOCATION_OPTIONS.map(loc => (
                       <option key={loc} value={loc} />
@@ -601,7 +605,6 @@ export const ActivityForm = () => {
                       <div className="absolute z-40 mt-1 w-full bg-white border border-gray-200 shadow-2xl rounded-xl overflow-hidden">
                         <div className="p-2 border-b bg-gray-50 flex items-center"><Search size={16} className="text-gray-400 mr-2 ml-1" /><input type="text" placeholder="キーワード検索..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full min-w-0 box-border py-1.5 bg-transparent border-none focus:ring-0 text-sm" /></div>
                         <div className="max-h-60 overflow-y-auto p-2 space-y-1">
-                          {/* 🚀 別ファイル（定数）から読み込んだ活動項目リスト */}
                           {filteredItems.map(item => {
                             const isSelected = formData.activityNumbers.includes(item.id);
                             const isDisabled = !isSelected && formData.activityNumbers.length >= 6;
