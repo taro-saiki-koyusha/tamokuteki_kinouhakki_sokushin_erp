@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link } from 'lucide-react'; 
+import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link } from 'lucide-react'; 
 import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, doc, getDoc, deleteDoc, where } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -355,7 +355,6 @@ export const Dashboard = () => {
                     {dateSortOrder === 'desc' ? <ChevronDown size={16} className="ml-1 text-blue-600 group-hover:text-blue-800" /> : <ChevronUp size={16} className="ml-1 text-blue-600 group-hover:text-blue-800" />}
                   </div>
                 </th>
-                {/* 🚀 「活動内容」を日付の隣に移動 */}
                 <th className="p-3 font-bold whitespace-nowrap">活動内容</th>
                 <th className="p-3 font-bold w-20 text-center whitespace-nowrap">状態</th>
                 <th className="p-3 font-bold w-24 text-center whitespace-nowrap">区分</th>
@@ -393,7 +392,6 @@ export const Dashboard = () => {
                   <tr key={act.id} onClick={() => navigate(`/activity-form/${act.id}`, { state: { editData: act, isViewMode: true } })} className="border-b border-gray-100 hover:bg-green-50 cursor-pointer transition-colors group/row">
                     <td className="p-3 text-sm text-gray-700 whitespace-nowrap">{act.date}</td>
                     
-                    {/* 🚀 「活動内容」を日付の隣に移動 */}
                     <td className="p-3 text-sm font-bold text-gray-900 truncate max-w-[12rem]" title={act.activityType}>{act.activityType}</td>
                     
                     <td className="p-3 text-center whitespace-nowrap">
@@ -499,6 +497,12 @@ export const Dashboard = () => {
               </button>
             </>
           )}
+
+          {/* 🚀 アカウント設定ボタン（PC用） */}
+          <button onClick={() => navigate('/profile')} className="flex items-center text-sm font-bold text-gray-500 hover:text-green-600">
+            <User size={18} className="mr-1"/> アカウント設定
+          </button>
+
           <div className="h-6 w-px bg-gray-300 mx-2"></div>
           <button onClick={handleLogout} className="flex items-center text-sm font-bold text-gray-500 hover:text-red-600">
             <LogOut size={18} className="mr-1"/> ログアウト
@@ -515,6 +519,12 @@ export const Dashboard = () => {
               <button onClick={() => navigate('/masters')} className="p-2 text-gray-500 hover:text-blue-600 transition-colors"><Settings size={20} /></button>
             </>
           )}
+          
+          {/* 🚀 アカウント設定ボタン（スマホ用） */}
+          <button onClick={() => navigate('/profile')} className="p-2 text-gray-500 hover:text-green-600 transition-colors">
+            <User size={20} />
+          </button>
+
           <button onClick={handleLogout} className="p-2 text-gray-500 hover:text-red-600 transition-colors"><LogOut size={20} /></button>
         </div>
       </header>

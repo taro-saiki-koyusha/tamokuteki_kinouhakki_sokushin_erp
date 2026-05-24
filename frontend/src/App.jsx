@@ -7,6 +7,7 @@ import { GroupManagement } from './pages/GroupManagement';
 import { UserManagement } from './pages/UserManagement';
 import { BulkActivityForm } from './pages/BulkActivityForm';
 import { MasterManagement } from './pages/MasterManagement';
+import { ProfileSettings } from './pages/ProfileSettings';
 
 function App() {
   return (
@@ -22,8 +23,9 @@ function App() {
         <Route path="/bulk-activity" element={<BulkActivityForm />} />
         <Route path="/groups" element={<GroupManagement />} />
         <Route path="/users" element={<UserManagement />} />
-        <Route path="/masters" element={<MasterManagement />} /> 
+        <Route path="/masters" element={<MasterManagement />} />
         <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/profile" element={<ProfileSettings />} />
       </Routes>
     </Router>
   );
