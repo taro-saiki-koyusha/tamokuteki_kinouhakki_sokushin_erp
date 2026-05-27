@@ -6,7 +6,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged } from 'firebase/auth';
 import { db, storage, auth } from '../firebase'; 
 
-// 🚀 別ファイルから定数を読み込む
+// 別ファイルから定数を読み込む
 import { ACTIVITY_ITEMS, LOCATION_OPTIONS } from '../constants';
 
 const formatTimestamp = (timestamp) => {
@@ -31,6 +31,11 @@ export const ActivityForm = () => {
   const location = useLocation();
   const { id } = useParams(); 
   
+  // 画面遷移時に必ずページの一番上（トップ）から表示させる処理
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
+
   const [editData, setEditData] = useState(location.state?.editData || null);
   const [isViewMode, setIsViewMode] = useState(location.state?.isViewMode || false);
   const [isLoadingDirect, setIsLoadingDirect] = useState(false); 
@@ -173,8 +178,6 @@ export const ActivityForm = () => {
     if (field === 'machineId' && value === '') {
       newList[index].machineTime = 0;
     }
-    
-    // 🚀 単価（wageId）変更時に「農業者/以外（isAgri）」を勝手に上書きする処理を削除しました
     
     setParticipantDetails(newList);
   };
@@ -512,350 +515,365 @@ export const ActivityForm = () => {
 
       <main className="p-4 md:p-8 w-full max-w-md md:max-w-6xl mx-auto box-border">
         <form onSubmit={handleSubmit} className="space-y-6">
+          
+          {/* 🚀 1. 実施日時・場所 & 2) 活動内容 (上部2カラム) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
             
-            <div className="space-y-6">
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
-                <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Calendar className="w-5 h-5 mr-2 text-green-600" /> 実施日時・場所</h2>
-                
-                <div className="flex flex-col sm:flex-row gap-4 mb-2">
-                  <div className="flex-1 min-w-0">
-                    <label className="block text-sm font-bold text-gray-700 mb-1">ステータス</label>
-                    <select name="status" value={formData.status} onChange={handleChange} disabled={isViewMode} className={`w-full min-w-0 box-border border rounded-xl p-3 font-bold focus:ring-2 focus:ring-green-500 disabled:opacity-100 ${formData.status === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-300' : 'bg-green-50 text-green-700 border-green-300'}`}>
-                      <option value="未実施">未実施（計画用）</option>
-                      <option value="実績入力済">実績入力済（完了）</option>
-                    </select>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <label className="block text-sm font-bold text-gray-700 mb-1">計画区分</label>
-                    <select name="planType" value={formData.planType} onChange={handleChange} disabled={isViewMode} className="w-full min-w-0 box-border border border-gray-300 rounded-xl p-3 font-bold focus:ring-2 focus:ring-green-500 disabled:bg-gray-100 disabled:opacity-100 bg-white text-gray-800">
-                      <option value="当初計画">当初計画</option>
-                      <option value="期中追加">期中追加</option>
-                      <option value="突発・緊急">突発・緊急</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 mb-4">
-                  <label className="block text-sm font-bold text-blue-900 mb-1">対象グループ <span className="text-red-500">*</span></label>
-                  <select name="groupId" value={formData.groupId} onChange={handleChange} disabled={isViewMode} className={`${inputClass} border-blue-200 focus:ring-blue-500`} required>
-                    <option value="">グループを選択してください</option>
-                    {selectableGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+            {/* 1. 実施日時・場所 */}
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4 h-full">
+              <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Calendar className="w-5 h-5 mr-2 text-green-600" /> 1. 実施日時・場所</h2>
+              
+              <div className="flex flex-col sm:flex-row gap-4 mb-2">
+                <div className="flex-1 min-w-0">
+                  <label className="block text-sm font-bold text-gray-700 mb-1">ステータス</label>
+                  <select name="status" value={formData.status} onChange={handleChange} disabled={isViewMode} className={`w-full min-w-0 box-border border rounded-xl p-3 font-bold focus:ring-2 focus:ring-green-500 disabled:opacity-100 ${formData.status === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-300' : 'bg-green-50 text-green-700 border-green-300'}`}>
+                    <option value="未実施">未実施（計画用）</option>
+                    <option value="実績入力済">実績入力済（完了）</option>
                   </select>
                 </div>
-                <div><label className="block text-sm font-bold text-gray-700 mb-1">報告書NO (文字列入力可)</label><input type="text" name="reportNo" value={formData.reportNo} onChange={handleChange} disabled={isViewMode} className={inputClass} placeholder="例：2026-001、第1号など" /></div>
-                <div><label className="block text-sm font-bold text-gray-700 mb-1">日付</label><input type="date" name="date" value={formData.date} onChange={handleChange} disabled={isViewMode} className={inputClass} required /></div>
-                
-                <div className="flex space-x-3 sm:space-x-4">
-                  <div className="flex-1 min-w-0"><label className="block text-sm font-bold text-gray-700 mb-1">開始</label><input type="time" name="startTime" value={formData.startTime} onChange={handleChange} disabled={isViewMode} className={inputClass} required /></div>
-                  <div className="flex-1 min-w-0"><label className="block text-sm font-bold text-gray-700 mb-1">終了</label><input type="time" name="endTime" value={formData.endTime} onChange={handleChange} disabled={isViewMode} className={inputClass} required /></div>
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">活動場所</label>
-                  <input 
-                    type="text" 
-                    name="location" 
-                    list="location-list"
-                    value={formData.location} 
-                    onChange={handleChange} 
-                    disabled={isViewMode} 
-                    className={inputClass} 
-                    placeholder="例：鎌田地区農道" 
-                    required 
-                  />
-                  <datalist id="location-list">
-                    {LOCATION_OPTIONS.map(loc => (
-                      <option key={loc} value={loc} />
-                    ))}
-                  </datalist>
+                <div className="flex-1 min-w-0">
+                  <label className="block text-sm font-bold text-gray-700 mb-1">計画区分</label>
+                  <select name="planType" value={formData.planType} onChange={handleChange} disabled={isViewMode} className="w-full min-w-0 box-border border border-gray-300 rounded-xl p-3 font-bold focus:ring-2 focus:ring-green-500 disabled:bg-gray-100 disabled:opacity-100 bg-white text-gray-800">
+                    <option value="当初計画">当初計画</option>
+                    <option value="期中追加">期中追加</option>
+                    <option value="突発・緊急">突発・緊急</option>
+                  </select>
                 </div>
               </div>
 
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
-                <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Sprout className="w-5 h-5 mr-2 text-green-600" /> 活動内容</h2>
-                
-                <div className="bg-yellow-50 p-3 rounded-xl border border-yellow-200">
-                  <label className="flex items-center space-x-3 cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      name="isEssential"
-                      checked={formData.isEssential} 
-                      onChange={(e) => setFormData({...formData, isEssential: e.target.checked})}
-                      disabled={isViewMode}
-                      className="w-5 h-5 text-yellow-600 border-gray-300 rounded focus:ring-yellow-500 disabled:opacity-50" 
-                    />
-                    <div className="flex flex-col">
-                      <span className="text-sm font-bold text-yellow-900">この活動を「補助金必須作業」として設定する</span>
-                      <span className="text-[10px] text-yellow-700 mt-0.5">補助金申請の要件となる重要な活動の場合はチェックを入れてください。</span>
-                    </div>
-                  </label>
-                </div>
-
-                <div className="relative">
-                  <label className="block text-sm font-bold text-gray-700 mb-1">Excel活動項目番号 (最大6つ)</label>
-                  <button type="button" onClick={() => !isViewMode && setIsDropdownOpen(!isDropdownOpen)} className={`w-full min-w-0 box-border text-left bg-white border border-gray-300 rounded-xl p-3 flex justify-between items-center ${isViewMode ? 'bg-gray-100 cursor-not-allowed opacity-100' : 'focus:ring-2 focus:ring-green-500'}`}>
-                    <span className={`block truncate pr-2 ${formData.activityNumbers.length === 0 ? 'text-gray-500' : (isViewMode ? 'text-gray-600 font-bold' : 'text-gray-900 font-bold')}`}>
-                      {formData.activityNumbers.length > 0 ? formData.activityNumbers.join(', ') + ' 番を選択中' : '検索・選択（任意）'}
-                    </span>
-                    <ChevronDown size={20} className="text-gray-400 flex-shrink-0" />
-                  </button>
-                  {isDropdownOpen && (
-                    <>
-                      <div className="fixed inset-0 z-10" onClick={() => setIsDropdownOpen(false)}></div>
-                      <div className="absolute z-40 mt-1 w-full bg-white border border-gray-200 shadow-2xl rounded-xl overflow-hidden">
-                        <div className="p-2 border-b bg-gray-50 flex items-center"><Search size={16} className="text-gray-400 mr-2 ml-1" /><input type="text" placeholder="キーワード検索..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full min-w-0 box-border py-1.5 bg-transparent border-none focus:ring-0 text-sm" /></div>
-                        <div className="max-h-60 overflow-y-auto p-2 space-y-1">
-                          {filteredItems.map(item => {
-                            const isSelected = formData.activityNumbers.includes(item.id);
-                            const isDisabled = !isSelected && formData.activityNumbers.length >= 6;
-                            return (
-                              <label key={item.id} className={`flex items-start p-2.5 rounded-lg cursor-pointer ${isSelected ? 'bg-green-50 text-green-800 font-bold' : isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-gray-50'}`}>
-                                <div className="flex-1 pr-2"><div className="flex items-baseline"><span className={`w-8 text-xs font-bold flex-shrink-0 ${isSelected ? 'text-green-600' : 'text-gray-400'}`}>{item.id}.</span><span className="text-sm">{item.name}</span></div></div>
-                                <input type="checkbox" className="hidden" checked={isSelected} disabled={isDisabled} onChange={() => handleActivityNumberToggle(item.id)} />
-                                {isSelected && <Check size={16} className="text-green-600 mt-0.5" />}
-                              </label>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">具体的な活動内容（手入力）</label>
-                  <input type="text" name="activityType" value={formData.activityType} onChange={handleChange} disabled={isViewMode} className={inputClass} placeholder="例：内郷地区の草刈り" />
-                </div>
+              <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 mb-4">
+                <label className="block text-sm font-bold text-blue-900 mb-1">対象グループ <span className="text-red-500">*</span></label>
+                <select name="groupId" value={formData.groupId} onChange={handleChange} disabled={isViewMode} className={`${inputClass} border-blue-200 focus:ring-blue-500`} required>
+                  <option value="">グループを選択してください</option>
+                  {selectableGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                </select>
               </div>
-            </div>
-
-            <div className="space-y-6">
+              <div><label className="block text-sm font-bold text-gray-700 mb-1">報告書NO (文字列入力可)</label><input type="text" name="reportNo" value={formData.reportNo} onChange={handleChange} disabled={isViewMode} className={inputClass} placeholder="例：2026-001、第1号など" /></div>
+              <div><label className="block text-sm font-bold text-gray-700 mb-1">日付</label><input type="date" name="date" value={formData.date} onChange={handleChange} disabled={isViewMode} className={inputClass} required /></div>
               
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                <div className="flex justify-between items-center mb-4 border-b pb-3">
-                  <h2 className="font-bold text-gray-800 flex items-center"><Users className="w-5 h-5 mr-2 text-green-600" /> 参加者と使用機械</h2>
-                  <div className="flex space-x-2 text-xs font-bold">
-                    <span className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full border border-blue-100">農業者: {summary.agri}</span>
-                    <span className="bg-orange-50 text-orange-700 px-2.5 py-1 rounded-full border border-orange-100">以外: {summary.nonAgri}</span>
-                  </div>
-                </div>
-
-                <div className="space-y-4 max-h-[600px] overflow-y-auto overflow-x-hidden pr-1">
-                  {participantDetails.map((detail, index) => {
-                    const wId = detail.wageId || detail.memberId;
-                    const wage = membersList.find(m => m.id === wId);
-                    const memberWage = wage ? (wage.defaultWage || 0) : 0;
-                    const memberTotal = (detail.workTime || 0) * memberWage;
-
-                    const machine = machinesList.find(m => m.id === detail.machineId);
-                    const machinePrice = machine ? (machine.defaultPrice || 0) : 0;
-                    const machineTotal = (detail.machineTime || 0) * machinePrice;
-                    
-                    let isAgri = detail.isAgri;
-                    if (isAgri === undefined) {
-                      isAgri = wage ? wage.isAgri : true;
-                    }
-
-                    return (
-                      <div key={index} className="bg-gray-50 border border-gray-200 rounded-2xl p-4 relative group">
-                        
-                        {!isViewMode && (
-                          <div className="absolute -top-3 right-0 sm:-right-2 flex space-x-1 z-10">
-                            <button type="button" onClick={() => duplicateParticipant(index)} className="bg-white text-blue-500 p-1.5 rounded-full border border-blue-100 shadow-sm transition-opacity hover:bg-blue-50" title="この行をコピー">
-                              <Copy size={16} />
-                            </button>
-                            <button type="button" onClick={() => removeParticipant(index)} className="bg-white text-red-500 p-1.5 rounded-full border border-red-100 shadow-sm transition-opacity hover:bg-red-50" title="削除">
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        )}
-                        
-                        <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-2 mb-3 mt-1">
-                          <div className="flex flex-1 w-full sm:w-auto gap-1.5 sm:gap-2 items-center min-w-0">
-                            <select
-                              value={isAgri ? 'true' : 'false'}
-                              onChange={(e) => updateParticipant(index, 'isAgri', e.target.value === 'true')}
-                              disabled={isViewMode}
-                              className={`w-[4.5rem] sm:w-[5.5rem] shrink-0 box-border border border-gray-300 rounded-xl p-1.5 sm:p-2.5 text-[10px] sm:text-xs font-bold focus:ring-2 focus:ring-green-500 disabled:opacity-100 cursor-pointer ${isAgri ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-700'}`}
-                            >
-                              <option value="true">農業者</option>
-                              <option value="false">以外</option>
-                            </select>
-
-                            <input 
-                              type="text" 
-                              list="system-users-list"
-                              placeholder="👤 氏名（任意）" 
-                              value={detail.participantName || ''} 
-                              onChange={(e) => updateParticipant(index, 'participantName', e.target.value)} 
-                              disabled={isViewMode} 
-                              className={`flex-1 w-full min-w-0 box-border border border-gray-300 rounded-xl p-2 sm:p-2.5 text-xs sm:text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100`} 
-                            />
-                            <select 
-                              value={wId || ''} 
-                              onChange={(e) => updateParticipant(index, 'wageId', e.target.value)} 
-                              disabled={isViewMode} 
-                              className={`flex-1 w-full min-w-0 box-border border border-gray-300 rounded-xl p-2 sm:p-2.5 text-xs sm:text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100`}
-                            >
-                              <option value="">💰 単価を選択</option>
-                              {membersList.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                            </select>
-                          </div>
-                          <div className="flex gap-2 items-center justify-end shrink-0 w-full sm:w-auto ml-auto">
-                            <div className={`w-20 md:w-24 flex items-center border border-gray-300 rounded-xl px-2 box-border ${isViewMode ? 'bg-white' : 'bg-white'}`}>
-                              <input type="number" step="0.5" min="0" value={detail.workTime} onChange={(e) => updateParticipant(index, 'workTime', parseFloat(e.target.value))} disabled={isViewMode} className="w-full min-w-0 box-border py-2.5 text-sm text-center border-none focus:ring-0 disabled:bg-transparent disabled:text-gray-600 disabled:opacity-100" />
-                              <span className="text-xs text-gray-400">h</span>
-                            </div>
-                            <div className="w-16 md:w-20 flex flex-col items-end justify-center leading-tight">
-                              <span className="text-[10px] text-gray-400 whitespace-nowrap">@{memberWage.toLocaleString()}円</span>
-                              <span className="text-sm font-bold text-gray-700 whitespace-nowrap">¥{memberTotal.toLocaleString()}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-2 pl-3 border-l-2 border-green-200">
-                          <div className="flex flex-1 w-full sm:w-auto min-w-0">
-                            <select value={detail.machineId} onChange={(e) => updateParticipant(index, 'machineId', e.target.value)} disabled={isViewMode} className="w-full min-w-0 box-border border border-gray-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100">
-                              <option value="">🚜 使用機械なし</option>
-                              {machinesList.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                            </select>
-                          </div>
-                          {detail.machineId && (
-                            <div className="flex gap-2 items-center justify-end shrink-0 w-full sm:w-auto ml-auto">
-                              <div className={`w-20 md:w-24 flex items-center border border-green-200 rounded-xl px-2 shrink-0 box-border ${isViewMode ? 'bg-green-50' : 'bg-green-50'}`}>
-                                <input type="number" step="0.5" min="0" value={detail.machineTime} onChange={(e) => updateParticipant(index, 'machineTime', parseFloat(e.target.value))} disabled={isViewMode} className="w-full min-w-0 box-border py-2.5 text-sm text-center bg-transparent border-none focus:ring-0 font-bold text-green-700 disabled:opacity-100" />
-                                <span className="text-xs text-green-600">h</span>
-                              </div>
-                              <div className="w-16 md:w-20 flex flex-col items-end justify-center leading-tight">
-                                <span className="text-[10px] text-green-600/70 whitespace-nowrap">@{machinePrice.toLocaleString()}円</span>
-                                <span className="text-sm font-bold text-green-700 whitespace-nowrap">¥{machineTotal.toLocaleString()}</span>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  
-                  {!isViewMode && (
-                    <div className="flex flex-col sm:flex-row gap-2 mt-4">
-                      <button type="button" onClick={addParticipant} className="flex-1 py-3 box-border border-2 border-dashed border-green-200 text-green-600 rounded-2xl font-bold flex justify-center items-center hover:bg-green-50 hover:border-green-400 transition-all">
-                        <UserPlus size={18} className="mr-2" /> 1枠追加
-                      </button>
-                      <button type="button" onClick={() => setShowRosterModal(true)} className="flex-1 py-3 box-border border-2 border-dashed border-purple-200 text-purple-600 rounded-2xl font-bold flex justify-center items-center hover:bg-purple-50 hover:border-purple-400 transition-all">
-                        <Users size={18} className="mr-2" /> 登録ユーザーから一括追加
-                      </button>
-                    </div>
-                  )}
-                </div>
+              <div className="flex space-x-3 sm:space-x-4">
+                <div className="flex-1 min-w-0"><label className="block text-sm font-bold text-gray-700 mb-1">開始</label><input type="time" name="startTime" value={formData.startTime} onChange={handleChange} disabled={isViewMode} className={inputClass} required /></div>
+                <div className="flex-1 min-w-0"><label className="block text-sm font-bold text-gray-700 mb-1">終了</label><input type="time" name="endTime" value={formData.endTime} onChange={handleChange} disabled={isViewMode} className={inputClass} required /></div>
               </div>
-
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                <div className="flex justify-between items-center mb-4 border-b pb-3">
-                  <h2 className="font-bold text-gray-800 flex items-center"><Package className="w-5 h-5 mr-2 text-green-600" /> 使用資材</h2>
-                </div>
-
-                <div className="space-y-4 max-h-[300px] overflow-y-auto overflow-x-hidden pr-1">
-                  {materialDetails.map((detail, index) => {
-                    const material = materialsList.find(m => m.id === detail.materialId);
-                    const matPrice = material ? (material.defaultPrice || 0) : 0;
-                    const matUnit = material ? (material.unit || '個') : '個';
-                    const matTotal = (detail.quantity || 0) * matPrice;
-
-                    return (
-                      <div key={index} className="bg-gray-50 border border-gray-200 rounded-2xl p-4 relative group flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-2">
-                        {!isViewMode && (
-                          <button type="button" onClick={() => removeMaterial(index)} className="absolute -top-2 right-0 sm:-right-2 bg-white text-red-500 p-1.5 rounded-full border border-red-100 shadow-sm transition-opacity z-10"><Trash2 size={16} /></button>
-                        )}
-                        
-                        <div className="flex-1 w-full sm:w-auto min-w-0 mt-1">
-                          <select value={detail.materialId} onChange={(e) => updateMaterial(index, 'materialId', e.target.value)} disabled={isViewMode} className={`w-full min-w-0 box-border border border-gray-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100`}>
-                            <option value="">📦 資材を選択</option>
-                            {materialsList.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                          </select>
-                        </div>
-                        
-                        <div className="flex gap-2 items-center justify-end shrink-0 w-full sm:w-auto ml-auto">
-                          <div className={`w-24 md:w-28 flex items-center border border-gray-300 rounded-xl px-2 box-border ${isViewMode ? 'bg-white' : 'bg-white'}`}>
-                            <input type="number" step="1" min="0" value={detail.quantity} onChange={(e) => updateMaterial(index, 'quantity', parseFloat(e.target.value))} disabled={isViewMode} className="w-full min-w-0 box-border py-2.5 text-sm text-center border-none focus:ring-0 disabled:bg-transparent disabled:text-gray-600 disabled:opacity-100" />
-                            <span className="text-xs text-gray-400 whitespace-nowrap">{matUnit}</span>
-                          </div>
-                          <div className="w-16 md:w-20 flex flex-col items-end justify-center leading-tight">
-                            <span className="text-[10px] text-gray-400 whitespace-nowrap">@{matPrice.toLocaleString()}円</span>
-                            <span className="text-sm font-bold text-gray-700 whitespace-nowrap">¥{matTotal.toLocaleString()}</span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  
-                  {!isViewMode && (
-                    <button type="button" onClick={addMaterial} className="w-full py-3 box-border border-2 border-dashed border-gray-300 text-gray-600 rounded-xl font-bold flex justify-center items-center hover:bg-gray-100 transition-all"><Plus size={18} className="mr-2" /> 資材を追加</button>
-                  )}
-                </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">活動場所</label>
+                <input 
+                  type="text" 
+                  name="location" 
+                  list="location-list"
+                  value={formData.location} 
+                  onChange={handleChange} 
+                  disabled={isViewMode} 
+                  className={inputClass} 
+                  placeholder="例：鎌田地区農道" 
+                  required 
+                />
+                <datalist id="location-list">
+                  {LOCATION_OPTIONS.map(loc => (
+                    <option key={loc} value={loc} />
+                  ))}
+                </datalist>
               </div>
-
-              <div className="bg-blue-50/50 rounded-xl p-4 border border-blue-100 flex flex-col space-y-2">
-                <div className="flex items-center text-blue-800 font-bold mb-1">
-                  <Calculator size={16} className="mr-1.5" /> 費用の目安（合計）
-                </div>
-                <div className="flex justify-between items-center text-sm text-gray-700">
-                  <span>人件費:</span>
-                  <span className="font-bold font-mono">¥{totalPersonnelCost.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm text-gray-700">
-                  <span>機械等利用料:</span>
-                  <span className="font-bold font-mono">¥{totalMachineCost.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm text-gray-700">
-                  <span>資材費:</span>
-                  <span className="font-bold font-mono">¥{totalMaterialCost.toLocaleString()}</span>
-                </div>
-                <div className="border-t border-blue-200 pt-2 mt-2 flex justify-between items-center text-base text-blue-900 font-bold">
-                  <span>合計:</span>
-                  <span className="font-mono text-lg">¥{(totalPersonnelCost + totalMachineCost + totalMaterialCost).toLocaleString()}</span>
-                </div>
-              </div>
-
             </div>
 
-            <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
-                <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Camera className="w-5 h-5 mr-2 text-green-600" /> 現場写真</h2>
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
-                  {existingUrls.map((url, i) => (
-                    <div 
-                      key={`ex-${i}`} 
-                      className="relative aspect-square rounded-xl overflow-hidden border border-gray-200 cursor-pointer group"
-                      onClick={() => setEnlargedImage(url)}
-                    >
-                      <img src={url} alt="" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
-                      {!isViewMode && (
-                        <button type="button" onClick={(e) => { e.stopPropagation(); removeExistingUrl(i); }} className="absolute top-1 right-1 bg-black/50 text-white p-1 rounded-full z-10 hover:bg-red-500 transition-colors"><X size={12} /></button>
-                      )}
+            {/* 2. 活動内容 */}
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4 h-full">
+              <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Sprout className="w-5 h-5 mr-2 text-green-600" /> 2. 活動内容</h2>
+              
+              <div className="bg-yellow-50 p-3 rounded-xl border border-yellow-200">
+                <label className="flex items-center space-x-3 cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    name="isEssential"
+                    checked={formData.isEssential} 
+                    onChange={(e) => setFormData({...formData, isEssential: e.target.checked})}
+                    disabled={isViewMode}
+                    className="w-5 h-5 text-yellow-600 border-gray-300 rounded focus:ring-yellow-500 disabled:opacity-50" 
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-bold text-yellow-900">この活動を「補助金必須作業」として設定する</span>
+                    <span className="text-[10px] text-yellow-700 mt-0.5">補助金申請の要件となる重要な活動の場合はチェックを入れてください。</span>
+                  </div>
+                </label>
+              </div>
+
+              <div className="relative">
+                <label className="block text-sm font-bold text-gray-700 mb-1">Excel活動項目番号 (最大6つ)</label>
+                <button type="button" onClick={() => !isViewMode && setIsDropdownOpen(!isDropdownOpen)} className={`w-full min-w-0 box-border text-left bg-white border border-gray-300 rounded-xl p-3 flex justify-between items-center ${isViewMode ? 'bg-gray-100 cursor-not-allowed opacity-100' : 'focus:ring-2 focus:ring-green-500'}`}>
+                  <span className={`block truncate pr-2 ${formData.activityNumbers.length === 0 ? 'text-gray-500' : (isViewMode ? 'text-gray-600 font-bold' : 'text-gray-900 font-bold')}`}>
+                    {formData.activityNumbers.length > 0 ? formData.activityNumbers.join(', ') + ' 番を選択中' : '検索・選択（任意）'}
+                  </span>
+                  <ChevronDown size={20} className="text-gray-400 flex-shrink-0" />
+                </button>
+                {isDropdownOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setIsDropdownOpen(false)}></div>
+                    <div className="absolute z-40 mt-1 w-full bg-white border border-gray-200 shadow-2xl rounded-xl overflow-hidden">
+                      <div className="p-2 border-b bg-gray-50 flex items-center"><Search size={16} className="text-gray-400 mr-2 ml-1" /><input type="text" placeholder="キーワード検索..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full min-w-0 box-border py-1.5 bg-transparent border-none focus:ring-0 text-sm" /></div>
+                      <div className="max-h-60 overflow-y-auto p-2 space-y-1">
+                        {filteredItems.map(item => {
+                          const isSelected = formData.activityNumbers.includes(item.id);
+                          const isDisabled = !isSelected && formData.activityNumbers.length >= 6;
+                          return (
+                            <label key={item.id} className={`flex items-start p-2.5 rounded-lg cursor-pointer ${isSelected ? 'bg-green-50 text-green-800 font-bold' : isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-gray-50'}`}>
+                              <div className="flex-1 pr-2"><div className="flex items-baseline"><span className={`w-8 text-xs font-bold flex-shrink-0 ${isSelected ? 'text-green-600' : 'text-gray-400'}`}>{item.id}.</span><span className="text-sm">{item.name}</span></div></div>
+                              <input type="checkbox" className="hidden" checked={isSelected} disabled={isDisabled} onChange={() => handleActivityNumberToggle(item.id)} />
+                              {isSelected && <Check size={16} className="text-green-600 mt-0.5" />}
+                            </label>
+                          );
+                        })}
+                      </div>
                     </div>
-                  ))}
-                  {newPreviewUrls.map((url, i) => (
-                    <div 
-                      key={`new-${i}`} 
-                      className="relative aspect-square rounded-xl overflow-hidden border-2 border-green-400 cursor-pointer group"
-                      onClick={() => setEnlargedImage(url)}
-                    >
-                      <img src={url} alt="" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
-                      {!isViewMode && (
-                        <button type="button" onClick={(e) => { e.stopPropagation(); removeNewImage(i); }} className="absolute top-1 right-1 bg-black/50 text-white p-1 rounded-full z-10 hover:bg-red-500 transition-colors"><X size={12} /></button>
-                      )}
-                    </div>
-                  ))}
-                  
+                  </>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">具体的な活動内容（手入力）</label>
+                <input type="text" name="activityType" value={formData.activityType} onChange={handleChange} disabled={isViewMode} className={inputClass} placeholder="例：内郷地区の草刈り" />
+              </div>
+            </div>
+          </div>
+
+          {/* 🚀 3. 現場写真 (フル幅) */}
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
+            <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Camera className="w-5 h-5 mr-2 text-green-600" /> 3. 現場写真</h2>
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
+              {existingUrls.map((url, i) => (
+                <div 
+                  key={`ex-${i}`} 
+                  className="relative aspect-square rounded-xl overflow-hidden border border-gray-200 cursor-pointer group"
+                  onClick={() => setEnlargedImage(url)}
+                >
+                  <img src={url} alt="" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
                   {!isViewMode && (
-                    <label className="aspect-square border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center text-gray-400 hover:bg-green-50 hover:border-green-400 cursor-pointer transition-all"><Camera size={24} /><span className="text-[10px] mt-1 font-bold">追加</span><input type="file" accept="image/*" multiple onChange={handleImageChange} className="hidden" /></label>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); removeExistingUrl(i); }} className="absolute top-1 right-1 bg-black/50 text-white p-1 rounded-full z-10 hover:bg-red-500 transition-colors"><X size={12} /></button>
                   )}
                 </div>
+              ))}
+              {newPreviewUrls.map((url, i) => (
+                <div 
+                  key={`new-${i}`} 
+                  className="relative aspect-square rounded-xl overflow-hidden border-2 border-green-400 cursor-pointer group"
+                  onClick={() => setEnlargedImage(url)}
+                >
+                  <img src={url} alt="" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                  {!isViewMode && (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); removeNewImage(i); }} className="absolute top-1 right-1 bg-black/50 text-white p-1 rounded-full z-10 hover:bg-red-500 transition-colors"><X size={12} /></button>
+                  )}
+                </div>
+              ))}
+              
+              {!isViewMode && (
+                <label className="aspect-square border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center text-gray-400 hover:bg-green-50 hover:border-green-400 cursor-pointer transition-all"><Camera size={24} /><span className="text-[10px] mt-1 font-bold">追加</span><input type="file" accept="image/*" multiple onChange={handleImageChange} className="hidden" /></label>
+              )}
+            </div>
+          </div>
+
+          {/* 🚀 4. 参加者と使用機械 (フル幅) */}
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+            <div className="flex justify-between items-center mb-4 border-b pb-3">
+              <h2 className="font-bold text-gray-800 flex items-center"><Users className="w-5 h-5 mr-2 text-green-600" /> 4. 参加者と使用機械</h2>
+              <div className="flex space-x-2 text-xs font-bold">
+                <span className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full border border-blue-100">農業者: {summary.agri}</span>
+                <span className="bg-orange-50 text-orange-700 px-2.5 py-1 rounded-full border border-orange-100">以外: {summary.nonAgri}</span>
               </div>
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
-                <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><MessageSquare className="w-5 h-5 mr-2 text-green-600" /> 備考・特記事項</h2>
-                <textarea name="memo" value={formData.memo} onChange={handleChange} disabled={isViewMode} rows="4" className={inputClass} placeholder="作業の様子や特記事項を入力..."></textarea>
-              </div>
+            </div>
+
+            <div className="space-y-4 max-h-[600px] overflow-y-auto overflow-x-hidden pr-1">
+              {participantDetails.map((detail, index) => {
+                const wId = detail.wageId || detail.memberId;
+                const wage = membersList.find(m => m.id === wId);
+                const memberWage = wage ? (wage.defaultWage || 0) : 0;
+                const memberTotal = (detail.workTime || 0) * memberWage;
+
+                const machine = machinesList.find(m => m.id === detail.machineId);
+                const machinePrice = machine ? (machine.defaultPrice || 0) : 0;
+                const machineTotal = (detail.machineTime || 0) * machinePrice;
+                
+                let isAgri = detail.isAgri;
+                if (isAgri === undefined) {
+                  isAgri = wage ? wage.isAgri : true;
+                }
+
+                return (
+                  // 🚀 フル幅のレスポンシブな参加者レイアウト
+                  <div key={index} className="bg-gray-50 border border-gray-200 rounded-2xl p-3 md:p-4 relative group mt-3">
+                    
+                    {!isViewMode && (
+                      <div className="absolute -top-3.5 right-1 md:right-3 flex space-x-1 z-10">
+                        <button type="button" onClick={() => duplicateParticipant(index)} className="bg-white text-blue-500 p-1.5 rounded-full border border-blue-100 shadow-sm transition-opacity hover:bg-blue-50" title="この行をコピー">
+                          <Copy size={16} />
+                        </button>
+                        <button type="button" onClick={() => removeParticipant(index)} className="bg-white text-red-500 p-1.5 rounded-full border border-red-100 shadow-sm transition-opacity hover:bg-red-50" title="削除">
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    )}
+                    
+                    <div className="flex flex-col gap-2.5">
+                      
+                      {/* 1段目: 属性・氏名・単価・金額（人件費エリア） */}
+                      <div className="flex flex-wrap md:flex-nowrap gap-3 items-center w-full">
+                        
+                        {/* 左ブロック（属性・氏名） */}
+                        <div className="flex gap-2 w-full md:w-auto">
+                          <select
+                            value={isAgri ? 'true' : 'false'}
+                            onChange={(e) => updateParticipant(index, 'isAgri', e.target.value === 'true')}
+                            disabled={isViewMode}
+                            className={`w-20 md:w-24 shrink-0 box-border border border-gray-300 rounded-xl p-2 text-xs md:text-sm font-bold focus:ring-2 focus:ring-green-500 disabled:opacity-100 cursor-pointer ${isAgri ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-700'}`}
+                          >
+                            <option value="true">農業者</option>
+                            <option value="false">以外</option>
+                          </select>
+
+                          <input 
+                            type="text" 
+                            list="system-users-list"
+                            placeholder="👤 氏名（任意）" 
+                            value={detail.participantName || ''} 
+                            onChange={(e) => updateParticipant(index, 'participantName', e.target.value)} 
+                            disabled={isViewMode} 
+                            className={`flex-1 md:w-48 shrink-0 box-border border border-gray-300 rounded-xl p-2 text-xs md:text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100`} 
+                          />
+                        </div>
+
+                        {/* 右ブロック（単価・時間・金額） */}
+                        <div className="flex gap-2 w-full md:flex-1 items-center">
+                          <select 
+                            value={wId || ''} 
+                            onChange={(e) => updateParticipant(index, 'wageId', e.target.value)} 
+                            disabled={isViewMode} 
+                            className={`flex-1 min-w-[6rem] box-border border border-gray-300 rounded-xl p-2 text-xs md:text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100 truncate`}
+                          >
+                            <option value="">💰 単価を選択</option>
+                            {membersList.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                          </select>
+
+                          <div className={`w-20 md:w-24 flex items-center border border-gray-300 rounded-xl px-2 box-border shrink-0 ${isViewMode ? 'bg-white' : 'bg-white'}`}>
+                            <input type="number" step="0.5" min="0" value={detail.workTime} onChange={(e) => updateParticipant(index, 'workTime', parseFloat(e.target.value))} disabled={isViewMode} className="w-full min-w-0 box-border py-2 text-xs md:text-sm text-center border-none focus:ring-0 disabled:bg-transparent disabled:text-gray-600 disabled:opacity-100" />
+                            <span className="text-[10px] md:text-xs text-gray-400">h</span>
+                          </div>
+
+                          <div className="w-16 md:w-20 flex flex-col items-end justify-center leading-tight shrink-0">
+                            <span className="text-[9px] md:text-[10px] text-gray-400 whitespace-nowrap">@{memberWage.toLocaleString()}円</span>
+                            <span className="text-xs md:text-sm font-bold text-gray-700 whitespace-nowrap">¥{memberTotal.toLocaleString()}</span>
+                          </div>
+                        </div>
+
+                      </div>
+
+                      {/* 2段目: 使用機械エリア */}
+                      <div className="flex flex-wrap md:flex-nowrap gap-3 items-center pl-2 md:pl-3 border-l-2 border-green-200 ml-1">
+                        <select value={detail.machineId} onChange={(e) => updateParticipant(index, 'machineId', e.target.value)} disabled={isViewMode} className="w-full md:flex-1 box-border border border-gray-300 rounded-xl p-2 text-xs md:text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100 truncate">
+                          <option value="">🚜 使用機械なし</option>
+                          {machinesList.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                        </select>
+
+                        {detail.machineId && (
+                          <div className="flex gap-2 items-center justify-end w-full md:w-auto">
+                            <div className={`w-20 md:w-24 flex items-center border border-green-200 rounded-xl px-2 box-border shrink-0 ${isViewMode ? 'bg-green-50' : 'bg-green-50'}`}>
+                              <input type="number" step="0.5" min="0" value={detail.machineTime} onChange={(e) => updateParticipant(index, 'machineTime', parseFloat(e.target.value))} disabled={isViewMode} className="w-full min-w-0 box-border py-2 text-xs md:text-sm text-center bg-transparent border-none focus:ring-0 font-bold text-green-700 disabled:opacity-100" />
+                              <span className="text-[10px] md:text-xs text-green-600">h</span>
+                            </div>
+                            <div className="w-16 md:w-20 flex flex-col items-end justify-center leading-tight shrink-0">
+                              <span className="text-[9px] md:text-[10px] text-green-600/70 whitespace-nowrap">@{machinePrice.toLocaleString()}円</span>
+                              <span className="text-xs md:text-sm font-bold text-green-700 whitespace-nowrap">¥{machineTotal.toLocaleString()}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                    </div>
+                  </div>
+                );
+              })}
+              
+              {!isViewMode && (
+                <div className="flex flex-col sm:flex-row gap-2 mt-4">
+                  <button type="button" onClick={addParticipant} className="flex-1 py-3 box-border border-2 border-dashed border-green-200 text-green-600 rounded-2xl font-bold flex justify-center items-center hover:bg-green-50 hover:border-green-400 transition-all">
+                    <UserPlus size={18} className="mr-2" /> 1枠追加
+                  </button>
+                  <button type="button" onClick={() => setShowRosterModal(true)} className="flex-1 py-3 box-border border-2 border-dashed border-purple-200 text-purple-600 rounded-2xl font-bold flex justify-center items-center hover:bg-purple-50 hover:border-purple-400 transition-all">
+                    <Users size={18} className="mr-2" /> 登録ユーザーから一括追加
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 🚀 5. 使用資材 (フル幅) */}
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+            <div className="flex justify-between items-center mb-4 border-b pb-3">
+              <h2 className="font-bold text-gray-800 flex items-center"><Package className="w-5 h-5 mr-2 text-green-600" /> 5. 使用資材</h2>
+            </div>
+
+            <div className="space-y-4 max-h-[300px] overflow-y-auto overflow-x-hidden pr-1">
+              {materialDetails.map((detail, index) => {
+                const material = materialsList.find(m => m.id === detail.materialId);
+                const matPrice = material ? (material.defaultPrice || 0) : 0;
+                const matUnit = material ? (material.unit || '個') : '個';
+                const matTotal = (detail.quantity || 0) * matPrice;
+
+                return (
+                  <div key={index} className="bg-gray-50 border border-gray-200 rounded-2xl p-4 relative group flex flex-col md:flex-row gap-3 md:items-center">
+                    {!isViewMode && (
+                      <button type="button" onClick={() => removeMaterial(index)} className="absolute -top-2 right-0 md:-right-2 bg-white text-red-500 p-1.5 rounded-full border border-red-100 shadow-sm transition-opacity z-10"><Trash2 size={16} /></button>
+                    )}
+                    
+                    <div className="flex-1 w-full min-w-0 mt-1">
+                      <select value={detail.materialId} onChange={(e) => updateMaterial(index, 'materialId', e.target.value)} disabled={isViewMode} className={`w-full min-w-0 box-border border border-gray-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100`}>
+                        <option value="">📦 資材を選択</option>
+                        {materialsList.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                      </select>
+                    </div>
+                    
+                    <div className="flex gap-2 items-center justify-end w-full md:w-auto ml-auto">
+                      <div className={`w-24 md:w-28 flex items-center border border-gray-300 rounded-xl px-2 box-border ${isViewMode ? 'bg-white' : 'bg-white'}`}>
+                        <input type="number" step="1" min="0" value={detail.quantity} onChange={(e) => updateMaterial(index, 'quantity', parseFloat(e.target.value))} disabled={isViewMode} className="w-full min-w-0 box-border py-2.5 text-sm text-center border-none focus:ring-0 disabled:bg-transparent disabled:text-gray-600 disabled:opacity-100" />
+                        <span className="text-xs text-gray-400 whitespace-nowrap">{matUnit}</span>
+                      </div>
+                      <div className="w-16 md:w-20 flex flex-col items-end justify-center leading-tight">
+                        <span className="text-[10px] text-gray-400 whitespace-nowrap">@{matPrice.toLocaleString()}円</span>
+                        <span className="text-sm font-bold text-gray-700 whitespace-nowrap">¥{matTotal.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              
+              {!isViewMode && (
+                <button type="button" onClick={addMaterial} className="w-full py-3 box-border border-2 border-dashed border-gray-300 text-gray-600 rounded-xl font-bold flex justify-center items-center hover:bg-gray-100 transition-all"><Plus size={18} className="mr-2" /> 資材を追加</button>
+              )}
+            </div>
+          </div>
+
+          {/* 🚀 6. 備考・特記事項 (フル幅) */}
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
+            <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><MessageSquare className="w-5 h-5 mr-2 text-green-600" /> 6. 備考・特記事項</h2>
+            <textarea name="memo" value={formData.memo} onChange={handleChange} disabled={isViewMode} rows="4" className={inputClass} placeholder="作業の様子や特記事項を入力..."></textarea>
+          </div>
+
+          {/* 🚀 7. 費用の目安（合計） (フル幅) */}
+          <div className="bg-blue-50/50 rounded-xl p-5 border border-blue-100 flex flex-col space-y-3">
+            <div className="flex items-center text-blue-800 font-bold mb-1 text-lg">
+              <Calculator size={20} className="mr-2" /> 7. 費用の目安（合計）
+            </div>
+            <div className="flex justify-between items-center text-gray-700">
+              <span>人件費:</span>
+              <span className="font-bold font-mono">¥{totalPersonnelCost.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between items-center text-gray-700">
+              <span>機械等利用料:</span>
+              <span className="font-bold font-mono">¥{totalMachineCost.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between items-center text-gray-700">
+              <span>資材費:</span>
+              <span className="font-bold font-mono">¥{totalMaterialCost.toLocaleString()}</span>
+            </div>
+            <div className="border-t border-blue-200 pt-3 mt-3 flex justify-between items-center text-lg text-blue-900 font-bold">
+              <span>合計:</span>
+              <span className="font-mono text-2xl">¥{(totalPersonnelCost + totalMachineCost + totalMaterialCost).toLocaleString()}</span>
             </div>
           </div>
 
