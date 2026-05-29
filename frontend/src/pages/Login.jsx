@@ -51,9 +51,8 @@ export const Login = () => {
     setLoading(true);
     setError(null);
 
-    // 🚀 厳密な空欄チェック（スペースのみの入力なども弾く）
     if (isSignUp && (!displayName.trim() || !loginIdInput.trim() || !password.trim())) {
-      setError("すべての項目（お名前、メールアドレス、パスワード）を入力してください。");
+      setError("すべての項目（お名前、ログインID、パスワード）を入力してください。");
       setLoading(false);
       return;
     }
@@ -68,19 +67,14 @@ export const Login = () => {
       
       // @が含まれていない場合は「電話番号」として扱う
       if (!loginIdInput.includes('@')) {
-        if (isSignUp) {
-          // 一般ユーザーが電話番号で新規登録しようとした場合は弾く
-          setError("電話番号での新規登録はシステム管理者のみ可能です。管理者にアカウント作成をご依頼ください。");
-          setLoading(false);
-          return;
-        }
+        // 🚀 電話番号での新規登録制限を解除（一般ユーザーも電話番号で登録可能に）
         // ハイフン等を除去してダミーメールアドレスを生成
         const cleanPhone = loginIdInput.replace(/[^0-9]/g, '');
         finalLoginId = `${cleanPhone}@kamata.local`;
       }
 
       if (isSignUp) {
-        // 新規登録（メールアドレスのみ）
+        // 新規登録（メールアドレス or 電話番号）
         const result = await createUserWithEmailAndPassword(auth, finalLoginId, password);
         await updateProfile(result.user, { displayName: displayName.trim() });
         await createUserData(result.user, displayName.trim());
@@ -92,7 +86,7 @@ export const Login = () => {
       navigate('/dashboard');
     } catch (err) {
       console.error(err);
-      if (err.code === 'auth/email-already-in-use') setError("このメールアドレスは既に登録されています。");
+      if (err.code === 'auth/email-already-in-use') setError("このログインID（メール・電話番号）は既に登録されています。");
       else if (err.code === 'auth/weak-password') setError("パスワードは6文字以上で入力してください。");
       else if (err.code === 'auth/invalid-credential') setError("ログインIDまたはパスワードが正しくありません。");
       else setError("認証に失敗しました。");
@@ -132,9 +126,11 @@ export const Login = () => {
                 </div>
               </div>
             )}
+            
+            {/* 🚀 項目名とプレースホルダーを「メールアドレス または 電話番号」に統一 */}
             <div>
               <label className="block text-sm font-bold text-gray-700 mb-1">
-                {isSignUp ? 'メールアドレス' : 'ログインID (メール または 電話番号)'} <span className="text-red-500">*</span>
+                ログインID (メールアドレス または 電話番号) <span className="text-red-500">*</span>
               </label>
               <div className="relative">
                 <input 
@@ -142,14 +138,18 @@ export const Login = () => {
                   value={loginIdInput} 
                   onChange={(e) => setLoginIdInput(e.target.value)} 
                   className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500" 
-                  placeholder={isSignUp ? "example@mail.com" : "example@mail.com または 09012345678"} 
+                  placeholder="example@mail.com または 09012345678" 
                   required 
                 />
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center">
                   {loginIdInput.includes('@') || loginIdInput === '' ? <Mail className="h-4 w-4 text-gray-400" /> : <Phone className="h-4 w-4 text-gray-400" />}
                 </div>
               </div>
+              {isSignUp && (
+                <p className="text-[10px] text-gray-500 mt-1 ml-1">※電話番号の場合はハイフンなしでご入力ください</p>
+              )}
             </div>
+
             <div>
               <label className="block text-sm font-bold text-gray-700 mb-1">
                 パスワード <span className="text-red-500">*</span>
