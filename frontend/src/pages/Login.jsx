@@ -102,15 +102,18 @@ export const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-6 px-4 sm:px-6 lg:px-8">
-      {/* 🚀 どんな画面サイズでも幅を固定し、上下の余白を調整 */}
-      <div className="w-full max-w-[420px] mx-auto text-center">
+    // 🚀 items-center を追加し、強制的に中央揃えにする
+    <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center py-8 px-4">
+      
+      {/* 🚀 style属性で直接 maxWidth を 400px に固定 */}
+      <div className="w-full text-center" style={{ maxWidth: '400px' }}>
         <div className="flex justify-center text-green-600 mb-3"><Sprout size={44} /></div>
         <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900 leading-tight">多面的機能発揮促進事業 管理システム</h2>
-        <p className="mt-1.5 text-sm text-gray-500 font-bold">[鎌田地区]</p>
+        <p className="mt-1 text-sm text-gray-500 font-bold">[鎌田地区]</p>
       </div>
 
-      <div className="mt-6 w-full max-w-[420px] mx-auto">
+      {/* 🚀 フォーム全体も style属性で maxWidth を 400px に強制固定 */}
+      <div className="mt-6 w-full" style={{ maxWidth: '400px' }}>
         <div className="bg-white py-6 px-6 shadow-xl rounded-2xl border border-gray-100">
           
           {error && (
@@ -166,7 +169,7 @@ export const Login = () => {
               </div>
             </div>
 
-            <button type="submit" disabled={loading} className="w-full flex justify-center items-center py-2.5 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition-all shadow-sm active:scale-95 mt-2 text-sm sm:text-base">
+            <button type="submit" disabled={loading} className="w-full flex justify-center items-center py-2.5 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition-all shadow-sm active:scale-95 mt-2 text-sm">
               {isSignUp ? <UserPlus className="mr-2 h-4 w-4" /> : <LogIn className="mr-2 h-4 w-4" />}
               {loading ? '通信中...' : (isSignUp ? 'アカウントを作成する' : 'ログイン')}
             </button>
