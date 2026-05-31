@@ -60,10 +60,12 @@ export const ActivityForm = () => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
+  // 🚀 formData に budget（予算額）を追加
   const [formData, setFormData] = useState({
     status: '実績入力済', planType: '当初計画', isEssential: false, groupId: '',
     date: new Date().toISOString().split('T')[0], startTime: '08:00', endTime: '10:00',
-    location: '', activityType: '', activityNumbers: [], memo: '', reportNo: ''
+    location: '', activityType: '', activityNumbers: [], memo: '', reportNo: '',
+    budget: ''
   });
 
   const [participantDetails, setParticipantDetails] = useState([]);
@@ -92,7 +94,8 @@ export const ActivityForm = () => {
               activityType: data.activityType || '',
               activityNumbers: data.activityNumbers || [], 
               memo: data.memo || '',
-              reportNo: data.reportNo || ''
+              reportNo: data.reportNo || '',
+              budget: data.budget || '' // 🚀 追加
             });
             setParticipantDetails(data.participantDetails || []);
             setMaterialDetails(data.materialDetails || []); 
@@ -109,7 +112,7 @@ export const ActivityForm = () => {
       setFormData({
         status: d.status || '実績入力済', planType: d.planType || '当初計画', isEssential: d.isEssential || false, groupId: d.groupId || '',
         date: d.date, startTime: d.startTime, endTime: d.endTime, location: d.location, activityType: d.activityType,
-        activityNumbers: d.activityNumbers || [], memo: d.memo || '', reportNo: d.reportNo || ''
+        activityNumbers: d.activityNumbers || [], memo: d.memo || '', reportNo: d.reportNo || '', budget: d.budget || '' // 🚀 追加
       });
       setParticipantDetails(d.participantDetails || []);
       setMaterialDetails(d.materialDetails || []); 
@@ -297,7 +300,7 @@ export const ActivityForm = () => {
       status: editData.status || '実績入力済', planType: editData.planType || '当初計画', isEssential: editData.isEssential || false,
       groupId: editData.groupId || '', date: editData.date || '', startTime: editData.startTime || '', endTime: editData.endTime || '',
       location: editData.location || '', activityType: editData.activityType || '', activityNumbers: editData.activityNumbers || [],
-      memo: editData.memo || '', reportNo: editData.reportNo || ''
+      memo: editData.memo || '', reportNo: editData.reportNo || '', budget: editData.budget || ''
     });
     setParticipantDetails(editData.participantDetails || []);
     setMaterialDetails(editData.materialDetails || []); 
@@ -345,8 +348,10 @@ export const ActivityForm = () => {
         
       const validMaterials = materialDetails.filter(m => m.materialId !== ''); 
       
+      // 🚀 budgetを数値として保存
       const submitData = { 
         ...formData, 
+        budget: formData.budget ? Number(formData.budget) : 0, 
         participantDetails: validParticipants, 
         materialDetails: validMaterials, 
         participantsAgri: summary.agri, 
@@ -385,6 +390,9 @@ export const ActivityForm = () => {
     (userRole === 'reporter' && canEditGroup && isInSameGroup);
     
   const selectableGroups = (userRole === 'admin' || userRole === 'manager') ? groupsList : groupsList.filter(g => userGroups.includes(g.id));
+
+  // 🚀 総費用の計算
+  const totalCost = totalPersonnelCost + totalMachineCost + totalMaterialCost;
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20 md:pb-12 overflow-x-hidden w-full">
@@ -516,12 +524,10 @@ export const ActivityForm = () => {
       <main className="p-4 md:p-8 w-full max-w-md md:max-w-6xl mx-auto box-border">
         <form onSubmit={handleSubmit} className="space-y-6">
           
-          {/* 🚀 1. 実施日時・場所 & 2) 活動内容 (上部2カラム) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
             
-            {/* 1. 実施日時・場所 */}
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4 h-full">
-              <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Calendar className="w-5 h-5 mr-2 text-green-600" /> 1. 実施日時・場所</h2>
+              <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Calendar className="w-5 h-5 mr-2 text-green-600" /> 1）実施日時・場所</h2>
               
               <div className="flex flex-col sm:flex-row gap-4 mb-2">
                 <div className="flex-1 min-w-0">
@@ -576,9 +582,8 @@ export const ActivityForm = () => {
               </div>
             </div>
 
-            {/* 2. 活動内容 */}
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4 h-full">
-              <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Sprout className="w-5 h-5 mr-2 text-green-600" /> 2. 活動内容</h2>
+              <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Sprout className="w-5 h-5 mr-2 text-green-600" /> 2）活動内容</h2>
               
               <div className="bg-yellow-50 p-3 rounded-xl border border-yellow-200">
                 <label className="flex items-center space-x-3 cursor-pointer">
@@ -634,9 +639,8 @@ export const ActivityForm = () => {
             </div>
           </div>
 
-          {/* 🚀 3. 現場写真 (フル幅) */}
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
-            <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Camera className="w-5 h-5 mr-2 text-green-600" /> 3. 現場写真</h2>
+            <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Camera className="w-5 h-5 mr-2 text-green-600" /> 3）現場写真</h2>
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
               {existingUrls.map((url, i) => (
                 <div 
@@ -669,10 +673,9 @@ export const ActivityForm = () => {
             </div>
           </div>
 
-          {/* 🚀 4. 参加者と使用機械 (フル幅) */}
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
             <div className="flex justify-between items-center mb-4 border-b pb-3">
-              <h2 className="font-bold text-gray-800 flex items-center"><Users className="w-5 h-5 mr-2 text-green-600" /> 4. 参加者と使用機械</h2>
+              <h2 className="font-bold text-gray-800 flex items-center"><Users className="w-5 h-5 mr-2 text-green-600" /> 4）参加者と使用機械</h2>
               <div className="flex space-x-2 text-xs font-bold">
                 <span className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full border border-blue-100">農業者: {summary.agri}</span>
                 <span className="bg-orange-50 text-orange-700 px-2.5 py-1 rounded-full border border-orange-100">以外: {summary.nonAgri}</span>
@@ -696,7 +699,6 @@ export const ActivityForm = () => {
                 }
 
                 return (
-                  // 🚀 フル幅のレスポンシブな参加者レイアウト
                   <div key={index} className="bg-gray-50 border border-gray-200 rounded-2xl p-3 md:p-4 relative group mt-3">
                     
                     {!isViewMode && (
@@ -712,10 +714,8 @@ export const ActivityForm = () => {
                     
                     <div className="flex flex-col gap-2.5">
                       
-                      {/* 1段目: 属性・氏名・単価・金額（人件費エリア） */}
                       <div className="flex flex-wrap md:flex-nowrap gap-3 items-center w-full">
                         
-                        {/* 左ブロック（属性・氏名） */}
                         <div className="flex gap-2 w-full md:w-auto">
                           <select
                             value={isAgri ? 'true' : 'false'}
@@ -738,7 +738,6 @@ export const ActivityForm = () => {
                           />
                         </div>
 
-                        {/* 右ブロック（単価・時間・金額） */}
                         <div className="flex gap-2 w-full md:flex-1 items-center">
                           <select 
                             value={wId || ''} 
@@ -763,7 +762,6 @@ export const ActivityForm = () => {
 
                       </div>
 
-                      {/* 2段目: 使用機械エリア */}
                       <div className="flex flex-wrap md:flex-nowrap gap-3 items-center pl-2 md:pl-3 border-l-2 border-green-200 ml-1">
                         <select value={detail.machineId} onChange={(e) => updateParticipant(index, 'machineId', e.target.value)} disabled={isViewMode} className="w-full md:flex-1 box-border border border-gray-300 rounded-xl p-2 text-xs md:text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100 truncate">
                           <option value="">🚜 使用機械なし</option>
@@ -802,10 +800,9 @@ export const ActivityForm = () => {
             </div>
           </div>
 
-          {/* 🚀 5. 使用資材 (フル幅) */}
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
             <div className="flex justify-between items-center mb-4 border-b pb-3">
-              <h2 className="font-bold text-gray-800 flex items-center"><Package className="w-5 h-5 mr-2 text-green-600" /> 5. 使用資材</h2>
+              <h2 className="font-bold text-gray-800 flex items-center"><Package className="w-5 h-5 mr-2 text-green-600" /> 5）使用資材</h2>
             </div>
 
             <div className="space-y-4 max-h-[300px] overflow-y-auto overflow-x-hidden pr-1">
@@ -848,33 +845,59 @@ export const ActivityForm = () => {
             </div>
           </div>
 
-          {/* 🚀 6. 備考・特記事項 (フル幅) */}
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
-            <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><MessageSquare className="w-5 h-5 mr-2 text-green-600" /> 6. 備考・特記事項</h2>
+            <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><MessageSquare className="w-5 h-5 mr-2 text-green-600" /> 6）備考・特記事項</h2>
             <textarea name="memo" value={formData.memo} onChange={handleChange} disabled={isViewMode} rows="4" className={inputClass} placeholder="作業の様子や特記事項を入力..."></textarea>
           </div>
 
-          {/* 🚀 7. 費用の目安（合計） (フル幅) */}
+          {/* 🚀 7) 予算と費用の目安（合計）に拡張 */}
           <div className="bg-blue-50/50 rounded-xl p-5 border border-blue-100 flex flex-col space-y-3">
-            <div className="flex items-center text-blue-800 font-bold mb-1 text-lg">
-              <Calculator size={20} className="mr-2" /> 7. 費用の目安（合計）
+            <div className="flex items-center text-blue-800 font-bold mb-3 text-lg border-b border-blue-200 pb-2">
+              <Calculator size={20} className="mr-2" /> 7）予算と費用の目安（合計）
             </div>
-            <div className="flex justify-between items-center text-gray-700">
+
+            {/* 🚀 予算入力フィールド */}
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between bg-white p-4 rounded-xl border border-blue-200 shadow-sm mb-2">
+              <label className="text-sm font-bold text-gray-700">この活動の予算額 (任意)</label>
+              <div className="flex items-center w-full sm:w-64">
+                <span className="text-gray-500 mr-2 font-bold">¥</span>
+                <input 
+                  type="number" 
+                  name="budget" 
+                  value={formData.budget} 
+                  onChange={handleChange} 
+                  disabled={isViewMode} 
+                  className="w-full box-border border border-gray-300 rounded-lg p-2.5 text-right focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-600 font-mono text-lg font-bold" 
+                  placeholder="0" 
+                  step="1000"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center text-sm text-gray-700 px-2">
               <span>人件費:</span>
               <span className="font-bold font-mono">¥{totalPersonnelCost.toLocaleString()}</span>
             </div>
-            <div className="flex justify-between items-center text-gray-700">
+            <div className="flex justify-between items-center text-sm text-gray-700 px-2">
               <span>機械等利用料:</span>
               <span className="font-bold font-mono">¥{totalMachineCost.toLocaleString()}</span>
             </div>
-            <div className="flex justify-between items-center text-gray-700">
+            <div className="flex justify-between items-center text-sm text-gray-700 px-2">
               <span>資材費:</span>
               <span className="font-bold font-mono">¥{totalMaterialCost.toLocaleString()}</span>
             </div>
-            <div className="border-t border-blue-200 pt-3 mt-3 flex justify-between items-center text-lg text-blue-900 font-bold">
-              <span>合計:</span>
-              <span className="font-mono text-2xl">¥{(totalPersonnelCost + totalMachineCost + totalMaterialCost).toLocaleString()}</span>
+            <div className="border-t border-blue-200 pt-3 mt-1 flex justify-between items-center text-lg text-blue-900 font-bold px-2">
+              <span>実績合計:</span>
+              <span className="font-mono text-2xl">¥{totalCost.toLocaleString()}</span>
             </div>
+
+            {/* 🚀 予算が入力されている場合、残額を表示 */}
+            {formData.budget > 0 && (
+              <div className={`flex justify-between items-center text-base font-bold px-4 py-3 rounded-xl mt-2 border ${Number(formData.budget) - totalCost < 0 ? 'bg-red-50 text-red-600 border-red-200' : 'bg-green-50 text-green-700 border-green-200'}`}>
+                <span>予算残額:</span>
+                <span className="font-mono text-xl">¥{(Number(formData.budget) - totalCost).toLocaleString()}</span>
+              </div>
+            )}
           </div>
 
           {editData && (

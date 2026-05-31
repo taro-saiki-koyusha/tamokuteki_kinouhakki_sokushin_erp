@@ -257,6 +257,29 @@ export const Dashboard = () => {
     setTimeout(() => { window.print(); }, 150);
   };
 
+  // 🚀 個別活動の実績額を計算する関数
+  const calculateActivityCost = (act) => {
+    let pCost = 0; let mCost = 0; let matCost = 0;
+    (act.participantDetails || []).forEach(detail => {
+      const wId = detail.wageId || detail.memberId;
+      if (wId) {
+        const wage = membersList.find(m => m.id === wId);
+        if (wage) pCost += (detail.workTime || 0) * (wage.defaultWage || 0);
+      }
+      if (detail.machineId) {
+        const machine = machinesList.find(m => m.id === detail.machineId);
+        if (machine) mCost += (detail.machineTime || 0) * (machine.defaultPrice || 0);
+      }
+    });
+    (act.materialDetails || []).forEach(detail => {
+      if (detail.materialId) {
+        const mat = materialsList.find(m => m.id === detail.materialId);
+        if (mat) matCost += (detail.quantity || 0) * (mat.defaultPrice || 0);
+      }
+    });
+    return pCost + mCost + matCost;
+  };
+
   const roleLabel = userRole === 'admin' ? '管理者' : userRole === 'manager' ? '事務・役員' : '現場リーダー';
   const showDeleteColumn = userRole === 'admin' || (userRole === 'reporter' && (canEditOwn || canEditGroup));
 
@@ -274,6 +297,9 @@ export const Dashboard = () => {
     const canDeleteAct = userRole === 'admin' || 
                          (userRole === 'reporter' && canEditOwn && isCreator) ||
                          (userRole === 'reporter' && canEditGroup && isInSameGroup);
+
+    const budget = Number(activity.budget) || 0;
+    const actualCost = calculateActivityCost(activity);
 
     return (
       <div onClick={() => navigate(`/activity-form/${activity.id}`, { state: { editData: activity, isViewMode: true } })} className="bg-white rounded-2xl shadow-sm border-l-4 border-green-500 p-4 cursor-pointer hover:shadow-md transition-all flex flex-col h-full relative group">
@@ -319,6 +345,19 @@ export const Dashboard = () => {
           <div className="flex items-center"><Calendar className="mr-2 h-4 w-4" />{activity.date}</div>
           <div className="flex items-center"><MapPin className="mr-2 h-4 w-4" />{activity.location}</div>
         </div>
+
+        {/* 🚀 カード内にも予算・実績のサマリーを表示 */}
+        {(budget > 0 || actualCost > 0) && (
+          <div className="flex justify-between items-center mb-3 pt-2 border-t border-gray-100 border-dashed">
+            <div className="text-[10px] text-gray-500">
+              予算: <span className="font-bold text-gray-700">¥{budget.toLocaleString()}</span>
+            </div>
+            <div className="text-[10px] text-gray-500">
+              実績: <span className="font-bold text-blue-600">¥{actualCost.toLocaleString()}</span>
+            </div>
+          </div>
+        )}
+
         {images.length > 0 && (
           <div className="relative rounded-lg overflow-hidden h-32 bg-gray-50 border border-gray-100 mb-3">
             <img src={images[0]} alt="" className="w-full h-full object-cover" />
@@ -346,7 +385,7 @@ export const Dashboard = () => {
     return (
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto relative">
-          <table className="w-full text-left border-collapse min-w-[1200px]">
+          <table className="w-full text-left border-collapse min-w-[1300px]">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200 text-sm text-gray-700">
                 <th onClick={toggleDateSort} className="p-3 font-bold w-32 cursor-pointer hover:bg-gray-200 transition-colors select-none group whitespace-nowrap" title="日付で並び替え">
@@ -359,6 +398,11 @@ export const Dashboard = () => {
                 <th className="p-3 font-bold w-20 text-center whitespace-nowrap">状態</th>
                 <th className="p-3 font-bold w-24 text-center whitespace-nowrap">区分</th>
                 <th className="p-3 font-bold w-24 whitespace-nowrap">報告書NO</th>
+                
+                {/* 🚀 予算額と実績額の列を追加 */}
+                <th className="p-3 font-bold w-28 text-right whitespace-nowrap">予算額</th>
+                <th className="p-3 font-bold w-28 text-right whitespace-nowrap">実績額</th>
+
                 <th className="p-3 font-bold w-36 whitespace-nowrap">グループ</th>
                 <th className="p-3 font-bold w-40 whitespace-nowrap">活動場所</th>
                 <th className="p-3 font-bold w-20 whitespace-nowrap">項目番号</th>
@@ -387,6 +431,10 @@ export const Dashboard = () => {
                                      (userRole === 'reporter' && canEditGroup && isInSameGroup);
 
                 const creatorName = systemUsers.find(u => u.id === act.createdBy)?.displayName || '-';
+
+                // 🚀 行ごとの予算・実績計算
+                const budget = Number(act.budget) || 0;
+                const actualCost = calculateActivityCost(act);
 
                 return (
                   <tr key={act.id} onClick={() => navigate(`/activity-form/${act.id}`, { state: { editData: act, isViewMode: true } })} className="border-b border-gray-100 hover:bg-green-50 cursor-pointer transition-colors group/row">
@@ -418,6 +466,15 @@ export const Dashboard = () => {
                     </td>
 
                     <td className="p-3 text-sm font-bold text-blue-600 whitespace-nowrap">{act.reportNo}</td>
+                    
+                    {/* 🚀 予算額と実績額のデータセル */}
+                    <td className="p-3 text-sm font-bold text-gray-700 whitespace-nowrap text-right">
+                      {budget > 0 ? `¥${budget.toLocaleString()}` : '-'}
+                    </td>
+                    <td className={`p-3 text-sm font-bold whitespace-nowrap text-right ${actualCost > budget && budget > 0 ? 'text-red-600' : 'text-blue-700'}`}>
+                      {actualCost > 0 ? `¥${actualCost.toLocaleString()}` : '-'}
+                    </td>
+
                     <td className="p-3 text-xs whitespace-nowrap">{groupInfo ? groupInfo.name : <span className="text-red-500">未登録</span>}</td>
                     <td className="p-3 text-xs text-gray-600 truncate max-w-[10rem]" title={act.location}>{act.location}</td>
                     <td className="p-3 text-xs font-bold text-green-600 whitespace-nowrap">{act.activityNumbers?.join(', ')}</td>
@@ -498,7 +555,6 @@ export const Dashboard = () => {
             </>
           )}
 
-          {/* 🚀 アカウント設定ボタン（PC用） */}
           <button onClick={() => navigate('/profile')} className="flex items-center text-sm font-bold text-gray-500 hover:text-green-600">
             <User size={18} className="mr-1"/> アカウント設定
           </button>
@@ -520,7 +576,6 @@ export const Dashboard = () => {
             </>
           )}
           
-          {/* 🚀 アカウント設定ボタン（スマホ用） */}
           <button onClick={() => navigate('/profile')} className="p-2 text-gray-500 hover:text-green-600 transition-colors">
             <User size={20} />
           </button>
@@ -596,14 +651,44 @@ export const Dashboard = () => {
                 {groupsList.map(group => {
                   const acts = groupedActivities[group.id] || [];
                   if (acts.length === 0) return null;
+
+                  // 🚀 グループごとの合計を計算
+                  const groupTotalBudget = acts.reduce((sum, act) => sum + (Number(act.budget) || 0), 0);
+                  const groupTotalActual = acts.reduce((sum, act) => sum + calculateActivityCost(act), 0);
+                  const balance = groupTotalBudget - groupTotalActual;
+
                   return (
                     <div key={group.id} className="space-y-4">
-                      <div className="flex items-center">
-                        <div className="h-6 w-1.5 bg-blue-600 rounded-full mr-3"></div>
-                        <h3 className="text-lg font-extrabold text-gray-800">{group.name}</h3>
-                        <span className="ml-3 bg-blue-50 text-blue-600 text-xs px-2.5 py-0.5 rounded-full font-bold border border-blue-100">
-                          {acts.length} 件の記録
-                        </span>
+                      {/* 🚀 グループヘッダーに予算と実績の集計UIを追加 */}
+                      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 border-b border-gray-300 pb-3">
+                        <div className="flex items-center">
+                          <div className="h-6 w-1.5 bg-blue-600 rounded-full mr-3"></div>
+                          <h3 className="text-xl font-extrabold text-gray-800">{group.name}</h3>
+                          <span className="ml-3 bg-blue-50 text-blue-600 text-xs px-2.5 py-0.5 rounded-full font-bold border border-blue-100">
+                            {acts.length} 件の記録
+                          </span>
+                        </div>
+                        
+                        {(groupTotalBudget > 0 || groupTotalActual > 0) && (
+                          <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-xl border border-gray-200 shadow-sm w-max self-start sm:self-auto">
+                            <div className="text-right">
+                              <div className="text-[9px] text-gray-500 font-bold">予算合計</div>
+                              <div className="text-sm font-bold text-gray-800">¥{groupTotalBudget.toLocaleString()}</div>
+                            </div>
+                            <div className="text-gray-300 font-light">|</div>
+                            <div className="text-right">
+                              <div className="text-[9px] text-gray-500 font-bold">実績合計</div>
+                              <div className="text-sm font-bold text-blue-600">¥{groupTotalActual.toLocaleString()}</div>
+                            </div>
+                            <div className="text-gray-300 font-light">|</div>
+                            <div className="text-right">
+                              <div className="text-[9px] text-gray-500 font-bold">予算残額</div>
+                              <div className={`text-base font-extrabold ${balance < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                ¥{balance.toLocaleString()}
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                       
                       {viewStyle === 'card' ? (
@@ -617,6 +702,7 @@ export const Dashboard = () => {
                   );
                 })}
 
+                {/* グループ未登録の処理 */}
                 {(() => {
                   const unregisteredActs = Object.keys(groupedActivities)
                     .filter(gid => !groupsList.some(g => g.id === gid))
@@ -629,14 +715,41 @@ export const Dashboard = () => {
 
                   if (unregisteredActs.length === 0) return null;
 
+                  const groupTotalBudget = unregisteredActs.reduce((sum, act) => sum + (Number(act.budget) || 0), 0);
+                  const groupTotalActual = unregisteredActs.reduce((sum, act) => sum + calculateActivityCost(act), 0);
+                  const balance = groupTotalBudget - groupTotalActual;
+
                   return (
                     <div key="unregistered" className="space-y-4">
-                      <div className="flex items-center">
-                        <div className="h-6 w-1.5 bg-gray-400 rounded-full mr-3"></div>
-                        <h3 className="text-lg font-extrabold text-gray-500">グループ未登録・不明</h3>
-                        <span className="ml-3 bg-gray-100 text-gray-600 text-xs px-2.5 py-0.5 rounded-full font-bold border border-gray-200">
-                          {unregisteredActs.length} 件の記録
-                        </span>
+                      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 border-b border-gray-300 pb-3">
+                        <div className="flex items-center">
+                          <div className="h-6 w-1.5 bg-gray-400 rounded-full mr-3"></div>
+                          <h3 className="text-xl font-extrabold text-gray-500">グループ未登録・不明</h3>
+                          <span className="ml-3 bg-gray-100 text-gray-600 text-xs px-2.5 py-0.5 rounded-full font-bold border border-gray-200">
+                            {unregisteredActs.length} 件の記録
+                          </span>
+                        </div>
+                        
+                        {(groupTotalBudget > 0 || groupTotalActual > 0) && (
+                          <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-xl border border-gray-200 shadow-sm w-max self-start sm:self-auto opacity-80">
+                            <div className="text-right">
+                              <div className="text-[9px] text-gray-500 font-bold">予算合計</div>
+                              <div className="text-sm font-bold text-gray-800">¥{groupTotalBudget.toLocaleString()}</div>
+                            </div>
+                            <div className="text-gray-300 font-light">|</div>
+                            <div className="text-right">
+                              <div className="text-[9px] text-gray-500 font-bold">実績合計</div>
+                              <div className="text-sm font-bold text-blue-600">¥{groupTotalActual.toLocaleString()}</div>
+                            </div>
+                            <div className="text-gray-300 font-light">|</div>
+                            <div className="text-right">
+                              <div className="text-[9px] text-gray-500 font-bold">予算残額</div>
+                              <div className={`text-base font-extrabold ${balance < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                ¥{balance.toLocaleString()}
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                       
                       <div className="opacity-80">
