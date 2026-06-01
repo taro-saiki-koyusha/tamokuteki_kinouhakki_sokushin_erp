@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
-import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2, Calculator, Package, Plus, CheckCircle, Copy, ListChecks, MessageSquare, Download, Link as LinkIcon } from 'lucide-react';
+import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2, Calculator, Package, Plus, CheckCircle, Copy, ListChecks, MessageSquare, Download, Link as LinkIcon, FileSpreadsheet, Printer } from 'lucide-react';
 import { collection, addDoc, doc, updateDoc, serverTimestamp, deleteDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged } from 'firebase/auth';
 import { db, storage, auth } from '../firebase'; 
+import XlsxPopulate from 'xlsx-populate/browser/xlsx-populate';
 
-// 別ファイルから定数を読み込む
-import { ACTIVITY_ITEMS, LOCATION_OPTIONS } from '../constants';
+// 外部設定ファイルから組織名を読み込む
+import { ACTIVITY_ITEMS, LOCATION_OPTIONS, ORGANIZATION_NAME } from '../constants';
 
 const formatTimestamp = (timestamp) => {
   if (!timestamp) return '-';
@@ -31,7 +32,6 @@ export const ActivityForm = () => {
   const location = useLocation();
   const { id } = useParams(); 
   
-  // 画面遷移時に必ずページの一番上（トップ）から表示させる処理
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [location.pathname]);
@@ -39,6 +39,7 @@ export const ActivityForm = () => {
   const [editData, setEditData] = useState(location.state?.editData || null);
   const [isViewMode, setIsViewMode] = useState(location.state?.isViewMode || false);
   const [isLoadingDirect, setIsLoadingDirect] = useState(false); 
+  const [isExporting, setIsExporting] = useState(false); 
   
   const [membersList, setMembersList] = useState([]);
   const [machinesList, setMachinesList] = useState([]);
@@ -60,7 +61,6 @@ export const ActivityForm = () => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // 🚀 formData に budget（予算額）を追加
   const [formData, setFormData] = useState({
     status: '実績入力済', planType: '当初計画', isEssential: false, groupId: '',
     date: new Date().toISOString().split('T')[0], startTime: '08:00', endTime: '10:00',
@@ -95,7 +95,7 @@ export const ActivityForm = () => {
               activityNumbers: data.activityNumbers || [], 
               memo: data.memo || '',
               reportNo: data.reportNo || '',
-              budget: data.budget || '' // 🚀 追加
+              budget: data.budget || '' 
             });
             setParticipantDetails(data.participantDetails || []);
             setMaterialDetails(data.materialDetails || []); 
@@ -112,7 +112,7 @@ export const ActivityForm = () => {
       setFormData({
         status: d.status || '実績入力済', planType: d.planType || '当初計画', isEssential: d.isEssential || false, groupId: d.groupId || '',
         date: d.date, startTime: d.startTime, endTime: d.endTime, location: d.location, activityType: d.activityType,
-        activityNumbers: d.activityNumbers || [], memo: d.memo || '', reportNo: d.reportNo || '', budget: d.budget || '' // 🚀 追加
+        activityNumbers: d.activityNumbers || [], memo: d.memo || '', reportNo: d.reportNo || '', budget: d.budget || '' 
       });
       setParticipantDetails(d.participantDetails || []);
       setMaterialDetails(d.materialDetails || []); 
@@ -181,6 +181,10 @@ export const ActivityForm = () => {
     if (field === 'machineId' && value === '') {
       newList[index].machineTime = 0;
     }
+
+    if (field === 'wageId' && value === 'zero') {
+      newList[index].workTime = 0;
+    }
     
     setParticipantDetails(newList);
   };
@@ -214,7 +218,7 @@ export const ActivityForm = () => {
     let isAgri = p.isAgri;
     if (isAgri === undefined) {
       const wId = p.wageId || p.memberId;
-      if (wId) {
+      if (wId && wId !== 'zero') {
         const wage = membersList.find(m => m.id === wId);
         isAgri = wage ? wage.isAgri : true;
       } else {
@@ -230,7 +234,7 @@ export const ActivityForm = () => {
     let pCost = 0; let mCost = 0; let matCost = 0;
     participantDetails.forEach(detail => {
       const wId = detail.wageId || detail.memberId;
-      if (wId) {
+      if (wId && wId !== 'zero') {
         const wage = membersList.find(m => m.id === wId);
         if (wage) pCost += (detail.workTime || 0) * (wage.defaultWage || 0);
       }
@@ -321,6 +325,88 @@ export const ActivityForm = () => {
     navigator.clipboard.writeText(link).then(() => alert("リンクをコピーしました！")).catch(() => alert("コピー失敗"));
   };
 
+  const handleExportSingleReport = async () => {
+    if (!editData) return;
+    setIsExporting(true);
+    try {
+      const response = await fetch(`/様式1_活動報告書_農地維持支払.xlsx?t=${Date.now()}`);
+      if (!response.ok) throw new Error('テンプレートが見つかりません');
+      const arrayBuffer = await response.arrayBuffer();
+      const workbook = await XlsxPopulate.fromDataAsync(arrayBuffer);
+
+      const [startH, startM] = editData.startTime.split(':').map(Number);
+      const [endH, endM] = editData.endTime.split(':').map(Number);
+      let duration = (endH + endM / 60) - (startH + startM / 60);
+      if (duration < 0) duration += 24;
+
+      const sheet1 = workbook.sheet('活動報告書') || workbook.sheets()[0];
+      sheet1.cell('AH3').value(editData.reportNo || '');
+      sheet1.cell('A7').value(editData.date);
+      sheet1.cell('C7').value(editData.startTime);
+      sheet1.cell('F7').value(editData.endTime);
+      sheet1.cell('I7').value(duration);
+      sheet1.cell('M7').value(Number(editData.participantsAgri || 0));
+      sheet1.cell('O7').value(Number(editData.participantsNonAgri || 0));
+      sheet1.cell('Q7').value(Number(editData.participants || 0));
+      sheet1.cell('S7').value(editData.activityNumbers?.join(', '));
+      sheet1.cell('AA7').value(editData.activityType || '');
+      sheet1.cell('A8').value(editData.memo || '');
+
+      const sheet2 = workbook.sheet('日当借上支払明細') || workbook.sheets()[1];
+      sheet2.cell('AJ3').value(editData.date);
+
+      if (editData.participantDetails && editData.participantDetails.length > 0) {
+        editData.participantDetails.forEach((detail, index) => {
+          const row = 6 + index;
+          const wId = detail.wageId || detail.memberId;
+          const wage = membersList.find(m => m.id === wId);
+          const machine = machinesList.find(m => m.id === detail.machineId);
+
+          let memberTotal = 0; let machineTotal = 0;
+
+          if (detail.participantName || wage || wId === 'zero') {
+            memberTotal = detail.workTime * (wage?.defaultWage || 0);
+            
+            // 🚀 F列（構成員番号）の出力ロジックを修正
+            // ユーザー管理マスタから、入力された名前に一致するユーザーを探す
+            const participantName = detail.participantName || wage?.name || '名称未設定';
+            const matchedUser = systemUsers.find(u => (u.displayName || u.name) === participantName);
+            
+            // 見つかった場合はその構成員番号を、見つからない・設定がない場合は「-」を出力
+            const memberNo = matchedUser?.memberNo ? matchedUser.memberNo : '-';
+
+            sheet2.cell(`A${row}`).value(participantName);
+            sheet2.cell(`F${row}`).value(memberNo); // 🚀 構成員番号を出力
+            sheet2.cell(`G${row}`).value(detail.workTime);
+            sheet2.cell(`J${row}`).value('時間');
+            sheet2.cell(`L${row}`).value(wage?.defaultWage || 0);
+            sheet2.cell(`O${row}`).value(memberTotal);
+          }
+          if (machine) {
+            machineTotal = detail.machineTime * machine.defaultPrice;
+            sheet2.cell(`S${row}`).value(machine.name);
+            sheet2.cell(`X${row}`).value(detail.machineTime);
+            sheet2.cell(`AA${row}`).value('時間');
+            sheet2.cell(`AC${row}`).value(machine.defaultPrice);
+            sheet2.cell(`AF${row}`).value(machineTotal);
+          }
+          sheet2.cell(`AJ${row}`).value(memberTotal + machineTotal);
+        });
+      }
+      const blob = await workbook.outputAsync();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `活動報告書_${editData.date}.xlsx`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (error) { console.error(error); alert('Excel作成エラーが発生しました。'); } finally { setIsExporting(false); }
+  };
+
+  const handleDirectPrint = () => {
+    setTimeout(() => { window.print(); }, 150);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.groupId) { alert('対象グループを選択してください。'); return; }
@@ -348,7 +434,6 @@ export const ActivityForm = () => {
         
       const validMaterials = materialDetails.filter(m => m.materialId !== ''); 
       
-      // 🚀 budgetを数値として保存
       const submitData = { 
         ...formData, 
         budget: formData.budget ? Number(formData.budget) : 0, 
@@ -389,15 +474,24 @@ export const ActivityForm = () => {
     (userRole === 'reporter' && canEditOwn && isCreator) || 
     (userRole === 'reporter' && canEditGroup && isInSameGroup);
     
+  const canExport = userRole === 'admin' || userRole === 'manager';
   const selectableGroups = (userRole === 'admin' || userRole === 'manager') ? groupsList : groupsList.filter(g => userGroups.includes(g.id));
-
-  // 🚀 総費用の計算
   const totalCost = totalPersonnelCost + totalMachineCost + totalMaterialCost;
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20 md:pb-12 overflow-x-hidden w-full">
+    <div className="min-h-screen bg-gray-50 pb-20 md:pb-12 overflow-x-hidden w-full print:bg-white print:pb-0">
+      <style>{`
+        @media print {
+          /* ブラウザ標準のヘッダー・フッターを消去するためページ余白を0に設定 */
+          @page { margin: 0; size: A4; }
+          /* 本文側に余白を設定し、全ページに適用させる */
+          body { background: white !important; margin: 15mm !important; }
+          .no-print { display: none !important; }
+        }
+      `}</style>
+
       {(isSubmitting || isLoadingDirect) && (
-        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/70 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/70 backdrop-blur-sm no-print">
           <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
           <p className="text-blue-800 font-bold text-lg tracking-wider">
             {isLoadingDirect ? 'データを読み込んでいます...' : 'データを保存しています...'}
@@ -407,7 +501,7 @@ export const ActivityForm = () => {
 
       {enlargedImage && (
         <div 
-          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-in fade-in duration-200" 
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-in fade-in duration-200 no-print" 
           onClick={() => setEnlargedImage(null)}
         >
           <button 
@@ -437,7 +531,7 @@ export const ActivityForm = () => {
       )}
 
       {successModal.show && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm no-print">
           <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200">
             <div className="p-5 flex flex-col items-center text-center">
               <div className="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
@@ -462,7 +556,7 @@ export const ActivityForm = () => {
       )}
 
       {showRosterModal && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm no-print">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[85vh]">
             <div className="flex justify-between items-center p-4 border-b">
               <h2 className="text-lg font-bold text-gray-800 flex items-center">
@@ -491,7 +585,7 @@ export const ActivityForm = () => {
         </div>
       )}
 
-      <header className="bg-white shadow-sm px-4 md:px-8 py-3 flex justify-between items-center sticky top-0 z-30">
+      <header className="bg-white shadow-sm px-4 md:px-8 py-3 flex justify-between items-center sticky top-0 z-30 no-print">
         <div className="flex items-center">
           <button onClick={() => navigate('/dashboard')} className="mr-4 text-gray-500 hover:text-gray-700" disabled={isSubmitting}>
             <ArrowLeft size={24} />
@@ -509,10 +603,21 @@ export const ActivityForm = () => {
             </button>
           )}
 
+          {editData && isViewMode && canExport && (
+            <>
+              <button type="button" onClick={handleExportSingleReport} disabled={isExporting} className={`flex items-center px-3 py-1.5 md:px-4 md:py-2 rounded-lg font-bold transition-colors text-sm md:text-base ${isExporting ? 'bg-blue-400 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
+                <FileSpreadsheet size={18} className="md:mr-1.5" /> <span className="hidden md:inline">{isExporting ? '生成中...' : 'Excel出力'}</span>
+              </button>
+              <button type="button" onClick={handleDirectPrint} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-gray-100 text-gray-700 border border-gray-200 rounded-lg font-bold hover:bg-gray-200 transition-colors text-sm md:text-base">
+                <Printer size={18} className="md:mr-1.5" /> <span className="hidden md:inline">PDF出力</span>
+              </button>
+            </>
+          )}
+
           {editData && isViewMode && canEditOrDelete && (
             <>
-              <button type="button" onClick={() => setIsViewMode(false)} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-blue-50 text-blue-600 rounded-lg font-bold hover:bg-blue-100 transition-colors text-sm md:text-base"><Edit size={18} className="mr-1.5" /> 編集</button>
-              <button type="button" onClick={handleDelete} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-red-50 text-red-600 rounded-lg font-bold hover:bg-red-100 transition-colors text-sm md:text-base"><Trash2 size={18} className="mr-1.5" /> 削除</button>
+              <button type="button" onClick={() => setIsViewMode(false)} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-blue-50 text-blue-600 rounded-lg font-bold hover:bg-blue-100 transition-colors text-sm md:text-base"><Edit size={18} className="mr-1.5" /> <span className="hidden md:inline">編集</span></button>
+              <button type="button" onClick={handleDelete} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-red-50 text-red-600 rounded-lg font-bold hover:bg-red-100 transition-colors text-sm md:text-base"><Trash2 size={18} className="mr-1.5" /> <span className="hidden md:inline">削除</span></button>
             </>
           )}
           {editData && !isViewMode && (
@@ -521,7 +626,7 @@ export const ActivityForm = () => {
         </div>
       </header>
 
-      <main className="p-4 md:p-8 w-full max-w-md md:max-w-6xl mx-auto box-border">
+      <main className="p-4 md:p-8 w-full max-w-md md:max-w-6xl mx-auto box-border no-print">
         <form onSubmit={handleSubmit} className="space-y-6">
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
@@ -746,11 +851,20 @@ export const ActivityForm = () => {
                             className={`flex-1 min-w-[6rem] box-border border border-gray-300 rounded-xl p-2 text-xs md:text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100 truncate`}
                           >
                             <option value="">💰 単価を選択</option>
+                            <option value="zero">🆓 単価選択なし (0円)</option>
                             {membersList.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                           </select>
 
-                          <div className={`w-20 md:w-24 flex items-center border border-gray-300 rounded-xl px-2 box-border shrink-0 ${isViewMode ? 'bg-white' : 'bg-white'}`}>
-                            <input type="number" step="0.5" min="0" value={detail.workTime} onChange={(e) => updateParticipant(index, 'workTime', parseFloat(e.target.value))} disabled={isViewMode} className="w-full min-w-0 box-border py-2 text-xs md:text-sm text-center border-none focus:ring-0 disabled:bg-transparent disabled:text-gray-600 disabled:opacity-100" />
+                          <div className={`w-20 md:w-24 flex items-center border border-gray-300 rounded-xl px-2 box-border shrink-0 ${isViewMode || wId === 'zero' ? 'bg-gray-50' : 'bg-white'}`}>
+                            <input 
+                              type="number" 
+                              step="0.5" 
+                              min="0" 
+                              value={detail.workTime} 
+                              onChange={(e) => updateParticipant(index, 'workTime', parseFloat(e.target.value))} 
+                              disabled={isViewMode || wId === 'zero'} 
+                              className="w-full min-w-0 box-border py-2 text-xs md:text-sm text-center border-none focus:ring-0 disabled:bg-transparent disabled:text-gray-400 disabled:opacity-100" 
+                            />
                             <span className="text-[10px] md:text-xs text-gray-400">h</span>
                           </div>
 
@@ -850,13 +964,11 @@ export const ActivityForm = () => {
             <textarea name="memo" value={formData.memo} onChange={handleChange} disabled={isViewMode} rows="4" className={inputClass} placeholder="作業の様子や特記事項を入力..."></textarea>
           </div>
 
-          {/* 🚀 7) 予算と費用の目安（合計）に拡張 */}
           <div className="bg-blue-50/50 rounded-xl p-5 border border-blue-100 flex flex-col space-y-3">
             <div className="flex items-center text-blue-800 font-bold mb-3 text-lg border-b border-blue-200 pb-2">
               <Calculator size={20} className="mr-2" /> 7）予算と費用の目安（合計）
             </div>
 
-            {/* 🚀 予算入力フィールド */}
             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between bg-white p-4 rounded-xl border border-blue-200 shadow-sm mb-2">
               <label className="text-sm font-bold text-gray-700">この活動の予算額 (任意)</label>
               <div className="flex items-center w-full sm:w-64">
@@ -891,7 +1003,6 @@ export const ActivityForm = () => {
               <span className="font-mono text-2xl">¥{totalCost.toLocaleString()}</span>
             </div>
 
-            {/* 🚀 予算が入力されている場合、残額を表示 */}
             {formData.budget > 0 && (
               <div className={`flex justify-between items-center text-base font-bold px-4 py-3 rounded-xl mt-2 border ${Number(formData.budget) - totalCost < 0 ? 'bg-red-50 text-red-600 border-red-200' : 'bg-green-50 text-green-700 border-green-200'}`}>
                 <span>予算残額:</span>
@@ -937,8 +1048,38 @@ export const ActivityForm = () => {
             <option key={u.id} value={u.displayName || '名前未設定'} />
           ))}
         </datalist>
-
       </main>
+
+      {/* 🚀 PDF出力（印刷）用の隠しレイアウト */}
+      {editData && (() => {
+        const printImages = existingUrls;
+        const totalImages = printImages.length;
+        const groupInfo = groupsList.find(g => g.id === editData.groupId);
+
+        return (
+          <div className="hidden print:block w-full text-black bg-white font-serif">
+            <h1 className="text-2xl font-bold text-center border-b-4 border-black pb-2 mb-6">活動状況写真台帳</h1>
+            <table className="w-full border-2 border-black border-collapse mb-6 text-sm">
+              <tbody>
+                <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">報告書NO</th><td className="border border-black p-3" colSpan="3">{editData.reportNo || '（未設定）'}</td></tr>
+                <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">実施年月日</th><td className="border border-black p-3 w-1/4">{editData.date}</td><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">活動項目番号</th><td className="border border-black p-3 w-1/4">{editData.activityNumbers?.join(', ')}</td></tr>
+                <tr><th className="border border-black bg-gray-100 p-3 text-left">実施場所</th><td className="border border-black p-3" colSpan="3">{editData.location}</td></tr>
+                <tr><th className="border border-black bg-gray-100 p-3 text-left">活動内容</th><td className="border border-black p-3" colSpan="3">{editData.activityType}</td></tr>
+                <tr><th className="border border-black bg-gray-100 p-3 text-left">参加人数</th><td className="border border-black p-3" colSpan="3">計 {editData.participants} 名 （農業者：{editData.participantsAgri}名 ／ 農業者以外：{editData.participantsNonAgri}名）</td></tr>
+              </tbody>
+            </table>
+            <div className="space-y-6">
+              {printImages.map((img, idx) => (
+                <div key={idx} className="break-inside-avoid"><div className="text-sm font-bold mb-1 text-left">{idx + 1}/{totalImages}枚目</div><div className="border border-gray-400 p-1"><img src={img} alt="" className="w-full h-auto max-h-[140mm] object-contain" /></div></div>
+              ))}
+            </div>
+            <div className="mt-8 flex justify-between items-end border-t border-black pt-4">
+              <div className="text-sm">組織名：{ORGANIZATION_NAME || '鎌田緑保護会'}</div>
+              <div className="text-sm text-right">出力日：{new Date().toLocaleDateString('ja-JP')}</div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

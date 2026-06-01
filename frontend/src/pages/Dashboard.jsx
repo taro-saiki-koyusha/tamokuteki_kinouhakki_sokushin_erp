@@ -6,6 +6,9 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { db, auth } from '../firebase';
 import XlsxPopulate from 'xlsx-populate/browser/xlsx-populate';
 
+// 外部設定ファイルから組織名を読み込む
+import { ORGANIZATION_NAME } from '../constants';
+
 const formatTimestamp = (timestamp) => {
   if (!timestamp) return '-';
   if (typeof timestamp.toDate === 'function') {
@@ -222,10 +225,19 @@ export const Dashboard = () => {
           
           let memberTotal = 0; let machineTotal = 0;
           
-          if (detail.participantName || wage) {
+          if (detail.participantName || wage || wId === 'zero') {
             memberTotal = detail.workTime * (wage?.defaultWage || 0);
-            sheet2.cell(`A${row}`).value(detail.participantName || wage?.name || '名称未設定'); 
-            sheet2.cell(`F${row}`).value(wage?.name || '無報酬(ボランティア等)'); 
+            
+            // 🚀 F列（構成員番号）の出力ロジックを修正
+            // ユーザー管理マスタから、入力された名前に一致するユーザーを探す
+            const participantName = detail.participantName || wage?.name || '名称未設定';
+            const matchedUser = systemUsers.find(u => (u.displayName || u.name) === participantName);
+            
+            // 見つかった場合はその構成員番号を、見つからない・設定がない場合は「-」を出力
+            const memberNo = matchedUser?.memberNo ? matchedUser.memberNo : '-';
+
+            sheet2.cell(`A${row}`).value(participantName); 
+            sheet2.cell(`F${row}`).value(memberNo); // 🚀 構成員番号を出力
             sheet2.cell(`G${row}`).value(detail.workTime); 
             sheet2.cell(`J${row}`).value('時間'); 
             sheet2.cell(`L${row}`).value(wage?.defaultWage || 0); 
@@ -257,7 +269,6 @@ export const Dashboard = () => {
     setTimeout(() => { window.print(); }, 150);
   };
 
-  // 🚀 個別活動の実績額を計算する関数
   const calculateActivityCost = (act) => {
     let pCost = 0; let mCost = 0; let matCost = 0;
     (act.participantDetails || []).forEach(detail => {
@@ -346,7 +357,6 @@ export const Dashboard = () => {
           <div className="flex items-center"><MapPin className="mr-2 h-4 w-4" />{activity.location}</div>
         </div>
 
-        {/* 🚀 カード内にも予算・実績のサマリーを表示 */}
         {(budget > 0 || actualCost > 0) && (
           <div className="flex justify-between items-center mb-3 pt-2 border-t border-gray-100 border-dashed">
             <div className="text-[10px] text-gray-500">
@@ -399,7 +409,6 @@ export const Dashboard = () => {
                 <th className="p-3 font-bold w-24 text-center whitespace-nowrap">区分</th>
                 <th className="p-3 font-bold w-24 whitespace-nowrap">報告書NO</th>
                 
-                {/* 🚀 予算額と実績額の列を追加 */}
                 <th className="p-3 font-bold w-28 text-right whitespace-nowrap">予算額</th>
                 <th className="p-3 font-bold w-28 text-right whitespace-nowrap">実績額</th>
 
@@ -432,7 +441,6 @@ export const Dashboard = () => {
 
                 const creatorName = systemUsers.find(u => u.id === act.createdBy)?.displayName || '-';
 
-                // 🚀 行ごとの予算・実績計算
                 const budget = Number(act.budget) || 0;
                 const actualCost = calculateActivityCost(act);
 
@@ -467,7 +475,6 @@ export const Dashboard = () => {
 
                     <td className="p-3 text-sm font-bold text-blue-600 whitespace-nowrap">{act.reportNo}</td>
                     
-                    {/* 🚀 予算額と実績額のデータセル */}
                     <td className="p-3 text-sm font-bold text-gray-700 whitespace-nowrap text-right">
                       {budget > 0 ? `¥${budget.toLocaleString()}` : '-'}
                     </td>
@@ -652,14 +659,12 @@ export const Dashboard = () => {
                   const acts = groupedActivities[group.id] || [];
                   if (acts.length === 0) return null;
 
-                  // 🚀 グループごとの合計を計算
                   const groupTotalBudget = acts.reduce((sum, act) => sum + (Number(act.budget) || 0), 0);
                   const groupTotalActual = acts.reduce((sum, act) => sum + calculateActivityCost(act), 0);
                   const balance = groupTotalBudget - groupTotalActual;
 
                   return (
                     <div key={group.id} className="space-y-4">
-                      {/* 🚀 グループヘッダーに予算と実績の集計UIを追加 */}
                       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 border-b border-gray-300 pb-3">
                         <div className="flex items-center">
                           <div className="h-6 w-1.5 bg-blue-600 rounded-full mr-3"></div>
@@ -702,7 +707,6 @@ export const Dashboard = () => {
                   );
                 })}
 
-                {/* グループ未登録の処理 */}
                 {(() => {
                   const unregisteredActs = Object.keys(groupedActivities)
                     .filter(gid => !groupsList.some(g => g.id === gid))
@@ -818,7 +822,7 @@ export const Dashboard = () => {
               ))}
             </div>
             <div className="mt-8 flex justify-between items-end border-t border-black pt-4">
-              <div className="text-sm">組織名：{groupInfo ? groupInfo.name : '農事組合法人カマタ'}</div>
+              <div className="text-sm">組織名：{ORGANIZATION_NAME || '鎌田緑保護会'}</div>
               <div className="text-sm text-right">出力日：{new Date().toLocaleDateString('ja-JP')}</div>
             </div>
           </div>

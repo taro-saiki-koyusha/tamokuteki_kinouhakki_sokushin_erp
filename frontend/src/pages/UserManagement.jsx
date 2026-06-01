@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, doc, updateDoc, deleteDoc, onSnapshot, setDoc } from 'firebase/firestore'; 
-import { ArrowLeft, UserCog, Edit, Trash2, X, ShieldCheck, Mail, Wallet, Plus, CheckCircle, UserPlus, Phone } from 'lucide-react'; 
+import { ArrowLeft, UserCog, Edit, Trash2, X, ShieldCheck, Mail, Wallet, Plus, CheckCircle, UserPlus, Phone, Hash, Users } from 'lucide-react'; 
 import { db, auth } from '../firebase'; 
 import { initializeApp, deleteApp } from 'firebase/app'; 
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
@@ -13,10 +13,8 @@ export const UserManagement = () => {
   const [editingUser, setEditingUser] = useState(null);
   const [currentUserRole, setCurrentUserRole] = useState('reporter'); 
 
-  // 新規ユーザー登録用のState
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
-  // 🚀 登録完了メッセージ用のStateを追加
   const [successModal, setSuccessModal] = useState({ show: false, loginId: '', password: '' });
 
   const [newUser, setNewUser] = useState({
@@ -24,6 +22,7 @@ export const UserManagement = () => {
     phone: '',
     password: '',
     role: 'reporter',
+    memberNo: '', 
     groupIds: [],
     canEditOwn: false,
     canEditGroup: false
@@ -32,683 +31,407 @@ export const UserManagement = () => {
   useEffect(() => {
     const fetchRole = async () => {
       if (auth.currentUser) {
-        onSnapshot(doc(db, 'users', auth.currentUser.uid), (doc) => {
-          if (doc.exists()) setCurrentUserRole(doc.data().role || 'reporter');
+        onSnapshot(doc(db, 'users', auth.currentUser.uid), (docSnap) => {
+          if (docSnap.exists()) {
+            setCurrentUserRole(docSnap.data().role || 'reporter');
+          }
         });
       }
     };
     fetchRole();
-
-    const unsubUsers = onSnapshot(collection(db, 'users'), snapshot => {
-      setUsersList(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-    const unsubGroups = onSnapshot(collection(db, 'groups'), snapshot => {
-      setGroupsList(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-    return () => { unsubUsers(); unsubGroups(); };
   }, []);
 
-  const handleUpdate = async (e) => {
-    e.preventDefault();
-    try {
-      await updateDoc(doc(db, 'users', editingUser.id), {
-        displayName: editingUser.displayName,
-        role: editingUser.role,
-        groupIds: editingUser.groupIds,
-        canEditOwn: editingUser.canEditOwn || false,
-        canEditGroup: editingUser.canEditGroup || false,
-        
-        primaryBankAccount: editingUser.primaryBankAccount || 'bank1',
-        
-        bank1IsYucho: editingUser.bank1IsYucho || false,
-        bank1Code: editingUser.bank1Code || '',
-        bank1Name: editingUser.bank1Name || '',
-        bank1BranchCode: editingUser.bank1BranchCode || '',
-        bank1Branch: editingUser.bank1Branch || '',
-        bank1Type: editingUser.bank1Type || '普通',
-        bank1Number: editingUser.bank1Number || '',
-        bank1Holder: editingUser.bank1Holder || '',
-        bank1HolderKana: editingUser.bank1HolderKana || '',
-        
-        bank2Enabled: editingUser.bank2Enabled || false,
-        bank2IsYucho: editingUser.bank2IsYucho || false,
-        bank2Code: editingUser.bank2Code || '',
-        bank2Name: editingUser.bank2Name || '',
-        bank2BranchCode: editingUser.bank2BranchCode || '',
-        bank2Branch: editingUser.bank2Branch || '',
-        bank2Type: editingUser.bank2Type || '普通',
-        bank2Number: editingUser.bank2Number || '',
-        bank2Holder: editingUser.bank2Holder || '',
-        bank2HolderKana: editingUser.bank2HolderKana || ''
-      });
-      setEditingUser(null);
-    } catch (err) {
-      console.error(err);
-      alert("更新に失敗しました");
+  useEffect(() => {
+    const unsubscribeUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setUsersList(data);
+    });
+
+    const unsubscribeGroups = onSnapshot(collection(db, 'groups'), (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setGroupsList(data);
+    });
+
+    return () => { unsubscribeUsers(); unsubscribeGroups(); };
+  }, []);
+
+  const handleDelete = async (id, name) => {
+    if (id === auth.currentUser?.uid) {
+      alert("自分自身のアカウントは削除できません。");
+      return;
+    }
+    if (window.confirm(`ユーザー「${name}」をシステムから削除しますか？\n※この操作は元に戻せません。`)) {
+      try {
+        await deleteDoc(doc(db, 'users', id));
+      } catch (error) {
+        console.error(error);
+        alert('削除に失敗しました。');
+      }
     }
   };
 
-  const handleDelete = async (id, name) => {
-    if (window.confirm(`${name} のユーザー情報を削除しますか？\n※ログイン権限自体はFirebaseコンソールから削除する必要があります。`)) {
-      try { await deleteDoc(doc(db, 'users', id)); } 
-      catch (e) { console.error(e); alert('削除失敗'); }
+  const handleUpdate = async () => {
+    if (!editingUser.displayName && !editingUser.name) {
+      alert('氏名は空にできません。');
+      return;
     }
+    try {
+      const { id, ...updateData } = editingUser;
+      await updateDoc(doc(db, 'users', id), updateData);
+      setEditingUser(null);
+    } catch (error) {
+      console.error(error);
+      alert('更新に失敗しました。');
+    }
+  };
+
+  const toggleGroup = (groupId) => {
+    if (!editingUser) return;
+    const currentGroups = editingUser.groupIds || [];
+    const newGroups = currentGroups.includes(groupId)
+      ? currentGroups.filter(id => id !== groupId)
+      : [...currentGroups, groupId];
+    setEditingUser({ ...editingUser, groupIds: newGroups });
+  };
+
+  const toggleNewUserGroup = (groupId) => {
+    const currentGroups = newUser.groupIds || [];
+    const newGroups = currentGroups.includes(groupId)
+      ? currentGroups.filter(id => id !== groupId)
+      : [...currentGroups, groupId];
+    setNewUser({ ...newUser, groupIds: newGroups });
   };
 
   const handleCreateUser = async (e) => {
     e.preventDefault();
     if (!newUser.displayName || !newUser.phone || !newUser.password) {
-      alert("名前、電話番号、初期パスワードは必須です。");
+      alert("氏名、電話番号、パスワードは必須です。");
       return;
     }
-    if (newUser.password.length < 6) {
-      alert("パスワードは6文字以上で設定してください。");
-      return;
-    }
-
+    
     setIsCreating(true);
-    try {
-      const cleanPhone = newUser.phone.replace(/[^0-9]/g, '');
-      const dummyEmail = `${cleanPhone}@kamata.local`;
+    const cleanPhone = newUser.phone.replace(/[^0-9]/g, '');
+    const dummyEmail = `${cleanPhone}@kamata.local`;
 
-      const tempApp = initializeApp(auth.app.options, `temp_${Date.now()}`);
-      const tempAuth = getAuth(tempApp);
-      const userCredential = await createUserWithEmailAndPassword(tempAuth, dummyEmail, newUser.password);
+    try {
+      const secondaryApp = initializeApp(auth.app.options, "SecondaryApp");
+      const secondaryAuth = getAuth(secondaryApp);
       
-      await setDoc(doc(db, 'users', userCredential.user.uid), {
+      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, dummyEmail, newUser.password);
+      const createdUser = userCredential.user;
+
+      await setDoc(doc(db, 'users', createdUser.uid), {
+        name: newUser.displayName,
         displayName: newUser.displayName,
-        email: dummyEmail, 
-        isPhoneAccount: true, 
+        email: dummyEmail,
         role: newUser.role,
+        memberNo: newUser.memberNo || '', 
         groupIds: newUser.groupIds,
         canEditOwn: newUser.canEditOwn,
         canEditGroup: newUser.canEditGroup,
         createdAt: new Date()
       });
 
-      await deleteApp(tempApp);
-      
-      // 🚀 alert をやめて専用のモーダルを表示
+      await secondaryAuth.signOut();
+      await deleteApp(secondaryApp);
+
       setSuccessModal({ show: true, loginId: cleanPhone, password: newUser.password });
+
+      setNewUser({
+        displayName: '', phone: '', password: '', role: 'reporter', memberNo: '', groupIds: [], canEditOwn: false, canEditGroup: false
+      });
       setIsAddingUser(false);
-      setNewUser({ displayName: '', phone: '', password: '', role: 'reporter', groupIds: [], canEditOwn: false, canEditGroup: false });
+
     } catch (error) {
-      console.error(error);
+      console.error("ユーザー作成エラー:", error);
       if (error.code === 'auth/email-already-in-use') {
-        alert('この電話番号はすでに登録されています。');
+        alert("この電話番号は既に登録されています。");
+      } else if (error.code === 'auth/weak-password') {
+        alert("パスワードは6文字以上にしてください。");
       } else {
-        alert('ユーザー作成エラーが発生しました。');
+        alert("ユーザーの作成に失敗しました。\n" + error.message);
       }
     } finally {
       setIsCreating(false);
     }
   };
 
-  const toggleGroup = (groupId, isNewUser = false) => {
-    if (isNewUser) {
-      setNewUser(prev => {
-        const newGroups = prev.groupIds.includes(groupId) ? prev.groupIds.filter(id => id !== groupId) : [...prev.groupIds, groupId];
-        return { ...prev, groupIds: newGroups };
-      });
-    } else {
-      setEditingUser(prev => {
-        const newGroups = prev.groupIds.includes(groupId) ? prev.groupIds.filter(id => id !== groupId) : [...prev.groupIds, groupId];
-        return { ...prev, groupIds: newGroups };
-      });
+  const getRoleBadge = (role) => {
+    switch (role) {
+      case 'admin': return <span className="bg-red-100 text-red-700 px-2 py-1 rounded-md text-xs font-bold border border-red-200 flex items-center w-max"><ShieldCheck size={12} className="mr-1"/>管理者</span>;
+      case 'manager': return <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded-md text-xs font-bold border border-purple-200 flex items-center w-max"><UserCog size={12} className="mr-1"/>事務・役員</span>;
+      default: return <span className="bg-blue-50 text-blue-600 px-2 py-1 rounded-md text-xs font-bold border border-blue-100 w-max">現場リーダー</span>;
     }
   };
 
-  const getRoleLabel = (role) => {
-    if (role === 'admin') return '👑 システム管理者';
-    if (role === 'manager') return '📝 事務・役員';
-    return '🚜 現場リーダー';
+  if (currentUserRole !== 'admin') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="bg-white p-8 rounded-2xl shadow-sm text-center">
+          <ShieldCheck size={48} className="mx-auto text-red-500 mb-4" />
+          <h2 className="text-xl font-bold text-gray-800 mb-2">アクセス権限がありません</h2>
+          <p className="text-gray-600 mb-6">ユーザー管理画面はシステム管理者のみアクセス可能です。</p>
+          <button onClick={() => navigate('/dashboard')} className="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-blue-700">ダッシュボードへ戻る</button>
+        </div>
+      </div>
+    );
+  }
+
+  const formatEmailForDisplay = (email) => {
+    if (!email) return '-';
+    if (typeof email === 'string' && email.includes('@kamata.local')) {
+      return email.split('@')[0];
+    }
+    return email;
   };
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       
-      {/* 🚀 新しく追加した「ユーザー作成完了」の専用モーダル */}
+      {/* 登録完了モーダル */}
       {successModal.show && (
-        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200">
-            <div className="p-6 flex flex-col items-center text-center">
-              <div className="w-14 h-14 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center mb-4">
-                <CheckCircle size={32} />
+            <div className="p-5 flex flex-col items-center text-center">
+              <div className="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
+                <CheckCircle size={28} />
               </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-4">ユーザーを作成しました！</h3>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">ユーザー作成完了</h3>
+              <p className="text-sm text-gray-600 mb-4">対象のユーザーに以下のログイン情報を<br/>お伝えください。</p>
               
-              <div className="w-full bg-gray-50 border border-gray-200 rounded-xl p-4 text-left space-y-3">
+              <div className="bg-gray-50 p-4 rounded-xl w-full border border-gray-200 text-left space-y-2">
                 <div>
-                  <span className="text-xs font-bold text-gray-500 block mb-0.5">ログインID (電話番号)</span>
-                  <span className="text-lg font-mono font-bold text-purple-700 tracking-wider">{successModal.loginId}</span>
+                  <span className="text-xs text-gray-500 font-bold block mb-0.5">ログインID (電話番号)</span>
+                  <div className="text-lg font-mono font-bold text-blue-700 bg-white px-3 py-1.5 rounded border border-blue-100 select-all">
+                    {successModal.loginId}
+                  </div>
                 </div>
-                <div className="h-px bg-gray-200 w-full"></div>
                 <div>
-                  <span className="text-xs font-bold text-gray-500 block mb-0.5">パスワード</span>
-                  <span className="text-lg font-mono font-bold text-gray-800 tracking-wider">{successModal.password}</span>
+                  <span className="text-xs text-gray-500 font-bold block mb-0.5">初期パスワード</span>
+                  <div className="text-lg font-mono font-bold text-red-600 bg-white px-3 py-1.5 rounded border border-red-100 select-all">
+                    {successModal.password}
+                  </div>
                 </div>
               </div>
-              
-              <p className="text-xs text-gray-500 mt-5 font-bold">
-                ※この情報をユーザーにお伝えください。<br/>（スクリーンショット推奨）
-              </p>
             </div>
             <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-center">
               <button
                 onClick={() => setSuccessModal({ show: false, loginId: '', password: '' })}
-                className="w-full py-3 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 transition-all shadow-md active:scale-95"
+                className="w-full py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors"
               >
-                確認して閉じる
+                閉じる
               </button>
             </div>
           </div>
         </div>
       )}
 
-      <header className="bg-white shadow-sm px-4 py-3 flex items-center sticky top-0 z-30">
-        <button onClick={() => navigate('/dashboard')} className="mr-4 text-gray-500 hover:text-gray-700">
-          <ArrowLeft size={24} />
-        </button>
-        <h1 className="text-lg font-bold text-gray-800 flex items-center">
-          <UserCog className="w-6 h-6 mr-2 text-purple-600" />
-          ユーザー管理
-        </h1>
-      </header>
-
-      <main className="p-4 max-w-6xl mx-auto mt-4">
-        
-        {currentUserRole === 'admin' && (
-          <div className="mb-4 flex justify-end">
-            <button 
-              onClick={() => setIsAddingUser(true)}
-              className="flex items-center px-5 py-2.5 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 shadow-sm transition-all"
-            >
-              <UserPlus size={18} className="mr-2" />
-              新規ユーザーを追加 (電話番号可)
-            </button>
-          </div>
-        )}
-
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="p-4 bg-gray-50 border-b flex justify-between items-center">
-            <h2 className="font-bold text-gray-700">登録ユーザー一覧</h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[950px]">
-              <thead>
-                <tr className="text-xs text-gray-400 uppercase tracking-wider border-b">
-                  <th className="px-6 py-3 font-bold">表示名</th>
-                  <th className="px-6 py-3 font-bold">ログインID (メール/電話)</th>
-                  <th className="px-6 py-3 font-bold text-center">口座情報</th>
-                  <th className="px-6 py-3 font-bold">権限</th>
-                  <th className="px-6 py-3 font-bold">担当グループ</th>
-                  <th className="px-6 py-3 font-bold text-center w-24">操作</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {usersList.map((user) => {
-                  const displayId = user.isPhoneAccount && user.email 
-                    ? user.email.replace('@kamata.local', '') 
-                    : user.email;
-
-                  return (
-                  <tr key={user.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 font-bold text-gray-800">{user.displayName || '未設定'}</td>
-                    
-                    <td className="px-6 py-4 text-sm text-gray-600 flex items-center mt-2.5">
-                      {user.isPhoneAccount ? <Phone size={14} className="mr-1.5 text-gray-400"/> : <Mail size={14} className="mr-1.5 text-gray-400"/>}
-                      {displayId || <span className="text-gray-400 text-xs">未設定</span>}
-                    </td>
-
-                    <td className="px-6 py-4 text-center">
-                      {(user.bank1Number || (user.bank2Enabled && user.bank2Number)) ? (
-                        <span className="bg-blue-50 text-blue-600 border border-blue-200 px-2 py-1 rounded text-[10px] font-bold">登録済</span>
-                      ) : (
-                        <span className="text-gray-300 text-[10px]">未登録</span>
-                      )}
-                    </td>
-
-                    <td className="px-6 py-4 text-sm">
-                      <span className={`px-2.5 py-1 rounded-full font-bold text-[10px] border ${
-                        user.role === 'admin' ? 'bg-purple-50 text-purple-700 border-purple-100' :
-                        user.role === 'manager' ? 'bg-blue-50 text-blue-700 border-blue-100' :
-                        'bg-green-50 text-green-700 border-green-100'
-                      }`}>
-                        {getRoleLabel(user.role)}
-                      </span>
-                      {user.role === 'reporter' && user.canEditOwn && (
-                        <span className="ml-2 px-2 py-0.5 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded text-[9px] font-bold">
-                          自活 編集可
-                        </span>
-                      )}
-                      {user.role === 'reporter' && user.canEditGroup && (
-                        <span className="ml-2 px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded text-[9px] font-bold">
-                          同一グループ 編集可
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-xs text-gray-600">
-                      {(user.groupIds || []).map(gid => {
-                        const g = groupsList.find(x => x.id === gid);
-                        return g ? <span key={gid} className="inline-block bg-gray-100 px-2 py-1 rounded mr-1 mb-1">{g.name}</span> : null;
-                      })}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex justify-center space-x-2">
-                        <button onClick={() => setEditingUser(user)} className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"><Edit size={18}/></button>
-                        <button onClick={() => handleDelete(user.id, user.displayName)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
-                      </div>
-                    </td>
-                  </tr>
-                )})}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </main>
-
-      {/* 新規ユーザー追加モーダル */}
       {isAddingUser && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh]">
-            <div className="flex justify-between items-center p-4 border-b shrink-0 bg-purple-50">
-              <h2 className="text-lg font-bold text-purple-900 flex items-center"><UserPlus size={20} className="mr-2"/> 新規ユーザー追加</h2>
-              <button onClick={() => setIsAddingUser(false)} className="p-1.5 text-purple-400 hover:bg-purple-200 rounded-full transition-colors"><X size={20}/></button>
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-md rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="flex justify-between items-center p-4 border-b bg-gray-50">
+              <h2 className="text-lg font-bold text-gray-800 flex items-center">
+                <UserPlus size={20} className="mr-2 text-blue-600" />
+                新規ユーザー追加
+              </h2>
+              <button onClick={() => setIsAddingUser(false)} className="p-1 text-gray-500 hover:bg-gray-200 rounded-full transition-colors"><X size={20} /></button>
             </div>
             
-            <div className="p-5 space-y-6 overflow-y-auto flex-1">
-              <div className="bg-blue-50 text-blue-800 p-3 rounded-lg text-xs leading-relaxed border border-blue-100">
-                <b>【電話番号での登録について】</b><br/>
-                メールアドレスを持たない方のために、固定電話や携帯番号を「ログインID」として登録できます。（例：0258123456）
-              </div>
+            <div className="p-5 overflow-y-auto flex-1">
+              <form id="newUserForm" onSubmit={handleCreateUser} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">氏名 <span className="text-red-500">*</span></label>
+                  <input type="text" value={newUser.displayName} onChange={e => setNewUser({...newUser, displayName: e.target.value})} required className="w-full border border-gray-300 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500" placeholder="例：農園 太郎" />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">電話番号（ログインIDになります） <span className="text-red-500">*</span></label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Phone size={16} className="text-gray-400" /></div>
+                    <input type="tel" value={newUser.phone} onChange={e => setNewUser({...newUser, phone: e.target.value})} required className="w-full pl-9 border border-gray-300 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500" placeholder="ハイフンなし（例：09012345678）" />
+                  </div>
+                  <p className="text-[10px] text-gray-500 mt-1">※この番号がログイン時のIDとして使用されます。</p>
+                </div>
 
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">氏名 (表示名) <span className="text-red-500">*</span></label>
-                <input type="text" value={newUser.displayName} onChange={e => setNewUser({...newUser, displayName: e.target.value})} className="w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-purple-500" placeholder="山田 太郎" />
-              </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">構成員番号 (Excel出力用・任意)</label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Hash size={16} className="text-gray-400" /></div>
+                    <input type="text" value={newUser.memberNo} onChange={e => setNewUser({...newUser, memberNo: e.target.value})} className="w-full pl-9 border border-gray-300 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500" placeholder="例：1234 または 法人名" />
+                  </div>
+                  <p className="text-[10px] text-gray-500 mt-1">※Excel出力時にこの番号が反映されます。</p>
+                </div>
 
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">ログインID (電話番号 または メール) <span className="text-red-500">*</span></label>
-                <input type="text" value={newUser.phone} onChange={e => setNewUser({...newUser, phone: e.target.value})} className="w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-purple-500" placeholder="09012345678" />
-              </div>
-
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">初期パスワード (6文字以上) <span className="text-red-500">*</span></label>
-                <input type="text" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} className="w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-purple-500" placeholder="password123" />
-                <p className="text-[10px] text-gray-500 mt-1">※このパスワードをユーザーにお伝えください。</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">システム権限</label>
-                <select value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})} className="w-full border-2 border-purple-400 rounded-xl p-3 font-bold text-gray-800 focus:ring-2 focus:ring-purple-500 bg-white">
-                  <option value="admin">👑 システム管理者 (マスタ管理を含む全機能へのアクセス)</option>
-                  <option value="manager">📝 事務・役員 (全グループの実績閲覧・編集・Excel出力)</option>
-                  <option value="reporter">🚜 現場リーダー (担当グループの実績登録)</option>
-                </select>
-                {newUser.role === 'reporter' && (
-                  <div className="mt-3 space-y-2">
-                    <label className="flex items-center space-x-3 bg-yellow-50 p-3 rounded-xl border border-yellow-200 cursor-pointer">
-                      <input type="checkbox" checked={newUser.canEditOwn} onChange={e => setNewUser({...newUser, canEditOwn: e.target.checked})} className="w-5 h-5 text-yellow-600 rounded" />
-                      <span className="text-sm font-bold text-yellow-900">自身が登録した活動の「編集・削除」を許可</span>
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">初期パスワード <span className="text-red-500">*</span></label>
+                  <input type="text" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} required minLength="6" className="w-full border border-gray-300 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500 font-mono" placeholder="6文字以上" />
+                </div>
+                
+                <div className="pt-2 border-t border-gray-100">
+                  <label className="block text-sm font-bold text-gray-700 mb-2">システム権限</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <label className={`border rounded-lg p-2 text-center cursor-pointer transition-all ${newUser.role === 'reporter' ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                      <input type="radio" name="newRole" value="reporter" checked={newUser.role === 'reporter'} onChange={() => setNewUser({...newUser, role: 'reporter'})} className="hidden" />
+                      <span className="text-xs">現場リーダー</span>
                     </label>
-                    <label className="flex items-center space-x-3 bg-blue-50 p-3 rounded-xl border border-blue-200 cursor-pointer">
-                      <input type="checkbox" checked={newUser.canEditGroup} onChange={e => setNewUser({...newUser, canEditGroup: e.target.checked})} className="w-5 h-5 text-blue-600 rounded" />
-                      <span className="text-sm font-bold text-blue-900">同一グループの活動の「編集・削除」を許可</span>
+                    <label className={`border rounded-lg p-2 text-center cursor-pointer transition-all ${newUser.role === 'manager' ? 'bg-purple-50 border-purple-500 text-purple-700 font-bold' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                      <input type="radio" name="newRole" value="manager" checked={newUser.role === 'manager'} onChange={() => setNewUser({...newUser, role: 'manager'})} className="hidden" />
+                      <span className="text-xs">事務・役員</span>
+                    </label>
+                    <label className={`border rounded-lg p-2 text-center cursor-pointer transition-all ${newUser.role === 'admin' ? 'bg-red-50 border-red-500 text-red-700 font-bold' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                      <input type="radio" name="newRole" value="admin" checked={newUser.role === 'admin'} onChange={() => setNewUser({...newUser, role: 'admin'})} className="hidden" />
+                      <span className="text-xs">管理者</span>
+                    </label>
+                  </div>
+                </div>
+
+                {newUser.role === 'reporter' && (
+                  <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 space-y-2 mt-2">
+                    <p className="text-xs font-bold text-blue-800 mb-1">現場リーダーの特別権限</p>
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <input type="checkbox" checked={newUser.canEditOwn} onChange={e => setNewUser({...newUser, canEditOwn: e.target.checked})} className="rounded text-blue-600 focus:ring-blue-500" />
+                      <span className="text-sm text-gray-700">自分が登録した記録の編集・削除を許可する</span>
+                    </label>
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <input type="checkbox" checked={newUser.canEditGroup} onChange={e => setNewUser({...newUser, canEditGroup: e.target.checked})} className="rounded text-blue-600 focus:ring-blue-500" />
+                      <span className="text-sm text-gray-700">所属グループ全員の記録の編集・削除を許可する</span>
                     </label>
                   </div>
                 )}
-              </div>
 
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">担当グループ</label>
-                <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-xl p-2 space-y-1 bg-white">
-                  {groupsList.map(g => (
-                    <label key={g.id} className="flex items-center space-x-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer transition-colors">
-                      <input type="checkbox" checked={newUser.groupIds.includes(g.id)} onChange={() => toggleGroup(g.id, true)} className="w-5 h-5 text-purple-600 rounded border-gray-300 focus:ring-purple-500" />
-                      <span className={`text-sm ${newUser.groupIds.includes(g.id) ? 'font-bold text-gray-900' : 'text-gray-600'}`}>{g.name}</span>
-                    </label>
-                  ))}
+                <div className="pt-2 border-t border-gray-100">
+                  <label className="block text-sm font-bold text-gray-700 mb-2">所属グループ (複数選択可)</label>
+                  <div className="border border-gray-200 rounded-xl max-h-32 overflow-y-auto bg-white">
+                    {groupsList.map(g => {
+                      const isChecked = newUser.groupIds.includes(g.id);
+                      return (
+                        <label key={g.id} className="flex items-center space-x-3 p-2 hover:bg-gray-50 cursor-pointer border-b last:border-b-0">
+                          <input type="checkbox" checked={isChecked} onChange={() => toggleNewUserGroup(g.id)} className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500" />
+                          <span className={`text-sm ${isChecked ? 'font-bold text-gray-900' : 'text-gray-600'}`}>{g.name}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              </form>
             </div>
-
-            <div className="p-4 border-t flex space-x-3 bg-gray-50 shrink-0">
-              <button onClick={() => setIsAddingUser(false)} className="flex-1 py-3 border border-gray-300 bg-white rounded-xl font-bold text-gray-700 hover:bg-gray-100 transition-colors">
-                キャンセル
-              </button>
-              <button onClick={handleCreateUser} disabled={isCreating} className="flex-1 py-3 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 disabled:bg-purple-300 shadow-md transition-all">
-                {isCreating ? '作成中...' : 'ユーザーを作成'}
+            
+            <div className="p-4 border-t bg-gray-50 flex space-x-3 shrink-0">
+              <button type="button" onClick={() => setIsAddingUser(false)} className="flex-1 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-xl font-bold hover:bg-gray-50 transition-colors">キャンセル</button>
+              <button type="submit" form="newUserForm" disabled={isCreating} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors flex justify-center items-center">
+                {isCreating ? <Loader2 size={18} className="animate-spin" /> : '登録する'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ユーザー編集モーダル */}
       {editingUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh]">
-            <div className="flex justify-between items-center p-4 border-b shrink-0">
-              <h2 className="text-lg font-bold text-gray-800">ユーザー情報の修正</h2>
-              <button onClick={() => setEditingUser(null)} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-full transition-colors"><X size={20}/></button>
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="flex justify-between items-center p-4 border-b bg-gray-50">
+              <h2 className="text-lg font-bold text-gray-800 flex items-center">
+                <Edit size={20} className="mr-2 text-purple-600" />
+                ユーザー権限・所属の編集
+              </h2>
+              <button onClick={() => setEditingUser(null)} className="p-1 text-gray-500 hover:bg-gray-200 rounded-full transition-colors"><X size={20} /></button>
             </div>
             
-            <div className="p-5 space-y-6 overflow-y-auto flex-1">
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">表示名</label>
+            <div className="p-6 overflow-y-auto flex-1">
+              <div className="mb-6 flex items-center">
+                <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 font-bold text-xl mr-4 shrink-0">
+                  {(editingUser?.displayName || editingUser?.name || 'U')[0]}
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-xl font-extrabold text-gray-900 truncate">{editingUser?.displayName || editingUser?.name || '名称未設定'}</h3>
+                  <div className="text-sm text-gray-500 flex items-center mt-1 truncate">
+                    <Mail size={14} className="mr-1 shrink-0" />
+                    {formatEmailForDisplay(editingUser?.email)}
+                  </div>
+                </div>
+              </div>
+
+              {/* 🚀 ユーザー名の編集フィールドを追加 */}
+              <div className="mb-6">
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  氏名 (表示名) <span className="text-red-500">*</span>
+                </label>
                 <input 
                   type="text" 
-                  value={editingUser.displayName || ''} 
-                  onChange={e => setEditingUser({...editingUser, displayName: e.target.value})}
+                  value={editingUser?.displayName || editingUser?.name || ''} 
+                  onChange={(e) => setEditingUser({ ...editingUser, displayName: e.target.value, name: e.target.value })}
                   className="w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-purple-500"
+                  placeholder="例：農園 太郎"
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">ログインID (メール または 電話)</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    {editingUser.isPhoneAccount ? <Phone size={16} className="text-gray-400"/> : <Mail size={16} className="text-gray-400" />}
-                  </div>
-                  <input 
-                    type="text" 
-                    value={editingUser.isPhoneAccount && editingUser.email ? editingUser.email.replace('@kamata.local', '') : (editingUser.email || '')} 
-                    readOnly
-                    className="w-full pl-10 border border-gray-200 rounded-xl p-3 text-sm bg-gray-100 text-gray-500 cursor-not-allowed focus:outline-none"
-                    placeholder="未設定"
-                  />
-                </div>
-                <p className="text-[10px] text-gray-400 mt-1 text-right">※システム内部のIDとして使用されているため、変更できません。</p>
+              <div className="mb-6">
+                <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center">
+                  <Hash size={16} className="mr-1 text-gray-500" />
+                  構成員番号 (Excel出力用)
+                </label>
+                <input 
+                  type="text" 
+                  value={editingUser?.memberNo || ''} 
+                  onChange={(e) => setEditingUser({ ...editingUser, memberNo: e.target.value })}
+                  className="w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-purple-500"
+                  placeholder="例：1234 または 法人名"
+                />
               </div>
 
-              {/* 口座情報 */}
-              <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-5">
-                <h3 className="text-sm font-bold text-gray-700 flex items-center border-b border-gray-200 pb-2">
-                  <Wallet size={16} className="mr-1.5 text-gray-500" />
-                  振込口座情報
-                </h3>
-                
-                {/* 🏦 口座情報 1 */}
-                <div className={`border rounded-lg p-3 space-y-3 transition-colors relative ${editingUser.primaryBankAccount !== 'bank2' ? 'bg-purple-50/30 border-purple-400 shadow-sm ring-1 ring-purple-400' : 'bg-white border-gray-200 shadow-sm'}`}>
-                  <div className="flex justify-between items-center border-b border-gray-100 pb-2 mb-2">
-                    <h4 className="text-xs font-bold text-gray-700">口座情報 1</h4>
-                    <label className="flex items-center space-x-1.5 cursor-pointer bg-white px-2 py-1 rounded border border-gray-200 shadow-sm hover:bg-gray-50 transition-colors">
-                      <input 
-                        type="radio" 
-                        name="primaryBank" 
-                        checked={editingUser.primaryBankAccount !== 'bank2'} 
-                        onChange={() => setEditingUser({...editingUser, primaryBankAccount: 'bank1'})} 
-                        className="w-4 h-4 text-purple-600 focus:ring-purple-500 border-gray-300" 
-                      />
-                      <span className={`text-[10px] font-bold ${editingUser.primaryBankAccount !== 'bank2' ? 'text-purple-700' : 'text-gray-500'}`}>振込先に指定</span>
-                    </label>
-                  </div>
+              <div className="mb-6">
+                <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center">
+                  <ShieldCheck size={16} className="mr-1 text-gray-500" />
+                  システム権限
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <label className={`border-2 rounded-xl p-3 text-center cursor-pointer transition-all ${editingUser?.role === 'reporter' ? 'bg-blue-50 border-blue-500 text-blue-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                    <input type="radio" name="role" value="reporter" checked={editingUser?.role === 'reporter'} onChange={() => setEditingUser({ ...editingUser, role: 'reporter' })} className="hidden" />
+                    <div className="font-bold text-sm mb-1">現場リーダー</div>
+                    <div className="text-[10px] opacity-80 leading-tight">実績の入力・閲覧</div>
+                  </label>
                   
-                  <div className="flex space-x-4 mb-2">
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                      <input type="radio" checked={!editingUser.bank1IsYucho} onChange={() => setEditingUser({...editingUser, bank1IsYucho: false})} className="w-4 h-4 text-purple-600 focus:ring-purple-500 border-gray-300" />
-                      <span className="text-xs font-bold text-gray-700">ゆうちょ銀行以外</span>
-                    </label>
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                      <input type="radio" checked={editingUser.bank1IsYucho} onChange={() => setEditingUser({...editingUser, bank1IsYucho: true})} className="w-4 h-4 text-purple-600 focus:ring-purple-500 border-gray-300" />
-                      <span className="text-xs font-bold text-gray-700">ゆうちょ銀行</span>
-                    </label>
-                  </div>
-
-                  {!editingUser.bank1IsYucho ? (
-                    <>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="flex space-x-2">
-                          <div className="w-1/3">
-                            <label className="block text-[10px] text-gray-500 mb-0.5">銀行番号</label>
-                            <input type="text" value={editingUser.bank1Code || ''} onChange={e => setEditingUser({...editingUser, bank1Code: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm font-mono focus:ring-1 focus:ring-purple-500" placeholder="0001" />
-                          </div>
-                          <div className="w-2/3">
-                            <label className="block text-[10px] text-gray-500 mb-0.5">金融機関名</label>
-                            <input type="text" value={editingUser.bank1Name || ''} onChange={e => setEditingUser({...editingUser, bank1Name: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-purple-500" placeholder="例: ○○銀行" />
-                          </div>
-                        </div>
-                        <div className="flex space-x-2">
-                          <div className="w-1/3">
-                            <label className="block text-[10px] text-gray-500 mb-0.5">支店番号</label>
-                            <input type="text" value={editingUser.bank1BranchCode || ''} onChange={e => setEditingUser({...editingUser, bank1BranchCode: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm font-mono focus:ring-1 focus:ring-purple-500" placeholder="123" />
-                          </div>
-                          <div className="w-2/3">
-                            <label className="block text-[10px] text-gray-500 mb-0.5">支店名</label>
-                            <input type="text" value={editingUser.bank1Branch || ''} onChange={e => setEditingUser({...editingUser, bank1Branch: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-purple-500" placeholder="例: ××支店" />
-                          </div>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-3 gap-2">
-                        <div className="col-span-1">
-                          <label className="block text-[10px] text-gray-500 mb-0.5">種目</label>
-                          <select value={editingUser.bank1Type || '普通'} onChange={e => setEditingUser({...editingUser, bank1Type: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm bg-white focus:ring-1 focus:ring-purple-500">
-                            <option value="普通">普通</option>
-                            <option value="当座">当座</option>
-                          </select>
-                        </div>
-                        <div className="col-span-2">
-                          <label className="block text-[10px] text-gray-500 mb-0.5">口座番号</label>
-                          <input type="text" value={editingUser.bank1Number || ''} onChange={e => setEditingUser({...editingUser, bank1Number: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm font-mono focus:ring-1 focus:ring-purple-500" placeholder="1234567" />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="block text-[10px] text-gray-500 mb-0.5">口座名義人</label>
-                          <input type="text" value={editingUser.bank1Holder || ''} onChange={e => setEditingUser({...editingUser, bank1Holder: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-purple-500" placeholder="山田 太郎" />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] text-gray-500 mb-0.5">フリガナ</label>
-                          <input type="text" value={editingUser.bank1HolderKana || ''} onChange={e => setEditingUser({...editingUser, bank1HolderKana: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-purple-500" placeholder="ヤマダ タロウ" />
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="grid grid-cols-3 gap-2">
-                        <div className="col-span-1">
-                          <label className="block text-[10px] text-gray-500 mb-0.5">店番（3桁）</label>
-                          <input type="text" value={editingUser.bank1BranchCode || ''} onChange={e => setEditingUser({...editingUser, bank1BranchCode: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm font-mono focus:ring-1 focus:ring-purple-500" placeholder="123" />
-                        </div>
-                        <div className="col-span-1">
-                          <label className="block text-[10px] text-gray-500 mb-0.5">種目</label>
-                          <select value={editingUser.bank1Type || '普通'} onChange={e => setEditingUser({...editingUser, bank1Type: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm bg-white focus:ring-1 focus:ring-purple-500">
-                            <option value="普通">普通</option>
-                            <option value="当座">当座</option>
-                          </select>
-                        </div>
-                        <div className="col-span-1">
-                          <label className="block text-[10px] text-gray-500 mb-0.5">口座番号</label>
-                          <input type="text" value={editingUser.bank1Number || ''} onChange={e => setEditingUser({...editingUser, bank1Number: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm font-mono focus:ring-1 focus:ring-purple-500" placeholder="1234567" />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="block text-[10px] text-gray-500 mb-0.5">口座名義人</label>
-                          <input type="text" value={editingUser.bank1Holder || ''} onChange={e => setEditingUser({...editingUser, bank1Holder: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-purple-500" placeholder="山田 太郎" />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] text-gray-500 mb-0.5">フリガナ</label>
-                          <input type="text" value={editingUser.bank1HolderKana || ''} onChange={e => setEditingUser({...editingUser, bank1HolderKana: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-purple-500" placeholder="ヤマダ タロウ" />
-                        </div>
-                      </div>
-                    </>
-                  )}
+                  <label className={`border-2 rounded-xl p-3 text-center cursor-pointer transition-all ${editingUser?.role === 'manager' ? 'bg-purple-50 border-purple-500 text-purple-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                    <input type="radio" name="role" value="manager" checked={editingUser?.role === 'manager'} onChange={() => setEditingUser({ ...editingUser, role: 'manager' })} className="hidden" />
+                    <div className="font-bold text-sm mb-1">事務・役員</div>
+                    <div className="text-[10px] opacity-80 leading-tight">全データの閲覧・Excel</div>
+                  </label>
+                  
+                  <label className={`border-2 rounded-xl p-3 text-center cursor-pointer transition-all ${editingUser?.role === 'admin' ? 'bg-red-50 border-red-500 text-red-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                    <input type="radio" name="role" value="admin" checked={editingUser?.role === 'admin'} onChange={() => setEditingUser({ ...editingUser, role: 'admin' })} className="hidden" />
+                    <div className="font-bold text-sm mb-1">管理者</div>
+                    <div className="text-[10px] opacity-80 leading-tight">マスタ管理・フル権限</div>
+                  </label>
                 </div>
-
-                {/* 🏦 口座情報 2（予備） */}
-                {!editingUser.bank2Enabled ? (
-                  <button type="button" onClick={() => setEditingUser({...editingUser, bank2Enabled: true})} className="w-full py-3 border-2 border-dashed border-gray-300 text-gray-600 rounded-lg text-xs font-bold hover:bg-white transition-colors flex items-center justify-center">
-                    <Plus size={16} className="mr-1" /> 口座情報 2（予備）を追加する
-                  </button>
-                ) : (
-                  <div className={`border rounded-lg p-3 space-y-3 transition-colors relative ${editingUser.primaryBankAccount === 'bank2' ? 'bg-purple-50/30 border-purple-400 shadow-sm ring-1 ring-purple-400' : 'bg-white border-gray-200 shadow-sm'}`}>
-                    <div className="flex justify-between items-center border-b border-gray-100 pb-2 mb-2">
-                      <div className="flex items-center space-x-3">
-                        <h4 className="text-xs font-bold text-gray-700">口座情報 2</h4>
-                        <label className="flex items-center space-x-1.5 cursor-pointer bg-white px-2 py-1 rounded border border-gray-200 shadow-sm hover:bg-gray-50 transition-colors">
-                          <input 
-                            type="radio" 
-                            name="primaryBank" 
-                            checked={editingUser.primaryBankAccount === 'bank2'} 
-                            onChange={() => setEditingUser({...editingUser, primaryBankAccount: 'bank2'})} 
-                            className="w-4 h-4 text-purple-600 focus:ring-purple-500 border-gray-300" 
-                          />
-                          <span className={`text-[10px] font-bold ${editingUser.primaryBankAccount === 'bank2' ? 'text-purple-700' : 'text-gray-500'}`}>振込先に指定</span>
-                        </label>
-                      </div>
-                      
-                      <button type="button" onClick={() => setEditingUser({...editingUser, bank2Enabled: false, primaryBankAccount: 'bank1'})} className="text-red-500 hover:bg-red-50 p-1.5 rounded transition-colors" title="削除">
-                        <Trash2 size={14}/>
-                      </button>
-                    </div>
-
-                    <div className="flex space-x-4 mb-2">
-                      <label className="flex items-center space-x-2 cursor-pointer">
-                        <input type="radio" checked={!editingUser.bank2IsYucho} onChange={() => setEditingUser({...editingUser, bank2IsYucho: false})} className="w-4 h-4 text-purple-600 focus:ring-purple-500 border-gray-300" />
-                        <span className="text-xs font-bold text-gray-700">ゆうちょ銀行以外</span>
-                      </label>
-                      <label className="flex items-center space-x-2 cursor-pointer">
-                        <input type="radio" checked={editingUser.bank2IsYucho} onChange={() => setEditingUser({...editingUser, bank2IsYucho: true})} className="w-4 h-4 text-purple-600 focus:ring-purple-500 border-gray-300" />
-                        <span className="text-xs font-bold text-gray-700">ゆうちょ銀行</span>
-                      </label>
-                    </div>
-
-                    {!editingUser.bank2IsYucho ? (
-                      <>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="flex space-x-2">
-                            <div className="w-1/3">
-                              <label className="block text-[10px] text-gray-500 mb-0.5">銀行番号</label>
-                              <input type="text" value={editingUser.bank2Code || ''} onChange={e => setEditingUser({...editingUser, bank2Code: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm font-mono focus:ring-1 focus:ring-purple-500" placeholder="0001" />
-                            </div>
-                            <div className="w-2/3">
-                              <label className="block text-[10px] text-gray-500 mb-0.5">金融機関名</label>
-                              <input type="text" value={editingUser.bank2Name || ''} onChange={e => setEditingUser({...editingUser, bank2Name: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-purple-500" placeholder="例: ○○銀行" />
-                            </div>
-                          </div>
-                          <div className="flex space-x-2">
-                            <div className="w-1/3">
-                              <label className="block text-[10px] text-gray-500 mb-0.5">支店番号</label>
-                              <input type="text" value={editingUser.bank2BranchCode || ''} onChange={e => setEditingUser({...editingUser, bank2BranchCode: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm font-mono focus:ring-1 focus:ring-purple-500" placeholder="123" />
-                            </div>
-                            <div className="w-2/3">
-                              <label className="block text-[10px] text-gray-500 mb-0.5">支店名</label>
-                              <input type="text" value={editingUser.bank2Branch || ''} onChange={e => setEditingUser({...editingUser, bank2Branch: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-purple-500" placeholder="例: ××支店" />
-                            </div>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-3 gap-2">
-                          <div className="col-span-1">
-                            <label className="block text-[10px] text-gray-500 mb-0.5">種目</label>
-                            <select value={editingUser.bank2Type || '普通'} onChange={e => setEditingUser({...editingUser, bank2Type: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm bg-white focus:ring-1 focus:ring-purple-500">
-                              <option value="普通">普通</option>
-                              <option value="当座">当座</option>
-                            </select>
-                          </div>
-                          <div className="col-span-2">
-                            <label className="block text-[10px] text-gray-500 mb-0.5">口座番号</label>
-                            <input type="text" value={editingUser.bank2Number || ''} onChange={e => setEditingUser({...editingUser, bank2Number: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm font-mono focus:ring-1 focus:ring-purple-500" placeholder="1234567" />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="block text-[10px] text-gray-500 mb-0.5">口座名義人</label>
-                            <input type="text" value={editingUser.bank2Holder || ''} onChange={e => setEditingUser({...editingUser, bank2Holder: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-purple-500" placeholder="山田 太郎" />
-                          </div>
-                          <div>
-                            <label className="block text-[10px] text-gray-500 mb-0.5">フリガナ</label>
-                            <input type="text" value={editingUser.bank2HolderKana || ''} onChange={e => setEditingUser({...editingUser, bank2HolderKana: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-purple-500" placeholder="ヤマダ タロウ" />
-                          </div>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="grid grid-cols-3 gap-2">
-                          <div className="col-span-1">
-                            <label className="block text-[10px] text-gray-500 mb-0.5">店番（3桁）</label>
-                            <input type="text" value={editingUser.bank2BranchCode || ''} onChange={e => setEditingUser({...editingUser, bank2BranchCode: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm font-mono focus:ring-1 focus:ring-purple-500" placeholder="123" />
-                          </div>
-                          <div className="col-span-1">
-                            <label className="block text-[10px] text-gray-500 mb-0.5">種目</label>
-                            <select value={editingUser.bank2Type || '普通'} onChange={e => setEditingUser({...editingUser, bank2Type: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm bg-white focus:ring-1 focus:ring-purple-500">
-                              <option value="普通">普通</option>
-                              <option value="当座">当座</option>
-                            </select>
-                          </div>
-                          <div className="col-span-1">
-                            <label className="block text-[10px] text-gray-500 mb-0.5">口座番号</label>
-                            <input type="text" value={editingUser.bank2Number || ''} onChange={e => setEditingUser({...editingUser, bank2Number: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm font-mono focus:ring-1 focus:ring-purple-500" placeholder="1234567" />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="block text-[10px] text-gray-500 mb-0.5">口座名義人</label>
-                            <input type="text" value={editingUser.bank2Holder || ''} onChange={e => setEditingUser({...editingUser, bank2Holder: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-purple-500" placeholder="山田 太郎" />
-                          </div>
-                          <div>
-                            <label className="block text-[10px] text-gray-500 mb-0.5">フリガナ</label>
-                            <input type="text" value={editingUser.bank2HolderKana || ''} onChange={e => setEditingUser({...editingUser, bank2HolderKana: e.target.value})} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-purple-500" placeholder="ヤマダ タロウ" />
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
               </div>
 
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">システム権限</label>
-                <select 
-                  value={editingUser.role || 'reporter'} 
-                  onChange={e => setEditingUser({...editingUser, role: e.target.value})}
-                  className="w-full border-2 border-purple-400 rounded-xl p-3 font-bold text-gray-800 focus:ring-2 focus:ring-purple-500 bg-white"
-                >
-                  <option value="admin">👑 システム管理者 (マスタ管理を含む全機能へのアクセス)</option>
-                  <option value="manager">📝 事務・役員 (全グループの実績閲覧・編集・Excel出力)</option>
-                  <option value="reporter">🚜 現場リーダー (担当グループの実績登録 ※編集/削除は個別設定)</option>
-                </select>
-
-                {editingUser.role === 'reporter' && (
-                  <div className="mt-3 space-y-2">
-                    <label className="flex items-center space-x-3 bg-yellow-50 p-3 rounded-xl border border-yellow-200 cursor-pointer hover:bg-yellow-100 transition-colors">
-                      <input 
-                        type="checkbox" 
-                        checked={editingUser.canEditOwn || false} 
-                        onChange={e => setEditingUser({...editingUser, canEditOwn: e.target.checked})}
-                        className="w-5 h-5 text-yellow-600 border-gray-300 rounded focus:ring-yellow-500"
-                      />
-                      <div className="flex flex-col">
-                        <span className="text-sm font-bold text-yellow-900 flex items-center">
-                          <ShieldCheck size={16} className="mr-1" /> 自身が登録した活動の「編集・削除」を許可
-                        </span>
-                        <span className="text-[10px] text-yellow-700 mt-0.5">自分が登録した実績のみ編集できるようになります。</span>
-                      </div>
-                    </label>
-
-                    <label className="flex items-center space-x-3 bg-blue-50 p-3 rounded-xl border border-blue-200 cursor-pointer hover:bg-blue-100 transition-colors">
-                      <input 
-                        type="checkbox" 
-                        checked={editingUser.canEditGroup || false} 
-                        onChange={e => setEditingUser({...editingUser, canEditGroup: e.target.checked})}
-                        className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                      />
-                      <div className="flex flex-col">
-                        <span className="text-sm font-bold text-blue-900 flex items-center">
-                          <ShieldCheck size={16} className="mr-1" /> 同一グループの活動の「編集・削除」を許可
-                        </span>
-                        <span className="text-[10px] text-blue-700 mt-0.5">所属しているグループ内であれば他人の実績も編集できるようになります。</span>
-                      </div>
-                    </label>
-                  </div>
-                )}
-              </div>
+              {editingUser?.role === 'reporter' && (
+                <div className="mb-6 bg-blue-50 p-4 rounded-xl border border-blue-100 space-y-3">
+                  <p className="text-sm font-bold text-blue-800 border-b border-blue-200 pb-2">現場リーダーの特別権限</p>
+                  <label className="flex items-start space-x-3 cursor-pointer">
+                    <input type="checkbox" checked={editingUser?.canEditOwn || false} onChange={(e) => setEditingUser({ ...editingUser, canEditOwn: e.target.checked })} className="mt-1 w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500" />
+                    <div className="flex flex-col">
+                      <span className="text-sm font-bold text-gray-800">自分が登録した記録の編集・削除</span>
+                      <span className="text-xs text-gray-500">自分が過去に登録した実績データを後から修正できます。</span>
+                    </div>
+                  </label>
+                  <label className="flex items-start space-x-3 cursor-pointer">
+                    <input type="checkbox" checked={editingUser?.canEditGroup || false} onChange={(e) => setEditingUser({ ...editingUser, canEditGroup: e.target.checked })} className="mt-1 w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500" />
+                    <div className="flex flex-col">
+                      <span className="text-sm font-bold text-gray-800">所属グループ全員の記録の編集・削除</span>
+                      <span className="text-xs text-gray-500">同じグループのメンバーが登録したデータも修正可能になります。（班長向け）</span>
+                    </div>
+                  </label>
+                </div>
+              )}
 
               <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">担当グループ</label>
-                <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-xl p-2 space-y-1 bg-white">
+                <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center">
+                  <Users size={16} className="mr-1 text-gray-500" />
+                  所属グループ設定
+                </label>
+                <div className="border border-gray-200 rounded-xl max-h-48 overflow-y-auto bg-white">
                   {groupsList.map(g => {
-                    const isChecked = (editingUser.groupIds || []).includes(g.id);
+                    const isChecked = (editingUser?.groupIds || []).includes(g.id);
                     return (
                       <label key={g.id} className="flex items-center space-x-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer transition-colors">
                         <input 
@@ -736,6 +459,104 @@ export const UserManagement = () => {
           </div>
         </div>
       )}
+
+      <header className="bg-white shadow-sm px-4 md:px-8 py-3 flex justify-between items-center sticky top-0 z-30">
+        <div className="flex items-center">
+          <button onClick={() => navigate('/dashboard')} className="mr-4 text-gray-500 hover:text-gray-700">
+            <ArrowLeft size={24} />
+          </button>
+          <h1 className="text-lg md:text-xl font-bold text-gray-800 flex items-center">
+            <UserCog className="w-6 h-6 mr-2 text-purple-600" />
+            ユーザー・権限管理
+          </h1>
+        </div>
+        <button onClick={() => setIsAddingUser(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center hover:bg-blue-700 transition-colors shadow-sm">
+          <UserPlus size={18} className="mr-1.5" /> <span className="hidden sm:inline">新規ユーザー</span>追加
+        </button>
+      </header>
+
+      <main className="p-4 md:p-8 max-w-6xl mx-auto">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="p-4 bg-purple-50 border-b border-purple-100">
+            <p className="text-sm text-purple-800 font-bold">システムに登録されているユーザーの権限や所属グループを管理します。</p>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[900px]">
+              <thead>
+                <tr className="text-xs text-gray-400 uppercase tracking-wider border-b">
+                  <th className="px-4 py-3 font-bold">ユーザー名 / 連絡先</th>
+                  <th className="px-4 py-3 font-bold">構成員番号</th>
+                  <th className="px-4 py-3 font-bold">権限</th>
+                  <th className="px-4 py-3 font-bold">所属グループ</th>
+                  <th className="px-4 py-3 font-bold text-center w-24">操作</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {usersList.map((user) => (
+                  <tr key={user.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-4">
+                      <div className="flex items-center">
+                        <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 font-bold mr-3 shrink-0">
+                          {(user?.displayName || user?.name || 'U')[0]}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-bold text-gray-900 text-sm truncate">{user?.displayName || user?.name || '名称未設定'}</div>
+                          <div className="text-[10px] text-gray-500 truncate">
+                            {user?.email?.includes('@kamata.local') ? `📞 ${formatEmailForDisplay(user?.email)}` : `✉️ ${formatEmailForDisplay(user?.email)}`}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    
+                    <td className="px-4 py-4">
+                      <span className="text-sm text-gray-700 font-mono">{user.memberNo || <span className="text-gray-300 text-xs">未設定</span>}</span>
+                    </td>
+
+                    <td className="px-4 py-4">
+                      <div className="flex flex-col space-y-1">
+                        {getRoleBadge(user.role)}
+                        {user.role === 'reporter' && (user.canEditOwn || user.canEditGroup) && (
+                          <span className="text-[9px] text-blue-500 font-bold border border-blue-200 px-1.5 rounded w-max">特別編集権限あり</span>
+                        )}
+                      </div>
+                    </td>
+                    
+                    <td className="px-4 py-4">
+                      <div className="flex flex-wrap gap-1">
+                        {user.groupIds && user.groupIds.length > 0 ? (
+                          user.groupIds.map(gid => {
+                            const g = groupsList.find(x => x.id === gid);
+                            return g ? <span key={gid} className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-[10px] font-bold border border-gray-200">{g.name}</span> : null;
+                          })
+                        ) : (
+                          <span className="text-xs text-gray-400">所属なし</span>
+                        )}
+                      </div>
+                    </td>
+                    
+                    <td className="px-4 py-4">
+                      <div className="flex justify-center space-x-2">
+                        <button onClick={() => setEditingUser(user)} className="p-2 text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors" title="権限・グループ編集">
+                          <Edit size={16}/>
+                        </button>
+                        <button onClick={() => handleDelete(user.id, user.displayName || user.name)} className="p-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors" disabled={user.id === auth.currentUser?.uid} title="ユーザー削除">
+                          <Trash2 size={16}/>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {usersList.length === 0 && (
+                  <tr>
+                    <td colSpan="5" className="px-4 py-8 text-center text-gray-400 font-bold">ユーザーが見つかりません</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </main>
     </div>
   );
 };

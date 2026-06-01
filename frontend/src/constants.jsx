@@ -42,3 +42,5 @@ export const LOCATION_OPTIONS = [
   "鎌田多目的集落施設周辺",
   "神社周辺"
 ];
+
+export const ORGANIZATION_NAME = '鎌田緑保護会';
