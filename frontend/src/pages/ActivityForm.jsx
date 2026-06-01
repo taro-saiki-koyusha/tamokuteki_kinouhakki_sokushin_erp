@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
-import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2, Calculator, Package, Plus, CheckCircle, Copy, ListChecks, MessageSquare, Download, Link as LinkIcon, FileSpreadsheet, Printer } from 'lucide-react';
+import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2, Calculator, Package, Plus, CheckCircle, Copy, ListChecks, MessageSquare, Download, Link as LinkIcon, FileSpreadsheet, Printer, Hash } from 'lucide-react';
 import { collection, addDoc, doc, updateDoc, serverTimestamp, deleteDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged } from 'firebase/auth';
 import { db, storage, auth } from '../firebase'; 
 import XlsxPopulate from 'xlsx-populate/browser/xlsx-populate';
-
 import { ACTIVITY_ITEMS, LOCATION_OPTIONS, ORGANIZATION_NAME } from '../constants';
 
 const formatTimestamp = (timestamp) => {
@@ -19,28 +18,7 @@ const formatTimestamp = (timestamp) => {
     const d = new Date(timestamp.seconds * 1000);
     return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   }
-  const d = new Date(timestamp);
-  if (!isNaN(d)) {
-    return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  }
   return '-';
-};
-
-// 🚀 過去データの作成日時から報告書NOを生成するヘルパー関数
-const generateReportNoFromDate = (dateObj) => {
-  if (!dateObj) return '';
-  try {
-    const dt = dateObj.toDate ? dateObj.toDate() : new Date(dateObj.seconds ? dateObj.seconds * 1000 : dateObj);
-    if (isNaN(dt)) return '';
-    const y = dt.getFullYear();
-    const m = String(dt.getMonth() + 1).padStart(2, '0');
-    const day = String(dt.getDate()).padStart(2, '0');
-    const h = String(dt.getHours()).padStart(2, '0');
-    const min = String(dt.getMinutes()).padStart(2, '0');
-    return `${y}${m}${day}${h}${min}`;
-  } catch (e) {
-    return '';
-  }
 };
 
 export const ActivityForm = () => {
@@ -48,9 +26,7 @@ export const ActivityForm = () => {
   const location = useLocation();
   const { id } = useParams(); 
   
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [location.pathname]);
+  useEffect(() => { window.scrollTo(0, 0); }, [location.pathname]);
 
   const [editData, setEditData] = useState(location.state?.editData || null);
   const [isViewMode, setIsViewMode] = useState(location.state?.isViewMode || false);
@@ -87,6 +63,9 @@ export const ActivityForm = () => {
   const [participantDetails, setParticipantDetails] = useState([]);
   const [materialDetails, setMaterialDetails] = useState([]); 
 
+  // 🚀 欠落していた handleChange 関数を復元
+  const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+
   useEffect(() => {
     if (id && !location.state?.editData) {
       setIsLoadingDirect(true);
@@ -98,27 +77,13 @@ export const ActivityForm = () => {
             const data = docSnap.data();
             setEditData({ id: docSnap.id, ...data });
             setIsViewMode(true);
-
-            // 🚀 古いデータでNOがない場合、作成日時から自動生成
-            let reportNoToSet = data.reportNo || '';
-            if (!reportNoToSet && data.createdAt) {
-              reportNoToSet = generateReportNoFromDate(data.createdAt);
-            }
-
             setFormData({
-              status: data.status || '実績入力済',
-              planType: data.planType || '当初計画',
-              isEssential: data.isEssential || false,
-              groupId: data.groupId || '',
-              date: data.date || '',
-              startTime: data.startTime || '08:00',
-              endTime: data.endTime || '10:00',
-              location: data.location || '',
-              activityType: data.activityType || '',
-              activityNumbers: data.activityNumbers || [], 
-              memo: data.memo || '',
-              reportNo: reportNoToSet,
-              budget: data.budget || '' 
+              status: data.status || '実績入力済', planType: data.planType || '当初計画',
+              isEssential: data.isEssential || false, groupId: data.groupId || '',
+              date: data.date || '', startTime: data.startTime || '08:00', endTime: data.endTime || '10:00',
+              location: data.location || '', activityType: data.activityType || '',
+              activityNumbers: data.activityNumbers || [], memo: data.memo || '',
+              reportNo: data.reportNo || '', budget: data.budget || '' 
             });
             setParticipantDetails(data.participantDetails || []);
             setMaterialDetails(data.materialDetails || []); 
@@ -132,17 +97,10 @@ export const ActivityForm = () => {
       fetchActivityDirect();
     } else if (location.state?.editData) {
       const d = location.state.editData;
-
-      // 🚀 古いデータでNOがない場合、作成日時から自動生成
-      let reportNoToSet = d.reportNo || '';
-      if (!reportNoToSet && d.createdAt) {
-        reportNoToSet = generateReportNoFromDate(d.createdAt);
-      }
-
       setFormData({
         status: d.status || '実績入力済', planType: d.planType || '当初計画', isEssential: d.isEssential || false, groupId: d.groupId || '',
         date: d.date, startTime: d.startTime, endTime: d.endTime, location: d.location, activityType: d.activityType,
-        activityNumbers: d.activityNumbers || [], memo: d.memo || '', reportNo: reportNoToSet, budget: d.budget || '' 
+        activityNumbers: d.activityNumbers || [], memo: d.memo || '', reportNo: d.reportNo || '', budget: d.budget || '' 
       });
       setParticipantDetails(d.participantDetails || []);
       setMaterialDetails(d.materialDetails || []); 
@@ -282,8 +240,6 @@ export const ActivityForm = () => {
     return { totalPersonnelCost: pCost, totalMachineCost: mCost, totalMaterialCost: matCost };
   }, [participantDetails, materialDetails, membersList, machinesList, materialsList]);
 
-  const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
-
   const handleActivityNumberToggle = (activityId) => {
     setFormData(prev => {
       const isSelected = prev.activityNumbers.includes(activityId);
@@ -330,18 +286,11 @@ export const ActivityForm = () => {
 
   const handleCancelEdit = () => {
     if (!editData) return;
-    
-    // 🚀 キャンセル時も自動補完を維持する
-    let reportNoToSet = editData.reportNo || '';
-    if (!reportNoToSet && editData.createdAt) {
-      reportNoToSet = generateReportNoFromDate(editData.createdAt);
-    }
-
     setFormData({
       status: editData.status || '実績入力済', planType: editData.planType || '当初計画', isEssential: editData.isEssential || false,
       groupId: editData.groupId || '', date: editData.date || '', startTime: editData.startTime || '', endTime: editData.endTime || '',
       location: editData.location || '', activityType: editData.activityType || '', activityNumbers: editData.activityNumbers || [],
-      memo: editData.memo || '', reportNo: reportNoToSet, budget: editData.budget || ''
+      memo: editData.memo || '', reportNo: editData.reportNo || '', budget: editData.budget || ''
     });
     setParticipantDetails(editData.participantDetails || []);
     setMaterialDetails(editData.materialDetails || []); 
@@ -378,11 +327,7 @@ export const ActivityForm = () => {
 
       const sheet1 = workbook.sheet('活動報告書') || workbook.sheets()[0];
       
-      // 🚀 Excel出力時も空なら自動補完されたものを出力
-      let outputReportNo = editData.reportNo || '';
-      if (!outputReportNo && editData.createdAt) outputReportNo = generateReportNoFromDate(editData.createdAt);
-
-      sheet1.cell('AH3').value(outputReportNo);
+      sheet1.cell('AH3').value(editData.reportNo || '');
       sheet1.cell('A7').value(editData.date);
       sheet1.cell('C7').value(editData.startTime);
       sheet1.cell('F7').value(editData.endTime);
@@ -473,14 +418,15 @@ export const ActivityForm = () => {
       const validMaterials = materialDetails.filter(m => m.materialId !== ''); 
       
       let finalReportNo = formData.reportNo;
-      if (!editData) {
+      if (!finalReportNo) {
         const now = new Date();
         const year = now.getFullYear();
         const month = String(now.getMonth() + 1).padStart(2, '0');
         const day = String(now.getDate()).padStart(2, '0');
         const hours = String(now.getHours()).padStart(2, '0');
         const minutes = String(now.getMinutes()).padStart(2, '0');
-        finalReportNo = `${year}${month}${day}${hours}${minutes}`;
+        const seconds = String(now.getSeconds()).padStart(2, '0');
+        finalReportNo = `${year}${month}${day}${hours}${minutes}${seconds}`;
       }
 
       const submitData = { 
@@ -528,13 +474,14 @@ export const ActivityForm = () => {
   const selectableGroups = (userRole === 'admin' || userRole === 'manager') ? groupsList : groupsList.filter(g => userGroups.includes(g.id));
   const totalCost = totalPersonnelCost + totalMachineCost + totalMaterialCost;
 
+  // 🚀 管理者のみリセットボタンを表示する制御用
+  const canResetReportNo = userRole === 'admin';
+
   return (
     <div className="min-h-screen bg-gray-50 pb-20 md:pb-12 overflow-x-hidden w-full print:bg-white print:pb-0">
       <style>{`
         @media print {
-          /* ブラウザ標準のヘッダー・フッターを消去するためページ余白を0に設定 */
           @page { margin: 0; size: A4; }
-          /* 本文側に余白を設定し、全ページに適用させる */
           body { background: white !important; margin: 15mm !important; }
           .no-print { display: none !important; }
         }
@@ -710,20 +657,32 @@ export const ActivityForm = () => {
                 </select>
               </div>
               
-              {/* 🚀 報告書NOの入力欄を修正 */}
               {editData ? (
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">報告書NO (自動採番)</label>
-                  <div className="relative">
-                    <input type="text" name="reportNo" value={formData.reportNo} disabled className={`${inputClass} bg-gray-100 text-gray-600`} />
-                    {/* 過去データでNOがなかった場合、生成されたことをユーザーに知らせるメッセージ */}
-                    {!editData.reportNo && formData.reportNo && !isViewMode && (
-                      <p className="text-[10px] text-orange-600 mt-1.5 font-bold flex items-center">
-                        <CheckCircle size={12} className="mr-1" />
-                        過去のデータのため、作成日時から自動採番しました。「更新」で確定します。
-                      </p>
+                  <div className="flex gap-2 items-center">
+                    <input 
+                      type="text" 
+                      name="reportNo" 
+                      value={formData.reportNo || '（未設定：更新時に自動採番されます）'} 
+                      disabled 
+                      className={`${inputClass} bg-gray-100 flex-1 ${formData.reportNo ? 'text-gray-600' : 'text-orange-500 font-bold text-xs'}`} 
+                    />
+                    {!isViewMode && formData.reportNo && canResetReportNo && (
+                      <button 
+                        type="button" 
+                        onClick={() => setFormData({ ...formData, reportNo: '' })}
+                        className="px-3 py-3 bg-red-50 text-red-600 border border-red-200 rounded-xl text-xs font-bold hover:bg-red-100 whitespace-nowrap transition-colors"
+                      >
+                        番号をリセット
+                      </button>
                     )}
                   </div>
+                  {!isViewMode && formData.reportNo && canResetReportNo && (
+                    <p className="text-[10px] text-gray-500 mt-1.5 flex items-center">
+                      ※重複時は「番号をリセット」を押して保存すると再採番されます。（管理者のみ表示）
+                    </p>
+                  )}
                 </div>
               ) : (
                 <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm text-gray-500 font-bold flex items-center">
