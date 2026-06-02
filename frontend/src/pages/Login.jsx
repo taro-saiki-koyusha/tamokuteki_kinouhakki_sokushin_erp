@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sprout, LogIn, AlertCircle, Mail, Lock, UserPlus, Phone } from 'lucide-react';
+import { Sprout, LogIn, AlertCircle, Mail, Lock, UserPlus, Phone, Download, Share } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'; 
@@ -17,19 +17,39 @@ export const Login = () => {
   
   const [saveId, setSaveId] = useState(false);
 
-  // 🚀 初回読み込み時に保存されたIDがあればセットする
+  const [showInstallModal, setShowInstallModal] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+
   useEffect(() => {
     const savedId = localStorage.getItem('kamata_saved_login_id');
     if (savedId) {
       setLoginIdInput(savedId);
       setSaveId(true);
     }
+
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
 
-  // 🚀 LINEブラウザかどうかを判定（userAgentを確認）
+  // 🚀 ブラウザ判定ロジックを強化（iPhoneのChromeを個別検知）
   const isLineBrowser = /Line/i.test(navigator.userAgent);
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const isIOSChrome = isIOS && /CriOS/i.test(navigator.userAgent);
 
-  // 共通のユーザー登録処理
+  const handleInstallClick = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') setDeferredPrompt(null);
+    } else {
+      setShowInstallModal(true);
+    }
+  };
+
   const createUserData = async (user, name) => {
     const userRef = doc(db, 'users', user.uid);
     const userSnap = await getDoc(userRef);
@@ -44,7 +64,6 @@ export const Login = () => {
     }
   };
 
-  // Googleログイン
   const handleGoogleLogin = async () => {
     setLoading(true);
     setError(null);
@@ -59,61 +78,45 @@ export const Login = () => {
     }
   };
 
-  // メールアドレス/電話番号でのログイン/登録処理
   const handleEmailAuth = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    // 厳密な空欄チェック
     if (isSignUp && (!displayName.trim() || !loginIdInput.trim() || !password.trim())) {
       setError("すべての項目（お名前、メールアドレス、パスワード）を入力してください。");
-      setLoading(false);
-      return;
+      setLoading(false); return;
     }
     if (!isSignUp && (!loginIdInput.trim() || !password.trim())) {
       setError("ログインIDとパスワードを入力してください。");
-      setLoading(false);
-      return;
+      setLoading(false); return;
     }
 
     try {
       let finalLoginId = loginIdInput;
-      
-      // @が含まれていない場合は「電話番号」として扱う
       if (!loginIdInput.includes('@')) {
         if (isSignUp) {
-          // 一般ユーザーが電話番号で新規登録しようとした場合は弾く
-          setError("電話番号での新規登録はシステム管理者のみ可能です。管理者にアカウント作成をご依頼ください。");
-          setLoading(false);
-          return;
+          setError("電話番号での新規登録はシステム管理者のみ可能です。");
+          setLoading(false); return;
         }
-        // ハイフン等を除去してダミーメールアドレスを生成
         const cleanPhone = loginIdInput.replace(/[^0-9]/g, '');
         finalLoginId = `${cleanPhone}@kamata.local`;
       }
 
       if (isSignUp) {
-        // 新規登録（メールアドレスのみ）
         const result = await createUserWithEmailAndPassword(auth, finalLoginId, password);
         await updateProfile(result.user, { displayName: displayName.trim() });
         await createUserData(result.user, displayName.trim());
         alert("アカウントを作成しました。管理者の承認をお待ちください。");
       } else {
-        // ログイン（メールアドレス or 変換済み電話番号）
         await signInWithEmailAndPassword(auth, finalLoginId, password);
       }
 
-      // ログイン成功時、チェック状態に応じてIDをブラウザに保存/削除
-      if (saveId) {
-        localStorage.setItem('kamata_saved_login_id', loginIdInput);
-      } else {
-        localStorage.removeItem('kamata_saved_login_id');
-      }
+      if (saveId) localStorage.setItem('kamata_saved_login_id', loginIdInput);
+      else localStorage.removeItem('kamata_saved_login_id');
 
       navigate('/dashboard');
     } catch (err) {
-      console.error(err);
       if (err.code === 'auth/email-already-in-use') setError("このメールアドレスは既に登録されています。");
       else if (err.code === 'auth/weak-password') setError("パスワードは6文字以上で入力してください。");
       else if (err.code === 'auth/invalid-credential') setError("ログインIDまたはパスワードが正しくありません。");
@@ -123,19 +126,14 @@ export const Login = () => {
     }
   };
 
-  // 🚀 LINEブラウザで開かれた場合は、ログイン画面を出さずに案内画面を表示する
   if (isLineBrowser) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center py-8 px-4">
         <div className="bg-white py-8 px-5 sm:px-8 shadow-xl rounded-2xl border-t-8 border-green-600 w-full text-center" style={{ maxWidth: '400px' }}>
-          <div className="flex justify-center text-red-500 mb-4">
-            <AlertCircle size={56} />
-          </div>
+          <div className="flex justify-center text-red-500 mb-4"><AlertCircle size={56} /></div>
           <h2 className="text-xl font-extrabold text-gray-900 mb-3 tracking-tight">LINEから直接開けません</h2>
           <p className="text-gray-700 font-bold mb-6 text-sm leading-relaxed">
-            写真の追加などを正常に行うため、<br/>
-            お使いの標準ブラウザ（Safari や Chrome）で<br/>
-            開き直す必要があります。
+            写真の追加などを正常に行うため、<br/>お使いの標準ブラウザ（Safari や Chrome）で<br/>開き直す必要があります。
           </p>
           <div className="bg-gray-50 border border-gray-200 p-4 rounded-xl text-sm text-gray-700 text-left space-y-5">
             <div>
@@ -152,10 +150,65 @@ export const Login = () => {
     );
   }
 
-  // 通常のログイン画面（LINEブラウザ以外）
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center py-8 px-4">
+    <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center py-8 px-4 relative">
       
+      {/* 🚀 アプリ化案内モーダル */}
+      {showInstallModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-5 flex flex-col items-center text-center">
+              <div className="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
+                <Download size={28} />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">ホーム画面に追加</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                このシステムをスマホの画面に追加して、<br />次回からアプリのように開けます。
+              </p>
+              
+              <div className="bg-gray-50 p-4 rounded-xl w-full border border-gray-200 text-left space-y-4">
+                
+                {/* 🚀 iPhoneのChrome用案内を分岐追加 */}
+                {isIOSChrome ? (
+                  <div>
+                    <span className="font-extrabold text-blue-600 block mb-2 text-base">【iPhone (Chrome) の手順】</span>
+                    <ol className="list-decimal pl-5 text-sm text-gray-700 space-y-3 font-bold leading-relaxed">
+                      <li>画面<strong>右上</strong>の <span className="font-bold border border-gray-300 bg-white px-1.5 py-1 rounded mx-1">↗️ 共有マーク</span> を押す</li>
+                      <li>少し下にスクロールして<br/><span className="text-black bg-gray-200 px-2 py-1 rounded">＋ ホーム画面に追加</span> を押す</li>
+                      <li>右上の<strong>「追加」</strong>を押す</li>
+                    </ol>
+                    <p className="text-[10px] text-red-500 mt-3 font-bold">※「ホーム画面に追加」が出ない場合は、Safariブラウザで開き直してお試しください。</p>
+                  </div>
+                ) : isIOS ? (
+                  <div>
+                    <span className="font-extrabold text-blue-600 block mb-2 text-base">【iPhone (Safari) の手順】</span>
+                    <ol className="list-decimal pl-5 text-sm text-gray-700 space-y-3 font-bold leading-relaxed">
+                      <li>画面<strong>下部</strong>の <span className="font-bold border border-gray-300 bg-white px-1.5 py-1 rounded mx-1">↗️ 共有マーク</span> を押す</li>
+                      <li>少し下にスクロールして<br/><span className="text-black bg-gray-200 px-2 py-1 rounded">＋ ホーム画面に追加</span> を押す</li>
+                      <li>右上の<strong>「追加」</strong>を押す</li>
+                    </ol>
+                  </div>
+                ) : (
+                  <div>
+                    <span className="font-extrabold text-green-600 block mb-2 text-base">【Android (Chrome) の手順】</span>
+                    <ol className="list-decimal pl-5 text-sm text-gray-700 space-y-3 font-bold leading-relaxed">
+                      <li>画面右上の <span className="font-bold border border-gray-300 bg-white px-1.5 py-1 rounded mx-1">︙ メニュー</span> を押す</li>
+                      <li><span className="text-black bg-gray-200 px-2 py-1 rounded">ホーム画面に追加</span><br/>または「アプリをインストール」を押す</li>
+                      <li><strong>「追加」</strong>を押す</li>
+                    </ol>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-center">
+              <button onClick={() => setShowInstallModal(false)} className="w-full py-2.5 bg-gray-600 text-white rounded-xl font-bold hover:bg-gray-700 transition-colors">
+                閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="w-full text-center" style={{ maxWidth: '400px' }}>
         <div className="flex justify-center text-green-600 mb-3"><Sprout size={44} /></div>
         <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900 leading-tight">多面的機能発揮促進事業 管理システム</h2>
@@ -175,9 +228,7 @@ export const Login = () => {
           <form onSubmit={handleEmailAuth} className="space-y-4 mb-5">
             {isSignUp && (
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">
-                  お名前 <span className="text-red-500">*</span>
-                </label>
+                <label className="block text-xs font-bold text-gray-700 mb-1">お名前 <span className="text-red-500">*</span></label>
                 <div className="relative">
                   <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 text-sm" placeholder="農園 太郎" required={isSignUp} />
                   <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center"><UserPlus className="h-4 w-4 text-gray-400" /></div>
@@ -190,27 +241,15 @@ export const Login = () => {
                 {isSignUp ? 'メールアドレス' : 'ログインID (メール または 電話番号)'} <span className="text-red-500">*</span>
               </label>
               <div className="relative">
-                <input 
-                  type="text" 
-                  value={loginIdInput} 
-                  onChange={(e) => setLoginIdInput(e.target.value)} 
-                  className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 text-sm" 
-                  placeholder={isSignUp ? "example@mail.com" : "example@mail.com または 09012345678"} 
-                  required 
-                />
+                <input type="text" value={loginIdInput} onChange={(e) => setLoginIdInput(e.target.value)} className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 text-sm" placeholder={isSignUp ? "example@mail.com" : "example@mail.com または 09012345678"} required />
                 <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center">
                   {loginIdInput.includes('@') || loginIdInput === '' ? <Mail className="h-4 w-4 text-gray-400" /> : <Phone className="h-4 w-4 text-gray-400" />}
                 </div>
               </div>
-              {isSignUp && (
-                <p className="text-[10px] text-gray-500 mt-1 ml-1">※電話番号での新規登録は管理者にご依頼ください</p>
-              )}
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">
-                パスワード <span className="text-red-500">*</span>
-              </label>
+              <label className="block text-xs font-bold text-gray-700 mb-1">パスワード <span className="text-red-500">*</span></label>
               <div className="relative">
                 <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 text-sm" placeholder="••••••••" required />
                 <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center"><Lock className="h-4 w-4 text-gray-400" /></div>
@@ -219,16 +258,8 @@ export const Login = () => {
 
             {!isSignUp && (
               <div className="flex items-center pt-1">
-                <input
-                  id="saveIdCheckbox"
-                  type="checkbox"
-                  checked={saveId}
-                  onChange={(e) => setSaveId(e.target.checked)}
-                  className="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 rounded focus:ring-green-500 cursor-pointer"
-                />
-                <label htmlFor="saveIdCheckbox" className="ml-2 text-xs font-bold text-gray-600 cursor-pointer select-none">
-                  次回からログインIDの入力を省略する
-                </label>
+                <input id="saveIdCheckbox" type="checkbox" checked={saveId} onChange={(e) => setSaveId(e.target.checked)} className="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 rounded focus:ring-green-500 cursor-pointer" />
+                <label htmlFor="saveIdCheckbox" className="ml-2 text-xs font-bold text-gray-600 cursor-pointer select-none">次回からログインIDの入力を省略する</label>
               </div>
             )}
 
@@ -252,6 +283,17 @@ export const Login = () => {
           <button type="button" onClick={handleGoogleLogin} disabled={loading} className="w-full flex justify-center items-center py-2.5 border border-gray-300 rounded-lg font-bold text-gray-700 text-sm bg-white hover:bg-gray-50 transition-all shadow-sm">
             <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="" className="w-4 h-4 mr-2" />
             Googleアカウントを使用
+          </button>
+        </div>
+
+        <div className="mt-6 w-full">
+          <button 
+            type="button"
+            onClick={handleInstallClick}
+            className="w-full flex justify-center items-center py-3.5 bg-white text-gray-800 border-2 border-gray-200 rounded-xl font-bold hover:bg-gray-50 transition-all shadow-sm"
+          >
+            <Download className="mr-2 h-5 w-5 text-green-600" />
+            スマホのホーム画面に追加する（アプリ化）
           </button>
         </div>
       </div>
