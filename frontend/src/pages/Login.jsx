@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sprout, LogIn, AlertCircle, Mail, Lock, UserPlus, Phone } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
@@ -14,6 +14,18 @@ export const Login = () => {
   const [loginIdInput, setLoginIdInput] = useState(''); 
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  
+  // 🚀 ID保存用のステート
+  const [saveId, setSaveId] = useState(false);
+
+  // 🚀 初回読み込み時に保存されたIDがあればセットする
+  useEffect(() => {
+    const savedId = localStorage.getItem('kamata_saved_login_id');
+    if (savedId) {
+      setLoginIdInput(savedId);
+      setSaveId(true);
+    }
+  }, []);
 
   // 共通のユーザー登録処理
   const createUserData = async (user, name) => {
@@ -89,6 +101,14 @@ export const Login = () => {
         // ログイン（メールアドレス or 変換済み電話番号）
         await signInWithEmailAndPassword(auth, finalLoginId, password);
       }
+
+      // 🚀 ログイン成功時、チェック状態に応じてIDをブラウザに保存/削除
+      if (saveId) {
+        localStorage.setItem('kamata_saved_login_id', loginIdInput);
+      } else {
+        localStorage.removeItem('kamata_saved_login_id');
+      }
+
       navigate('/dashboard');
     } catch (err) {
       console.error(err);
@@ -102,17 +122,14 @@ export const Login = () => {
   };
 
   return (
-    // 🚀 items-center を追加し、強制的に中央揃えにする
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center py-8 px-4">
       
-      {/* 🚀 style属性で直接 maxWidth を 400px に固定 */}
       <div className="w-full text-center" style={{ maxWidth: '400px' }}>
         <div className="flex justify-center text-green-600 mb-3"><Sprout size={44} /></div>
         <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900 leading-tight">多面的機能発揮促進事業 管理システム</h2>
         <p className="mt-1 text-sm text-gray-500 font-bold">[鎌田地区]</p>
       </div>
 
-      {/* 🚀 フォーム全体も style属性で maxWidth を 400px に強制固定 */}
       <div className="mt-6 w-full" style={{ maxWidth: '400px' }}>
         <div className="bg-white py-6 px-6 shadow-xl rounded-2xl border border-gray-100">
           
@@ -168,6 +185,22 @@ export const Login = () => {
                 <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center"><Lock className="h-4 w-4 text-gray-400" /></div>
               </div>
             </div>
+
+            {/* 🚀 ID保存のチェックボックスを追加 */}
+            {!isSignUp && (
+              <div className="flex items-center pt-1">
+                <input
+                  id="saveIdCheckbox"
+                  type="checkbox"
+                  checked={saveId}
+                  onChange={(e) => setSaveId(e.target.checked)}
+                  className="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 rounded focus:ring-green-500 cursor-pointer"
+                />
+                <label htmlFor="saveIdCheckbox" className="ml-2 text-xs font-bold text-gray-600 cursor-pointer select-none">
+                  次回からログインIDの入力を省略する
+                </label>
+              </div>
+            )}
 
             <button type="submit" disabled={loading} className="w-full flex justify-center items-center py-2.5 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition-all shadow-sm active:scale-95 mt-2 text-sm">
               {isSignUp ? <UserPlus className="mr-2 h-4 w-4" /> : <LogIn className="mr-2 h-4 w-4" />}
