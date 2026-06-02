@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Sprout, LogIn, AlertCircle, Mail, Lock, UserPlus, Phone, Download, Share } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
+// 🚀 'setPersistence' と 'browserLocalPersistence' を追加インポート
+import { signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'; 
 import { auth, googleProvider, db } from '../firebase'; 
 
@@ -35,7 +36,6 @@ export const Login = () => {
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
 
-  // 🚀 ブラウザ判定ロジックを強化（iPhoneのChromeを個別検知）
   const isLineBrowser = /Line/i.test(navigator.userAgent);
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
   const isIOSChrome = isIOS && /CriOS/i.test(navigator.userAgent);
@@ -64,10 +64,13 @@ export const Login = () => {
     }
   };
 
+  // Googleログイン
   const handleGoogleLogin = async () => {
     setLoading(true);
     setError(null);
     try {
+      // 🚀 ログイン状態をブラウザを閉じてもずーーっと維持する設定を強制
+      await setPersistence(auth, browserLocalPersistence);
       const result = await signInWithPopup(auth, googleProvider);
       await createUserData(result.user);
       navigate('/dashboard');
@@ -78,6 +81,7 @@ export const Login = () => {
     }
   };
 
+  // メールアドレス/電話番号でのログイン/登録処理
   const handleEmailAuth = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -102,6 +106,9 @@ export const Login = () => {
         const cleanPhone = loginIdInput.replace(/[^0-9]/g, '');
         finalLoginId = `${cleanPhone}@kamata.local`;
       }
+
+      // 🚀 ログイン状態をブラウザを閉じてもずーーっと維持する設定を強制
+      await setPersistence(auth, browserLocalPersistence);
 
       if (isSignUp) {
         const result = await createUserWithEmailAndPassword(auth, finalLoginId, password);
@@ -153,7 +160,6 @@ export const Login = () => {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center py-8 px-4 relative">
       
-      {/* 🚀 アプリ化案内モーダル */}
       {showInstallModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200">
@@ -167,8 +173,6 @@ export const Login = () => {
               </p>
               
               <div className="bg-gray-50 p-4 rounded-xl w-full border border-gray-200 text-left space-y-4">
-                
-                {/* 🚀 iPhoneのChrome用案内を分岐追加 */}
                 {isIOSChrome ? (
                   <div>
                     <span className="font-extrabold text-blue-600 block mb-2 text-base">【iPhone (Chrome) の手順】</span>
