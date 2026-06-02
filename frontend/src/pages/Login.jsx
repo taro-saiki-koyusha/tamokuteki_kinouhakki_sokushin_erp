@@ -15,7 +15,6 @@ export const Login = () => {
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   
-  // 🚀 ID保存用のステート
   const [saveId, setSaveId] = useState(false);
 
   // 🚀 初回読み込み時に保存されたIDがあればセットする
@@ -26,6 +25,9 @@ export const Login = () => {
       setSaveId(true);
     }
   }, []);
+
+  // 🚀 LINEブラウザかどうかを判定（userAgentを確認）
+  const isLineBrowser = /Line/i.test(navigator.userAgent);
 
   // 共通のユーザー登録処理
   const createUserData = async (user, name) => {
@@ -102,7 +104,7 @@ export const Login = () => {
         await signInWithEmailAndPassword(auth, finalLoginId, password);
       }
 
-      // 🚀 ログイン成功時、チェック状態に応じてIDをブラウザに保存/削除
+      // ログイン成功時、チェック状態に応じてIDをブラウザに保存/削除
       if (saveId) {
         localStorage.setItem('kamata_saved_login_id', loginIdInput);
       } else {
@@ -121,6 +123,36 @@ export const Login = () => {
     }
   };
 
+  // 🚀 LINEブラウザで開かれた場合は、ログイン画面を出さずに案内画面を表示する
+  if (isLineBrowser) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center py-8 px-4">
+        <div className="bg-white py-8 px-5 sm:px-8 shadow-xl rounded-2xl border-t-8 border-green-600 w-full text-center" style={{ maxWidth: '400px' }}>
+          <div className="flex justify-center text-red-500 mb-4">
+            <AlertCircle size={56} />
+          </div>
+          <h2 className="text-xl font-extrabold text-gray-900 mb-3 tracking-tight">LINEから直接開けません</h2>
+          <p className="text-gray-700 font-bold mb-6 text-sm leading-relaxed">
+            写真の追加などを正常に行うため、<br/>
+            お使いの標準ブラウザ（Safari や Chrome）で<br/>
+            開き直す必要があります。
+          </p>
+          <div className="bg-gray-50 border border-gray-200 p-4 rounded-xl text-sm text-gray-700 text-left space-y-5">
+            <div>
+              <span className="font-extrabold text-blue-600 block mb-1 text-base">【iPhone の方】</span>
+              右下の <span className="font-bold border border-gray-300 bg-white px-1.5 py-0.5 rounded text-lg">🧭</span> （コンパス）マーク、<br/>または <span className="font-bold border border-gray-300 bg-white px-1.5 py-0.5 rounded text-lg">↗️</span> （共有）から<br/>「Safariで開く」を押してください。
+            </div>
+            <div className="border-t border-gray-200 pt-4">
+              <span className="font-extrabold text-green-600 block mb-1 text-base">【Android の方】</span>
+              右上の <span className="font-bold border border-gray-300 bg-white px-1.5 py-0.5 rounded text-lg">︙</span> を押して<br/>「他のアプリで開く」または<br/>「ブラウザで開く」を押してください。
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 通常のログイン画面（LINEブラウザ以外）
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center py-8 px-4">
       
@@ -140,7 +172,6 @@ export const Login = () => {
             </div>
           )}
 
-          {/* フォーム */}
           <form onSubmit={handleEmailAuth} className="space-y-4 mb-5">
             {isSignUp && (
               <div>
@@ -186,7 +217,6 @@ export const Login = () => {
               </div>
             </div>
 
-            {/* 🚀 ID保存のチェックボックスを追加 */}
             {!isSignUp && (
               <div className="flex items-center pt-1">
                 <input
