@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Sprout, LogIn, AlertCircle, Mail, Lock, UserPlus, Phone, Download, Share } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-// 🚀 'setPersistence' と 'browserLocalPersistence' を追加インポート
+// 🚀 不具合の原因となる Redirect 関連の機能を削除
 import { signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'; 
 import { auth, googleProvider, db } from '../firebase'; 
@@ -64,24 +64,21 @@ export const Login = () => {
     }
   };
 
-  // Googleログイン
   const handleGoogleLogin = async () => {
     setLoading(true);
     setError(null);
     try {
-      // 🚀 ログイン状態をブラウザを閉じてもずーーっと維持する設定を強制
       await setPersistence(auth, browserLocalPersistence);
+      // パソコンやAndroidなど（iOS以外）は安定しているポップアップ方式で実行
       const result = await signInWithPopup(auth, googleProvider);
       await createUserData(result.user);
       navigate('/dashboard');
     } catch (err) {
       setError("Googleログインに失敗しました。");
-    } finally {
       setLoading(false);
     }
   };
 
-  // メールアドレス/電話番号でのログイン/登録処理
   const handleEmailAuth = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -107,7 +104,6 @@ export const Login = () => {
         finalLoginId = `${cleanPhone}@kamata.local`;
       }
 
-      // 🚀 ログイン状態をブラウザを閉じてもずーーっと維持する設定を強制
       await setPersistence(auth, browserLocalPersistence);
 
       if (isSignUp) {
@@ -222,6 +218,12 @@ export const Login = () => {
       <div className="mt-6 w-full" style={{ maxWidth: '400px' }}>
         <div className="bg-white py-6 px-6 shadow-xl rounded-2xl border border-gray-100">
           
+          {loading && (
+             <div className="mb-4 bg-blue-50 border border-blue-200 p-3 text-blue-700 text-sm font-bold flex items-center justify-center rounded-lg">
+               通信中... しばらくお待ちください。
+             </div>
+          )}
+
           {error && (
             <div className="mb-4 bg-red-50 border-l-4 border-red-400 p-3 text-red-700 text-sm flex items-center rounded-lg">
               <AlertCircle className="mr-2 h-5 w-5 flex-shrink-0" />
@@ -234,7 +236,15 @@ export const Login = () => {
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1">お名前 <span className="text-red-500">*</span></label>
                 <div className="relative">
-                  <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 text-sm" placeholder="農園 太郎" required={isSignUp} />
+                  <input 
+                    type="text" 
+                    value={displayName} 
+                    onChange={(e) => setDisplayName(e.target.value)} 
+                    className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 text-sm" 
+                    placeholder="農園 太郎" 
+                    required={isSignUp}
+                    autoComplete="name" 
+                  />
                   <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center"><UserPlus className="h-4 w-4 text-gray-400" /></div>
                 </div>
               </div>
@@ -245,7 +255,15 @@ export const Login = () => {
                 {isSignUp ? 'メールアドレス' : 'ログインID (メール または 電話番号)'} <span className="text-red-500">*</span>
               </label>
               <div className="relative">
-                <input type="text" value={loginIdInput} onChange={(e) => setLoginIdInput(e.target.value)} className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 text-sm" placeholder={isSignUp ? "example@mail.com" : "example@mail.com または 09012345678"} required />
+                <input 
+                  type="text" 
+                  value={loginIdInput} 
+                  onChange={(e) => setLoginIdInput(e.target.value)} 
+                  className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 text-sm" 
+                  placeholder={isSignUp ? "example@mail.com" : "example@mail.com または 09012345678"} 
+                  required 
+                  autoComplete="username" 
+                />
                 <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center">
                   {loginIdInput.includes('@') || loginIdInput === '' ? <Mail className="h-4 w-4 text-gray-400" /> : <Phone className="h-4 w-4 text-gray-400" />}
                 </div>
@@ -255,7 +273,15 @@ export const Login = () => {
             <div>
               <label className="block text-xs font-bold text-gray-700 mb-1">パスワード <span className="text-red-500">*</span></label>
               <div className="relative">
-                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 text-sm" placeholder="••••••••" required />
+                <input 
+                  type="password" 
+                  value={password} 
+                  onChange={(e) => setPassword(e.target.value)} 
+                  className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 text-sm" 
+                  placeholder="••••••••" 
+                  required 
+                  autoComplete={isSignUp ? "new-password" : "current-password"} 
+                />
                 <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center"><Lock className="h-4 w-4 text-gray-400" /></div>
               </div>
             </div>
@@ -279,15 +305,20 @@ export const Login = () => {
             </button>
           </div>
 
-          <div className="relative mb-5">
-            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200"></div></div>
-            <div className="relative flex justify-center text-xs"><span className="px-2 bg-white text-gray-400">またはGoogleでログイン</span></div>
-          </div>
+          {/* 🚀 iPhoneからのアクセスの場合はGoogleログイン機能を丸ごと非表示にする */}
+          {!isIOS && (
+            <>
+              <div className="relative mb-5">
+                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200"></div></div>
+                <div className="relative flex justify-center text-xs"><span className="px-2 bg-white text-gray-400">またはGoogleでログイン</span></div>
+              </div>
 
-          <button type="button" onClick={handleGoogleLogin} disabled={loading} className="w-full flex justify-center items-center py-2.5 border border-gray-300 rounded-lg font-bold text-gray-700 text-sm bg-white hover:bg-gray-50 transition-all shadow-sm">
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="" className="w-4 h-4 mr-2" />
-            Googleアカウントを使用
-          </button>
+              <button type="button" onClick={handleGoogleLogin} disabled={loading} className="w-full flex justify-center items-center py-2.5 border border-gray-300 rounded-lg font-bold text-gray-700 text-sm bg-white hover:bg-gray-50 transition-all shadow-sm">
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="" className="w-4 h-4 mr-2" />
+                Googleアカウントを使用
+              </button>
+            </>
+          )}
         </div>
 
         <div className="mt-6 w-full">
