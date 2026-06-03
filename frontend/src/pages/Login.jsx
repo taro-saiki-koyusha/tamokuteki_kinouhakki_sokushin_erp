@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Sprout, LogIn, AlertCircle, Mail, Lock, UserPlus, Phone, Download, Share } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-// 🚀 不具合の原因となる Redirect 関連の機能を削除
-import { signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, setPersistence, browserLocalPersistence } from 'firebase/auth';
+// 🚀 signInWithRedirect と getRedirectResult を復活
+import { signInWithPopup, signInWithRedirect, getRedirectResult, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'; 
 import { auth, googleProvider, db } from '../firebase'; 
 
@@ -21,34 +21,10 @@ export const Login = () => {
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
 
-  useEffect(() => {
-    const savedId = localStorage.getItem('kamata_saved_login_id');
-    if (savedId) {
-      setLoginIdInput(savedId);
-      setSaveId(true);
-    }
-
-    const handleBeforeInstallPrompt = (e) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-    };
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-  }, []);
-
   const isLineBrowser = /Line/i.test(navigator.userAgent);
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
   const isIOSChrome = isIOS && /CriOS/i.test(navigator.userAgent);
-
-  const handleInstallClick = async () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') setDeferredPrompt(null);
-    } else {
-      setShowInstallModal(true);
-    }
-  };
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
   const createUserData = async (user, name) => {
     const userRef = doc(db, 'users', user.uid);
@@ -64,17 +40,68 @@ export const Login = () => {
     }
   };
 
+  // 🚀 Googleログイン画面から戻ってきた時の処理（フリーズしないように修正）
+  useEffect(() => {
+    const checkRedirectResult = async () => {
+      try {
+        // ※ここでは setLoading(true) にしない！（フリーズの原因になるため）
+        const result = await getRedirectResult(auth);
+        if (result) {
+          // ログインが成功してデータが返ってきた時だけローディングにする
+          setLoading(true);
+          await createUserData(result.user);
+          navigate('/dashboard');
+        }
+      } catch (err) {
+        console.error("Redirect Error:", err);
+        setError("Googleログインエラー: iPhoneの設定で「サイト越えトラッキングを防ぐ」がオンになっているか、LINEなどのアプリ内ブラウザを使用している可能性があります。Safariで開き直してお試しください。");
+      }
+    };
+    checkRedirectResult();
+  }, [navigate]);
+
+  useEffect(() => {
+    const savedId = localStorage.getItem('kamata_saved_login_id');
+    if (savedId) {
+      setLoginIdInput(savedId);
+      setSaveId(true);
+    }
+
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') setDeferredPrompt(null);
+    } else {
+      setShowInstallModal(true);
+    }
+  };
+
+  // Googleログイン実行
   const handleGoogleLogin = async () => {
-    setLoading(true);
     setError(null);
     try {
       await setPersistence(auth, browserLocalPersistence);
-      // パソコンやAndroidなど（iOS以外）は安定しているポップアップ方式で実行
-      const result = await signInWithPopup(auth, googleProvider);
-      await createUserData(result.user);
-      navigate('/dashboard');
+      if (isMobile) {
+        // スマホの場合は画面が切り替わるリダイレクト方式
+        await signInWithRedirect(auth, googleProvider);
+      } else {
+        // パソコンの場合はポップアップ方式
+        setLoading(true);
+        const result = await signInWithPopup(auth, googleProvider);
+        await createUserData(result.user);
+        navigate('/dashboard');
+      }
     } catch (err) {
-      setError("Googleログインに失敗しました。");
+      setError("Googleログイン画面への移動に失敗しました。");
       setLoading(false);
     }
   };
@@ -305,20 +332,15 @@ export const Login = () => {
             </button>
           </div>
 
-          {/* 🚀 iPhoneからのアクセスの場合はGoogleログイン機能を丸ごと非表示にする */}
-          {!isIOS && (
-            <>
-              <div className="relative mb-5">
-                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200"></div></div>
-                <div className="relative flex justify-center text-xs"><span className="px-2 bg-white text-gray-400">またはGoogleでログイン</span></div>
-              </div>
+          <div className="relative mb-5">
+            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200"></div></div>
+            <div className="relative flex justify-center text-xs"><span className="px-2 bg-white text-gray-400">またはGoogleでログイン</span></div>
+          </div>
 
-              <button type="button" onClick={handleGoogleLogin} disabled={loading} className="w-full flex justify-center items-center py-2.5 border border-gray-300 rounded-lg font-bold text-gray-700 text-sm bg-white hover:bg-gray-50 transition-all shadow-sm">
-                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="" className="w-4 h-4 mr-2" />
-                Googleアカウントを使用
-              </button>
-            </>
-          )}
+          <button type="button" onClick={handleGoogleLogin} disabled={loading} className="w-full flex justify-center items-center py-2.5 border border-gray-300 rounded-lg font-bold text-gray-700 text-sm bg-white hover:bg-gray-50 transition-all shadow-sm">
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="" className="w-4 h-4 mr-2" />
+            Googleアカウントを使用
+          </button>
         </div>
 
         <div className="mt-6 w-full">
