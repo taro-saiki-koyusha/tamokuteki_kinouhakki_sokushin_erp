@@ -63,7 +63,6 @@ export const ActivityForm = () => {
   const [participantDetails, setParticipantDetails] = useState([]);
   const [materialDetails, setMaterialDetails] = useState([]); 
 
-  // 🚀 欠落していた handleChange 関数を復元
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
   useEffect(() => {
@@ -151,7 +150,7 @@ export const ActivityForm = () => {
 
   const addParticipant = () => {
     const baseHours = calculateBaseHours();
-    setParticipantDetails([...participantDetails, { participantName: '', isAgri: true, wageId: '', workTime: baseHours, machineId: '', machineTime: 0 }]);
+    setParticipantDetails([...participantDetails, { participantName: '', isManualName: false, isAgri: true, wageId: '', workTime: baseHours, machineId: '', machineTime: 0 }]);
   };
   
   const duplicateParticipant = (index) => {
@@ -187,7 +186,7 @@ export const ActivityForm = () => {
     const baseHours = calculateBaseHours();
     const newParticipants = selectedRosterIds.map(userId => {
       const user = systemUsers.find(u => u.id === userId); 
-      return { participantName: user ? (user.displayName || '未設定') : '', wageId: '', isAgri: true, workTime: baseHours, machineId: '', machineTime: 0 };
+      return { participantName: user ? (user.displayName || '未設定') : '', isManualName: false, wageId: '', isAgri: true, workTime: baseHours, machineId: '', machineTime: 0 };
     });
     setParticipantDetails([...participantDetails, ...newParticipants]);
     setShowRosterModal(false);
@@ -474,7 +473,6 @@ export const ActivityForm = () => {
   const selectableGroups = (userRole === 'admin' || userRole === 'manager') ? groupsList : groupsList.filter(g => userGroups.includes(g.id));
   const totalCost = totalPersonnelCost + totalMachineCost + totalMaterialCost;
 
-  // 🚀 管理者のみリセットボタンを表示する制御用
   const canResetReportNo = userRole === 'admin';
 
   return (
@@ -690,12 +688,25 @@ export const ActivityForm = () => {
                 </div>
               )}
 
-              <div><label className="block text-sm font-bold text-gray-700 mb-1">日付</label><input type="date" name="date" value={formData.date} onChange={handleChange} disabled={isViewMode} className={inputClass} required /></div>
-              
-              <div className="flex space-x-3 sm:space-x-4">
-                <div className="flex-1 min-w-0"><label className="block text-sm font-bold text-gray-700 mb-1">開始</label><input type="time" name="startTime" value={formData.startTime} onChange={handleChange} disabled={isViewMode} className={inputClass} required /></div>
-                <div className="flex-1 min-w-0"><label className="block text-sm font-bold text-gray-700 mb-1">終了</label><input type="time" name="endTime" value={formData.endTime} onChange={handleChange} disabled={isViewMode} className={inputClass} required /></div>
+              <div className="w-36 sm:w-44">
+                <label className="block text-sm font-bold text-gray-700 mb-1">日付</label>
+                <input type="date" name="date" value={formData.date} onChange={handleChange} disabled={isViewMode} className={inputClass} required />
               </div>
+              
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="w-[110px] sm:w-32 shrink-0">
+                  <label className="block text-[11px] font-bold text-gray-500 mb-1 pl-1">開始</label>
+                  <input type="time" name="startTime" value={formData.startTime} onChange={handleChange} disabled={isViewMode} className="w-full box-border border border-gray-300 rounded-lg p-2 text-center text-sm md:text-base focus:ring-2 focus:ring-green-500 disabled:bg-gray-100 disabled:text-gray-600 disabled:opacity-100" required />
+                </div>
+                
+                <div className="shrink-0 pt-4 text-gray-400 font-bold text-sm">〜</div>
+                
+                <div className="w-[110px] sm:w-32 shrink-0">
+                  <label className="block text-[11px] font-bold text-gray-500 mb-1 pl-1">終了</label>
+                  <input type="time" name="endTime" value={formData.endTime} onChange={handleChange} disabled={isViewMode} className="w-full box-border border border-gray-300 rounded-lg p-2 text-center text-sm md:text-base focus:ring-2 focus:ring-green-500 disabled:bg-gray-100 disabled:text-gray-600 disabled:opacity-100" required />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-1">活動場所</label>
                 <input 
@@ -833,6 +844,13 @@ export const ActivityForm = () => {
                   isAgri = wage ? wage.isAgri : true;
                 }
 
+                // 🚀 スマート切替UIのための判定ロジック
+                let isManual = detail.isManualName;
+                if (isManual === undefined) {
+                  // 既存データなどで「手入力フラグ」がない場合、リストに無い名前なら自動で手入力モードにする
+                  isManual = !!(detail.participantName && !systemUsers.some(u => u.displayName === detail.participantName));
+                }
+
                 return (
                   <div key={index} className="bg-gray-50 border border-gray-200 rounded-2xl p-3 md:p-4 relative group mt-3">
                     
@@ -862,15 +880,58 @@ export const ActivityForm = () => {
                             <option value="false">以外</option>
                           </select>
 
-                          <input 
-                            type="text" 
-                            list="system-users-list"
-                            placeholder="👤 氏名（任意）" 
-                            value={detail.participantName || ''} 
-                            onChange={(e) => updateParticipant(index, 'participantName', e.target.value)} 
-                            disabled={isViewMode} 
-                            className={`flex-1 md:w-48 shrink-0 box-border border border-gray-300 rounded-xl p-2 text-xs md:text-sm focus:ring-2 focus:ring-green-500 disabled:bg-white disabled:text-gray-600 disabled:opacity-100`} 
-                          />
+                          {/* 🚀 完全に作り直した「選択」と「手入力」のスマート切替UI */}
+                          <div className="flex-1 md:w-48 shrink-0">
+                            {!isManual ? (
+                              <select
+                                value={detail.participantName || ''}
+                                onChange={(e) => {
+                                  if (e.target.value === 'manual') {
+                                    updateParticipant(index, 'isManualName', true);
+                                    updateParticipant(index, 'participantName', '');
+                                  } else {
+                                    updateParticipant(index, 'participantName', e.target.value);
+                                    updateParticipant(index, 'isManualName', false);
+                                  }
+                                }}
+                                disabled={isViewMode}
+                                className={`w-full box-border border border-gray-300 rounded-xl p-2 text-xs md:text-sm focus:ring-2 focus:ring-green-500 disabled:opacity-100 bg-white ${!detail.participantName ? 'text-gray-500' : 'text-gray-900 font-bold'} truncate`}
+                              >
+                                <option value="">👤 氏名を選択 (任意)　▼</option>
+                                <optgroup label="--- システム登録ユーザー ---">
+                                  {systemUsers.map(u => (
+                                    <option key={u.id} value={u.displayName || '未設定'}>{u.displayName || '未設定'}</option>
+                                  ))}
+                                </optgroup>
+                                <option value="manual">✏️ 直接手入力する...</option>
+                              </select>
+                            ) : (
+                              <div className="relative w-full">
+                                <input
+                                  type="text"
+                                  placeholder="氏名を手入力 (例: 山田)"
+                                  value={detail.participantName || ''}
+                                  onChange={(e) => updateParticipant(index, 'participantName', e.target.value)}
+                                  disabled={isViewMode}
+                                  className="w-full box-border border border-green-400 rounded-xl p-2 pr-8 text-xs md:text-sm focus:ring-2 focus:ring-green-500 bg-green-50 text-gray-900 font-bold"
+                                  autoFocus
+                                />
+                                {!isViewMode && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      updateParticipant(index, 'isManualName', false);
+                                      updateParticipant(index, 'participantName', '');
+                                    }}
+                                    className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 bg-white border border-gray-200 rounded-full p-0.5 shadow-sm"
+                                    title="リスト選択に戻る"
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
 
                         <div className="flex gap-2 w-full md:flex-1 items-center">
