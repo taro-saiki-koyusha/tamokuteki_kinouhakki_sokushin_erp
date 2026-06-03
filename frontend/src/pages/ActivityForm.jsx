@@ -186,7 +186,8 @@ export const ActivityForm = () => {
     const baseHours = calculateBaseHours();
     const newParticipants = selectedRosterIds.map(userId => {
       const user = systemUsers.find(u => u.id === userId); 
-      return { participantName: user ? (user.displayName || '未設定') : '', isManualName: false, wageId: '', isAgri: true, workTime: baseHours, machineId: '', machineTime: 0 };
+      // 🚀 正しく Firestoreの name を取得するように修正
+      return { participantName: user ? (user.name || user.displayName || '未設定') : '', isManualName: false, wageId: '', isAgri: true, workTime: baseHours, machineId: '', machineTime: 0 };
     });
     setParticipantDetails([...participantDetails, ...newParticipants]);
     setShowRosterModal(false);
@@ -354,7 +355,8 @@ export const ActivityForm = () => {
             memberTotal = detail.workTime * (wage?.defaultWage || 0);
             
             const participantName = detail.participantName || wage?.name || '名称未設定';
-            const matchedUser = systemUsers.find(u => (u.displayName || u.name) === participantName);
+            // 🚀 正しく Firestoreの name を取得するように修正
+            const matchedUser = systemUsers.find(u => (u.name || u.displayName) === participantName);
             const memberNo = matchedUser?.memberNo ? matchedUser.memberNo : '-';
 
             sheet2.cell(`A${row}`).value(participantName);
@@ -565,7 +567,8 @@ export const ActivityForm = () => {
                 {systemUsers.map(u => (
                   <label key={u.id} className={`flex items-center p-3 rounded-xl border cursor-pointer transition-all ${selectedRosterIds.includes(u.id) ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:bg-gray-50'}`}>
                     <input type="checkbox" checked={selectedRosterIds.includes(u.id)} onChange={() => toggleRosterSelection(u.id)} className="w-5 h-5 text-purple-600 rounded border-gray-300 focus:ring-purple-500" />
-                    <span className="ml-3 font-bold text-gray-800">{u.displayName || '未設定'}</span>
+                    {/* 🚀 正しく Firestoreの name を取得するように修正 */}
+                    <span className="ml-3 font-bold text-gray-800">{u.name || u.displayName || '未設定'}</span>
                   </label>
                 ))}
               </div>
@@ -844,11 +847,10 @@ export const ActivityForm = () => {
                   isAgri = wage ? wage.isAgri : true;
                 }
 
-                // 🚀 スマート切替UIのための判定ロジック
+                // 🚀 スマート切替UIのための判定ロジック (Firestoreのnameを取得)
                 let isManual = detail.isManualName;
                 if (isManual === undefined) {
-                  // 既存データなどで「手入力フラグ」がない場合、リストに無い名前なら自動で手入力モードにする
-                  isManual = !!(detail.participantName && !systemUsers.some(u => u.displayName === detail.participantName));
+                  isManual = !!(detail.participantName && !systemUsers.some(u => (u.name || u.displayName) === detail.participantName));
                 }
 
                 return (
@@ -897,11 +899,13 @@ export const ActivityForm = () => {
                                 disabled={isViewMode}
                                 className={`w-full box-border border border-gray-300 rounded-xl p-2 text-xs md:text-sm focus:ring-2 focus:ring-green-500 disabled:opacity-100 bg-white ${!detail.participantName ? 'text-gray-500' : 'text-gray-900 font-bold'} truncate`}
                               >
-                                <option value="">👤 氏名を選択 (任意)　▼</option>
+                                <option value="">👤 氏名を選択 (任意)</option>
                                 <optgroup label="--- システム登録ユーザー ---">
-                                  {systemUsers.map(u => (
-                                    <option key={u.id} value={u.displayName || '未設定'}>{u.displayName || '未設定'}</option>
-                                  ))}
+                                  {systemUsers.map(u => {
+                                    {/* 🚀 正しく Firestoreの name を取得するように修正 */}
+                                    const userName = u.name || u.displayName || '未設定';
+                                    return <option key={u.id} value={userName}>{userName}</option>;
+                                  })}
                                 </optgroup>
                                 <option value="manual">✏️ 直接手入力する...</option>
                               </select>
@@ -1106,13 +1110,15 @@ export const ActivityForm = () => {
             <div className="bg-gray-100/70 p-4 rounded-xl flex flex-col sm:flex-row justify-between items-center text-sm text-gray-600 border border-gray-200 mt-8">
               <div className="flex items-center space-x-2">
                 <span className="font-bold text-gray-500">登録:</span> 
-                <span>{systemUsers.find(u => u.id === editData.createdBy)?.displayName || '不明'}</span>
+                {/* 🚀 正しく Firestoreの name を取得するように修正 */}
+                <span>{systemUsers.find(u => u.id === editData.createdBy)?.name || '不明'}</span>
                 <span className="text-gray-400 font-mono">({formatTimestamp(editData.createdAt)})</span>
               </div>
               {editData.updatedBy && (
                 <div className="flex items-center space-x-2 mt-2 sm:mt-0">
                   <span className="font-bold text-gray-500">最終更新:</span> 
-                  <span>{systemUsers.find(u => u.id === editData.updatedBy)?.displayName || '不明'}</span>
+                  {/* 🚀 正しく Firestoreの name を取得するように修正 */}
+                  <span>{systemUsers.find(u => u.id === editData.updatedBy)?.name || '不明'}</span>
                   <span className="text-gray-400 font-mono">({formatTimestamp(editData.updatedAt)})</span>
                 </div>
               )}
@@ -1135,9 +1141,11 @@ export const ActivityForm = () => {
         </form>
 
         <datalist id="system-users-list">
-          {systemUsers.map(u => (
-            <option key={u.id} value={u.displayName || '名前未設定'} />
-          ))}
+          {systemUsers.map(u => {
+            {/* 🚀 正しく Firestoreの name を取得するように修正 */}
+            const userName = u.name || u.displayName || '名前未設定';
+            return <option key={u.id} value={userName} />;
+          })}
         </datalist>
       </main>
 
