@@ -19,6 +19,7 @@ export const ProfileSettings = () => {
 
   // 基本プロフィール情報
   const [profileData, setProfileData] = useState({
+    name: '', // 🚀 表示名用に追加
     email: '',
     address: '',
     phone1: '',
@@ -71,6 +72,7 @@ export const ProfileSettings = () => {
           if (userSnap.exists()) {
             const data = userSnap.data();
             setProfileData({
+              name: data.name || user.displayName || '未設定', // 🚀 Firestoreの表示名を取得
               email: userEmail,
               address: data.address || '',
               // 🚀 電話番号IDの場合は、電話番号1にIDの数字を強制セットする
@@ -99,6 +101,7 @@ export const ProfileSettings = () => {
           } else {
             setProfileData(prev => ({ 
               ...prev, 
+              name: user.displayName || '未設定', // 🚀 ユーザーデータがない場合
               email: userEmail,
               phone1: isPhoneLoginUser ? emailPrefix : '' 
             }));
@@ -278,6 +281,22 @@ export const ProfileSettings = () => {
               </div>
 
               <div className="space-y-4">
+                {/* 🚀 追加：アカウントの表示名（読み取り専用） */}
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1 flex items-center">
+                    <User size={16} className="mr-1 text-gray-400" /> 表示名（お名前）
+                  </label>
+                  <input
+                    type="text"
+                    value={profileData.name}
+                    disabled
+                    className="w-full box-border border border-gray-200 rounded-xl p-3 bg-gray-100 text-gray-600 font-bold cursor-not-allowed"
+                  />
+                  <p className="text-[10px] text-gray-400 mt-1 font-bold">
+                    ※表示名の変更はシステム管理者にご連絡ください。
+                  </p>
+                </div>
+
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1 flex items-center">
                     <Mail size={16} className="mr-1 text-gray-400" /> ログインID (メールアドレス)
