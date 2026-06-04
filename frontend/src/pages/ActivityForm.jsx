@@ -626,17 +626,77 @@ export const ActivityForm = () => {
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
             
-            {/* 🚀 1と2のカードを入れ替え（コードの順番を逆に配置） */}
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4 h-full md:order-1">
               <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Sprout className="w-5 h-5 mr-2 text-green-600" /> 1）活動内容</h2>
               
-              {/* 🚀 タイトル（元：具体的な活動内容）を一番上に移動 */}
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-1">活動タイトル <span className="text-red-500">*</span></label>
                 <input type="text" name="activityType" value={formData.activityType} onChange={handleChange} disabled={isViewMode} className={inputClass} placeholder="例：内郷地区の草刈り" required />
               </div>
 
-              <div className="relative">
+              {/* 🚀 報告書NOをここに移動しました */}
+              {editData ? (
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">報告書NO (自動採番)</label>
+                  <div className="flex gap-2 items-center">
+                    <input 
+                      type="text" 
+                      name="reportNo" 
+                      value={formData.reportNo || '（未設定：更新時に自動採番されます）'} 
+                      disabled 
+                      className={`${inputClass} bg-gray-100 flex-1 ${formData.reportNo ? 'text-gray-600' : 'text-orange-500 font-bold text-xs'}`} 
+                    />
+                    {!isViewMode && formData.reportNo && canResetReportNo && (
+                      <button 
+                        type="button" 
+                        onClick={() => setFormData({ ...formData, reportNo: '' })}
+                        className="px-3 py-3 bg-red-50 text-red-600 border border-red-200 rounded-xl text-xs font-bold hover:bg-red-100 whitespace-nowrap transition-colors"
+                      >
+                        番号をリセット
+                      </button>
+                    )}
+                  </div>
+                  {!isViewMode && formData.reportNo && canResetReportNo && (
+                    <p className="text-[10px] text-gray-500 mt-1.5 flex items-center">
+                      ※重複時は「番号をリセット」を押して保存すると再採番されます。（管理者のみ表示）
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm text-gray-500 font-bold flex items-center">
+                  <CheckCircle size={16} className="mr-2 text-green-500" /> 報告書NOは登録時に自動で設定されます。
+                </div>
+              )}
+
+              {/* 🚀 ステータスと計画区分、対象グループをここに移動しました */}
+              <div className="flex flex-col sm:flex-row gap-4 mb-2 mt-4 pt-4 border-t border-gray-100">
+                <div className="flex-1 min-w-0">
+                  <label className="block text-sm font-bold text-gray-700 mb-1">ステータス</label>
+                  <select name="status" value={formData.status} onChange={handleChange} disabled={isViewMode} className={`w-full min-w-0 box-border border rounded-xl p-3 font-bold focus:ring-2 focus:ring-green-500 disabled:opacity-100 ${formData.status === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-300' : 'bg-green-50 text-green-700 border-green-300'}`}>
+                    <option value="未実施">未実施（計画用）</option>
+                    <option value="実績入力済">実績入力済（完了）</option>
+                  </select>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <label className="block text-sm font-bold text-gray-700 mb-1">計画区分</label>
+                  <select name="planType" value={formData.planType} onChange={handleChange} disabled={isViewMode} className="w-full min-w-0 box-border border border-gray-300 rounded-xl p-3 font-bold focus:ring-2 focus:ring-green-500 disabled:bg-gray-100 disabled:opacity-100 bg-white text-gray-800">
+                    <option value="当初計画">当初計画</option>
+                    <option value="期中追加">期中追加</option>
+                    <option value="突発・緊急">突発・緊急</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                <label className="block text-sm font-bold text-blue-900 mb-1">対象グループ <span className="text-red-500">*</span></label>
+                <select name="groupId" value={formData.groupId} onChange={handleChange} disabled={isViewMode} className={`${inputClass} border-blue-200 focus:ring-blue-500`} required>
+                  <option value="">グループを選択してください</option>
+                  {selectableGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                </select>
+              </div>
+
+              {/* 🚀 申請項目を移動 */}
+              <div className="relative mt-4 pt-4 border-t border-gray-100">
                 <label className="block text-sm font-bold text-gray-700 mb-1">申請用の活動項目を選択 (最大6つ)</label>
                 <button type="button" onClick={() => !isViewMode && setIsDropdownOpen(!isDropdownOpen)} className={`w-full min-w-0 box-border text-left bg-white border border-gray-300 rounded-xl p-3 flex justify-between items-center ${isViewMode ? 'bg-gray-100 cursor-not-allowed opacity-100' : 'focus:ring-2 focus:ring-green-500'}`}>
                   <span className={`block truncate pr-2 ${formData.activityNumbers.length === 0 ? 'text-gray-500' : (isViewMode ? 'text-gray-600 font-bold' : 'text-gray-900 font-bold')}`}>
@@ -683,70 +743,12 @@ export const ActivityForm = () => {
                   </div>
                 </label>
               </div>
+
             </div>
 
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4 h-full md:order-2">
               <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Calendar className="w-5 h-5 mr-2 text-green-600" /> 2）実施日時・場所</h2>
               
-              <div className="flex flex-col sm:flex-row gap-4 mb-2">
-                <div className="flex-1 min-w-0">
-                  <label className="block text-sm font-bold text-gray-700 mb-1">ステータス</label>
-                  <select name="status" value={formData.status} onChange={handleChange} disabled={isViewMode} className={`w-full min-w-0 box-border border rounded-xl p-3 font-bold focus:ring-2 focus:ring-green-500 disabled:opacity-100 ${formData.status === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-300' : 'bg-green-50 text-green-700 border-green-300'}`}>
-                    <option value="未実施">未実施（計画用）</option>
-                    <option value="実績入力済">実績入力済（完了）</option>
-                  </select>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <label className="block text-sm font-bold text-gray-700 mb-1">計画区分</label>
-                  <select name="planType" value={formData.planType} onChange={handleChange} disabled={isViewMode} className="w-full min-w-0 box-border border border-gray-300 rounded-xl p-3 font-bold focus:ring-2 focus:ring-green-500 disabled:bg-gray-100 disabled:opacity-100 bg-white text-gray-800">
-                    <option value="当初計画">当初計画</option>
-                    <option value="期中追加">期中追加</option>
-                    <option value="突発・緊急">突発・緊急</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 mb-4">
-                <label className="block text-sm font-bold text-blue-900 mb-1">対象グループ <span className="text-red-500">*</span></label>
-                <select name="groupId" value={formData.groupId} onChange={handleChange} disabled={isViewMode} className={`${inputClass} border-blue-200 focus:ring-blue-500`} required>
-                  <option value="">グループを選択してください</option>
-                  {selectableGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                </select>
-              </div>
-              
-              {editData ? (
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">報告書NO (自動採番)</label>
-                  <div className="flex gap-2 items-center">
-                    <input 
-                      type="text" 
-                      name="reportNo" 
-                      value={formData.reportNo || '（未設定：更新時に自動採番されます）'} 
-                      disabled 
-                      className={`${inputClass} bg-gray-100 flex-1 ${formData.reportNo ? 'text-gray-600' : 'text-orange-500 font-bold text-xs'}`} 
-                    />
-                    {!isViewMode && formData.reportNo && canResetReportNo && (
-                      <button 
-                        type="button" 
-                        onClick={() => setFormData({ ...formData, reportNo: '' })}
-                        className="px-3 py-3 bg-red-50 text-red-600 border border-red-200 rounded-xl text-xs font-bold hover:bg-red-100 whitespace-nowrap transition-colors"
-                      >
-                        番号をリセット
-                      </button>
-                    )}
-                  </div>
-                  {!isViewMode && formData.reportNo && canResetReportNo && (
-                    <p className="text-[10px] text-gray-500 mt-1.5 flex items-center">
-                      ※重複時は「番号をリセット」を押して保存すると再採番されます。（管理者のみ表示）
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm text-gray-500 font-bold flex items-center">
-                  <CheckCircle size={16} className="mr-2 text-green-500" /> 報告書NOは登録時に自動で設定されます。
-                </div>
-              )}
-
               <div className="w-36 sm:w-44">
                 <label className="block text-sm font-bold text-gray-700 mb-1">日付</label>
                 <input type="date" name="date" value={formData.date} onChange={handleChange} disabled={isViewMode} className={inputClass} required />
