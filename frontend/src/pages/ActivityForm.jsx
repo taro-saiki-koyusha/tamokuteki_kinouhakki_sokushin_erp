@@ -186,7 +186,6 @@ export const ActivityForm = () => {
     const baseHours = calculateBaseHours();
     const newParticipants = selectedRosterIds.map(userId => {
       const user = systemUsers.find(u => u.id === userId); 
-      // 🚀 正しく Firestoreの name を取得するように修正
       return { participantName: user ? (user.name || user.displayName || '未設定') : '', isManualName: false, wageId: '', isAgri: true, workTime: baseHours, machineId: '', machineTime: 0 };
     });
     setParticipantDetails([...participantDetails, ...newParticipants]);
@@ -355,7 +354,6 @@ export const ActivityForm = () => {
             memberTotal = detail.workTime * (wage?.defaultWage || 0);
             
             const participantName = detail.participantName || wage?.name || '名称未設定';
-            // 🚀 正しく Firestoreの name を取得するように修正
             const matchedUser = systemUsers.find(u => (u.name || u.displayName) === participantName);
             const memberNo = matchedUser?.memberNo ? matchedUser.memberNo : '-';
 
@@ -567,7 +565,6 @@ export const ActivityForm = () => {
                 {systemUsers.map(u => (
                   <label key={u.id} className={`flex items-center p-3 rounded-xl border cursor-pointer transition-all ${selectedRosterIds.includes(u.id) ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:bg-gray-50'}`}>
                     <input type="checkbox" checked={selectedRosterIds.includes(u.id)} onChange={() => toggleRosterSelection(u.id)} className="w-5 h-5 text-purple-600 rounded border-gray-300 focus:ring-purple-500" />
-                    {/* 🚀 正しく Firestoreの name を取得するように修正 */}
                     <span className="ml-3 font-bold text-gray-800">{u.name || u.displayName || '未設定'}</span>
                   </label>
                 ))}
@@ -629,8 +626,67 @@ export const ActivityForm = () => {
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
             
-            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4 h-full">
-              <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Calendar className="w-5 h-5 mr-2 text-green-600" /> 1）実施日時・場所</h2>
+            {/* 🚀 1と2のカードを入れ替え（コードの順番を逆に配置） */}
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4 h-full md:order-1">
+              <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Sprout className="w-5 h-5 mr-2 text-green-600" /> 1）活動内容</h2>
+              
+              {/* 🚀 タイトル（元：具体的な活動内容）を一番上に移動 */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">活動タイトル <span className="text-red-500">*</span></label>
+                <input type="text" name="activityType" value={formData.activityType} onChange={handleChange} disabled={isViewMode} className={inputClass} placeholder="例：内郷地区の草刈り" required />
+              </div>
+
+              <div className="relative">
+                <label className="block text-sm font-bold text-gray-700 mb-1">申請用の活動項目を選択 (最大6つ)</label>
+                <button type="button" onClick={() => !isViewMode && setIsDropdownOpen(!isDropdownOpen)} className={`w-full min-w-0 box-border text-left bg-white border border-gray-300 rounded-xl p-3 flex justify-between items-center ${isViewMode ? 'bg-gray-100 cursor-not-allowed opacity-100' : 'focus:ring-2 focus:ring-green-500'}`}>
+                  <span className={`block truncate pr-2 ${formData.activityNumbers.length === 0 ? 'text-gray-500' : (isViewMode ? 'text-gray-600 font-bold' : 'text-gray-900 font-bold')}`}>
+                    {formData.activityNumbers.length > 0 ? formData.activityNumbers.join(', ') + ' 番を選択中' : '検索・選択（任意）'}
+                  </span>
+                  <ChevronDown size={20} className="text-gray-400 flex-shrink-0" />
+                </button>
+                {isDropdownOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setIsDropdownOpen(false)}></div>
+                    <div className="absolute z-40 mt-1 w-full bg-white border border-gray-200 shadow-2xl rounded-xl overflow-hidden">
+                      <div className="p-2 border-b bg-gray-50 flex items-center"><Search size={16} className="text-gray-400 mr-2 ml-1" /><input type="text" placeholder="キーワード検索..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full min-w-0 box-border py-1.5 bg-transparent border-none focus:ring-0 text-sm" /></div>
+                      <div className="max-h-60 overflow-y-auto p-2 space-y-1">
+                        {filteredItems.map(item => {
+                          const isSelected = formData.activityNumbers.includes(item.id);
+                          const isDisabled = !isSelected && formData.activityNumbers.length >= 6;
+                          return (
+                            <label key={item.id} className={`flex items-start p-2.5 rounded-lg cursor-pointer ${isSelected ? 'bg-green-50 text-green-800 font-bold' : isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-gray-50'}`}>
+                              <div className="flex-1 pr-2"><div className="flex items-baseline"><span className={`w-8 text-xs font-bold flex-shrink-0 ${isSelected ? 'text-green-600' : 'text-gray-400'}`}>{item.id}.</span><span className="text-sm">{item.name}</span></div></div>
+                              <input type="checkbox" className="hidden" checked={isSelected} disabled={isDisabled} onChange={() => handleActivityNumberToggle(item.id)} />
+                              {isSelected && <Check size={16} className="text-green-600 mt-0.5" />}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="bg-yellow-50 p-3 rounded-xl border border-yellow-200 mt-4">
+                <label className="flex items-center space-x-3 cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    name="isEssential"
+                    checked={formData.isEssential} 
+                    onChange={(e) => setFormData({...formData, isEssential: e.target.checked})}
+                    disabled={isViewMode}
+                    className="w-5 h-5 text-yellow-600 border-gray-300 rounded focus:ring-yellow-500 disabled:opacity-50" 
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-bold text-yellow-900">この活動を「補助金必須作業」として設定する</span>
+                    <span className="text-[10px] text-yellow-700 mt-0.5">補助金申請の要件となる重要な活動の場合はチェックを入れてください。</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4 h-full md:order-2">
+              <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Calendar className="w-5 h-5 mr-2 text-green-600" /> 2）実施日時・場所</h2>
               
               <div className="flex flex-col sm:flex-row gap-4 mb-2">
                 <div className="flex-1 min-w-0">
@@ -730,62 +786,7 @@ export const ActivityForm = () => {
                 </datalist>
               </div>
             </div>
-
-            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4 h-full">
-              <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Sprout className="w-5 h-5 mr-2 text-green-600" /> 2）活動内容</h2>
-              
-              <div className="bg-yellow-50 p-3 rounded-xl border border-yellow-200">
-                <label className="flex items-center space-x-3 cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    name="isEssential"
-                    checked={formData.isEssential} 
-                    onChange={(e) => setFormData({...formData, isEssential: e.target.checked})}
-                    disabled={isViewMode}
-                    className="w-5 h-5 text-yellow-600 border-gray-300 rounded focus:ring-yellow-500 disabled:opacity-50" 
-                  />
-                  <div className="flex flex-col">
-                    <span className="text-sm font-bold text-yellow-900">この活動を「補助金必須作業」として設定する</span>
-                    <span className="text-[10px] text-yellow-700 mt-0.5">補助金申請の要件となる重要な活動の場合はチェックを入れてください。</span>
-                  </div>
-                </label>
-              </div>
-
-              <div className="relative">
-                <label className="block text-sm font-bold text-gray-700 mb-1">Excel活動項目番号 (最大6つ)</label>
-                <button type="button" onClick={() => !isViewMode && setIsDropdownOpen(!isDropdownOpen)} className={`w-full min-w-0 box-border text-left bg-white border border-gray-300 rounded-xl p-3 flex justify-between items-center ${isViewMode ? 'bg-gray-100 cursor-not-allowed opacity-100' : 'focus:ring-2 focus:ring-green-500'}`}>
-                  <span className={`block truncate pr-2 ${formData.activityNumbers.length === 0 ? 'text-gray-500' : (isViewMode ? 'text-gray-600 font-bold' : 'text-gray-900 font-bold')}`}>
-                    {formData.activityNumbers.length > 0 ? formData.activityNumbers.join(', ') + ' 番を選択中' : '検索・選択（任意）'}
-                  </span>
-                  <ChevronDown size={20} className="text-gray-400 flex-shrink-0" />
-                </button>
-                {isDropdownOpen && (
-                  <>
-                    <div className="fixed inset-0 z-10" onClick={() => setIsDropdownOpen(false)}></div>
-                    <div className="absolute z-40 mt-1 w-full bg-white border border-gray-200 shadow-2xl rounded-xl overflow-hidden">
-                      <div className="p-2 border-b bg-gray-50 flex items-center"><Search size={16} className="text-gray-400 mr-2 ml-1" /><input type="text" placeholder="キーワード検索..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full min-w-0 box-border py-1.5 bg-transparent border-none focus:ring-0 text-sm" /></div>
-                      <div className="max-h-60 overflow-y-auto p-2 space-y-1">
-                        {filteredItems.map(item => {
-                          const isSelected = formData.activityNumbers.includes(item.id);
-                          const isDisabled = !isSelected && formData.activityNumbers.length >= 6;
-                          return (
-                            <label key={item.id} className={`flex items-start p-2.5 rounded-lg cursor-pointer ${isSelected ? 'bg-green-50 text-green-800 font-bold' : isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-gray-50'}`}>
-                              <div className="flex-1 pr-2"><div className="flex items-baseline"><span className={`w-8 text-xs font-bold flex-shrink-0 ${isSelected ? 'text-green-600' : 'text-gray-400'}`}>{item.id}.</span><span className="text-sm">{item.name}</span></div></div>
-                              <input type="checkbox" className="hidden" checked={isSelected} disabled={isDisabled} onChange={() => handleActivityNumberToggle(item.id)} />
-                              {isSelected && <Check size={16} className="text-green-600 mt-0.5" />}
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">具体的な活動内容（手入力）</label>
-                <input type="text" name="activityType" value={formData.activityType} onChange={handleChange} disabled={isViewMode} className={inputClass} placeholder="例：内郷地区の草刈り" />
-              </div>
-            </div>
+            
           </div>
 
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
@@ -847,7 +848,6 @@ export const ActivityForm = () => {
                   isAgri = wage ? wage.isAgri : true;
                 }
 
-                // 🚀 スマート切替UIのための判定ロジック (Firestoreのnameを取得)
                 let isManual = detail.isManualName;
                 if (isManual === undefined) {
                   isManual = !!(detail.participantName && !systemUsers.some(u => (u.name || u.displayName) === detail.participantName));
@@ -882,7 +882,6 @@ export const ActivityForm = () => {
                             <option value="false">以外</option>
                           </select>
 
-                          {/* 🚀 完全に作り直した「選択」と「手入力」のスマート切替UI */}
                           <div className="flex-1 md:w-48 shrink-0">
                             {!isManual ? (
                               <select
@@ -902,7 +901,6 @@ export const ActivityForm = () => {
                                 <option value="">👤 氏名を選択 (任意)</option>
                                 <optgroup label="--- システム登録ユーザー ---">
                                   {systemUsers.map(u => {
-                                    {/* 🚀 正しく Firestoreの name を取得するように修正 */}
                                     const userName = u.name || u.displayName || '未設定';
                                     return <option key={u.id} value={userName}>{userName}</option>;
                                   })}
@@ -1110,14 +1108,12 @@ export const ActivityForm = () => {
             <div className="bg-gray-100/70 p-4 rounded-xl flex flex-col sm:flex-row justify-between items-center text-sm text-gray-600 border border-gray-200 mt-8">
               <div className="flex items-center space-x-2">
                 <span className="font-bold text-gray-500">登録:</span> 
-                {/* 🚀 正しく Firestoreの name を取得するように修正 */}
                 <span>{systemUsers.find(u => u.id === editData.createdBy)?.name || '不明'}</span>
                 <span className="text-gray-400 font-mono">({formatTimestamp(editData.createdAt)})</span>
               </div>
               {editData.updatedBy && (
                 <div className="flex items-center space-x-2 mt-2 sm:mt-0">
                   <span className="font-bold text-gray-500">最終更新:</span> 
-                  {/* 🚀 正しく Firestoreの name を取得するように修正 */}
                   <span>{systemUsers.find(u => u.id === editData.updatedBy)?.name || '不明'}</span>
                   <span className="text-gray-400 font-mono">({formatTimestamp(editData.updatedAt)})</span>
                 </div>
@@ -1142,7 +1138,6 @@ export const ActivityForm = () => {
 
         <datalist id="system-users-list">
           {systemUsers.map(u => {
-            {/* 🚀 正しく Firestoreの name を取得するように修正 */}
             const userName = u.name || u.displayName || '名前未設定';
             return <option key={u.id} value={userName} />;
           })}
