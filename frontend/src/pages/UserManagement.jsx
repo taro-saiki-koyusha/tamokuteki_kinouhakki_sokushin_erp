@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, doc, updateDoc, deleteDoc, onSnapshot, setDoc } from 'firebase/firestore'; 
-// 🚀 ChevronUp, ChevronDown を追加しました
+import { collection, doc, updateDoc, onSnapshot, setDoc } from 'firebase/firestore'; 
 import { ArrowLeft, UserCog, Edit, Trash2, X, ShieldCheck, Mail, Wallet, Plus, CheckCircle, UserPlus, Phone, Hash, Users, Loader2, ChevronUp, ChevronDown } from 'lucide-react'; 
 import { db, auth } from '../firebase'; 
 import { initializeApp, deleteApp } from 'firebase/app'; 
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
+// 🚀 新しく Functions を呼び出すためのインポートを追加
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 export const UserManagement = () => {
   const navigate = useNavigate();
@@ -18,8 +19,8 @@ export const UserManagement = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [successModal, setSuccessModal] = useState({ show: false, loginId: '', password: '' });
 
-  // 🚀 ソート用の状態管理（初期値は構成員番号の昇順）
   const [sortConfig, setSortConfig] = useState({ key: 'memberNo', direction: 'asc' });
+  const [isDeleting, setIsDeleting] = useState(false); // 🚀 削除中状態の管理
 
   const [newUser, setNewUser] = useState({
     displayName: '',
@@ -59,7 +60,6 @@ export const UserManagement = () => {
     return () => { unsubscribeUsers(); unsubscribeGroups(); };
   }, []);
 
-  // 🚀 ソート処理のロジック
   const sortedUsers = useMemo(() => {
     let sortableUsers = [...usersList];
     if (sortConfig.key !== null) {
@@ -75,13 +75,11 @@ export const UserManagement = () => {
           bValue = b.memberNo || '';
         }
 
-        // 構成員番号が未入力の場合は、常にリストの下に配置する
         if (sortConfig.key === 'memberNo') {
           if (aValue === '' && bValue !== '') return 1;
           if (aValue !== '' && bValue === '') return -1;
         }
 
-        // 日本語環境での自然順ソート（1, 2, 10 のように数値として比較）
         const comparison = aValue.toString().localeCompare(bValue.toString(), 'ja', { numeric: true });
         return sortConfig.direction === 'asc' ? comparison : -comparison;
       });
@@ -89,7 +87,6 @@ export const UserManagement = () => {
     return sortableUsers;
   }, [usersList, sortConfig]);
 
-  // 🚀 ソートヘッダーのクリックハンドラー
   const requestSort = (key) => {
     let direction = 'asc';
     if (sortConfig.key === key && sortConfig.direction === 'asc') {
@@ -98,17 +95,28 @@ export const UserManagement = () => {
     setSortConfig({ key, direction });
   };
 
+  // 🚀 Cloud Functions を呼び出して完全削除する処理に変更
   const handleDelete = async (id, name) => {
     if (id === auth.currentUser?.uid) {
       alert("自分自身のアカウントは削除できません。");
       return;
     }
-    if (window.confirm(`ユーザー「${name}」をシステムから削除しますか？\n※この操作は元に戻せません。`)) {
+    if (window.confirm(`ユーザー「${name}」をシステムから完全に削除しますか？\n（認証データ・名簿データの両方を消去します）\n※この操作は元に戻せません。`)) {
+      setIsDeleting(true);
       try {
-        await deleteDoc(doc(db, 'users', id));
+        // 東京リージョンのCloud Functionsを指定して呼び出す
+        const cloudFunctions = getFunctions(auth.app, 'asia-northeast1');
+        const deleteUserFn = httpsCallable(cloudFunctions, 'deleteUser');
+        
+        // バックエンドに削除リクエストを送信
+        await deleteUserFn({ uid: id });
+        
+        // ※Firestoreからの削除はバックエンド側で行うため、フロントエンドのdeleteDocは不要になります
       } catch (error) {
-        console.error(error);
-        alert('削除に失敗しました。');
+        console.error("削除エラー:", error);
+        alert('削除に失敗しました。\n' + (error.message || ''));
+      } finally {
+        setIsDeleting(false);
       }
     }
   };
@@ -148,25 +156,33 @@ export const UserManagement = () => {
   const handleCreateUser = async (e) => {
     e.preventDefault();
     if (!newUser.displayName || !newUser.phone || !newUser.password) {
-      alert("氏名、電話番号、パスワードは必須です。");
+      alert("氏名、ログインID、パスワードは必須です。");
       return;
     }
     
     setIsCreating(true);
-    const cleanPhone = newUser.phone.replace(/[^0-9]/g, '');
-    const dummyEmail = `${cleanPhone}@kamata.local`;
+    
+    const inputId = newUser.phone.trim();
+    let loginEmail = inputId;
+    let displayId = inputId;
+
+    if (!inputId.includes('@')) {
+      const cleanId = inputId.replace(/[^0-9a-zA-Z]/g, ''); 
+      loginEmail = `${cleanId}@kamata.local`; 
+      displayId = cleanId;
+    }
 
     try {
       const secondaryApp = initializeApp(auth.app.options, "SecondaryApp");
       const secondaryAuth = getAuth(secondaryApp);
       
-      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, dummyEmail, newUser.password);
+      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, loginEmail, newUser.password);
       const createdUser = userCredential.user;
 
       await setDoc(doc(db, 'users', createdUser.uid), {
         name: newUser.displayName,
         displayName: newUser.displayName,
-        email: dummyEmail,
+        email: loginEmail,
         role: newUser.role,
         memberNo: newUser.memberNo || '', 
         groupIds: newUser.groupIds,
@@ -178,7 +194,7 @@ export const UserManagement = () => {
       await secondaryAuth.signOut();
       await deleteApp(secondaryApp);
 
-      setSuccessModal({ show: true, loginId: cleanPhone, password: newUser.password });
+      setSuccessModal({ show: true, loginId: displayId, password: newUser.password });
 
       setNewUser({
         displayName: '', phone: '', password: '', role: 'reporter', memberNo: '', groupIds: [], canEditOwn: false, canEditGroup: false
@@ -188,9 +204,11 @@ export const UserManagement = () => {
     } catch (error) {
       console.error("ユーザー作成エラー:", error);
       if (error.code === 'auth/email-already-in-use') {
-        alert("この電話番号は既に登録されています。");
+        alert("このID(メールアドレス/番号)は既に登録されています。");
       } else if (error.code === 'auth/weak-password') {
         alert("パスワードは6文字以上にしてください。");
+      } else if (error.code === 'auth/invalid-email') {
+        alert("メールアドレスの形式が正しくありません。");
       } else {
         alert("ユーザーの作成に失敗しました。\n" + error.message);
       }
@@ -229,8 +247,16 @@ export const UserManagement = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
+    <div className="min-h-screen bg-gray-50 pb-20 relative">
       
+      {/* 🚀 削除実行中の全画面オーバーレイ */}
+      {isDeleting && (
+        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center p-4 bg-white/70 backdrop-blur-sm">
+          <Loader2 className="w-12 h-12 text-red-600 animate-spin mb-4" />
+          <p className="text-red-700 font-bold text-lg">ユーザーを完全に削除しています...</p>
+        </div>
+      )}
+
       {/* 登録完了モーダル */}
       {successModal.show && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -244,7 +270,7 @@ export const UserManagement = () => {
               
               <div className="bg-gray-50 p-4 rounded-xl w-full border border-gray-200 text-left space-y-2">
                 <div>
-                  <span className="text-xs text-gray-500 font-bold block mb-0.5">ログインID (電話番号)</span>
+                  <span className="text-xs text-gray-500 font-bold block mb-0.5">ログインID</span>
                   <div className="text-lg font-mono font-bold text-blue-700 bg-white px-3 py-1.5 rounded border border-blue-100 select-all">
                     {successModal.loginId}
                   </div>
@@ -286,27 +312,28 @@ export const UserManagement = () => {
                   <label className="block text-sm font-bold text-gray-700 mb-1">氏名 <span className="text-red-500">*</span></label>
                   <input type="text" value={newUser.displayName} onChange={e => setNewUser({...newUser, displayName: e.target.value})} required className="w-full border border-gray-300 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500" placeholder="例：農園 太郎" />
                 </div>
+                
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">電話番号（ログインIDになります） <span className="text-red-500">*</span></label>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">ログインID（メールアドレス または 任意の英数字） <span className="text-red-500">*</span></label>
                   <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Phone size={16} className="text-gray-400" /></div>
-                    <input type="tel" value={newUser.phone} onChange={e => setNewUser({...newUser, phone: e.target.value})} required className="w-full pl-9 border border-gray-300 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500" placeholder="ハイフンなし（例：09012345678）" />
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Mail size={16} className="text-gray-400" /></div>
+                    <input type="text" value={newUser.phone} onChange={e => setNewUser({...newUser, phone: e.target.value})} required className="w-full pl-9 border border-gray-300 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500" placeholder="例：sample@gmail.com 又は 00000000123" />
                   </div>
-                  <p className="text-[10px] text-gray-500 mt-1">※この番号がログイン時のIDとして使用されます。</p>
+                  <p className="text-[10px] text-gray-500 mt-1">※メールアドレス、または名簿用のアカウントの場合は構成員番号を含む任意の英数字を入力してください。</p>
                 </div>
 
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">構成員番号 (Excel出力用・任意)</label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Hash size={16} className="text-gray-400" /></div>
-                    <input type="text" value={newUser.memberNo} onChange={e => setNewUser({...newUser, memberNo: e.target.value})} className="w-full pl-9 border border-gray-300 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500" placeholder="例：1234 または 法人名" />
+                    <input type="text" value={newUser.memberNo} onChange={e => setNewUser({...newUser, memberNo: e.target.value})} className="w-full pl-9 border border-gray-300 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500" placeholder="例：123 または 法人名" />
                   </div>
                   <p className="text-[10px] text-gray-500 mt-1">※Excel出力時にこの番号が反映されます。</p>
                 </div>
 
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">初期パスワード <span className="text-red-500">*</span></label>
-                  <input type="text" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} required minLength="6" className="w-full border border-gray-300 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500 font-mono" placeholder="6文字以上" />
+                  <input type="text" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} required minLength="6" className="w-full border border-gray-300 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500 font-mono" placeholder="6文字以上 (例：123456)" />
                 </div>
                 
                 <div className="pt-2 border-t border-gray-100">
@@ -393,7 +420,6 @@ export const UserManagement = () => {
                 </div>
               </div>
 
-              {/* 🚀 ユーザー名の編集フィールドを追加 */}
               <div className="mb-6">
                 <label className="block text-sm font-bold text-gray-700 mb-2">
                   氏名 (表示名) <span className="text-red-500">*</span>
@@ -528,7 +554,6 @@ export const UserManagement = () => {
             <table className="w-full text-left border-collapse min-w-[900px]">
               <thead>
                 <tr className="text-xs text-gray-400 uppercase tracking-wider border-b">
-                  {/* 🚀 クリックでソートできるように修正（ユーザー名） */}
                   <th onClick={() => requestSort('name')} className="px-4 py-3 font-bold cursor-pointer hover:bg-gray-100 transition-colors select-none group" title="ユーザー名で並び替え">
                     <div className="flex items-center text-gray-700">
                       ユーザー名 / 連絡先
@@ -538,7 +563,6 @@ export const UserManagement = () => {
                     </div>
                   </th>
 
-                  {/* 🚀 クリックでソートできるように修正（構成員番号） */}
                   <th onClick={() => requestSort('memberNo')} className="px-4 py-3 font-bold cursor-pointer hover:bg-gray-100 transition-colors select-none group" title="構成員番号で並び替え">
                     <div className="flex items-center text-gray-700">
                       構成員番号
@@ -554,7 +578,6 @@ export const UserManagement = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {/* 🚀 ソート済みの配列（sortedUsers）を使用するように修正 */}
                 {sortedUsers.map((user) => (
                   <tr key={user.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-4">
@@ -602,7 +625,7 @@ export const UserManagement = () => {
                         <button onClick={() => setEditingUser(user)} className="p-2 text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors" title="権限・グループ編集">
                           <Edit size={16}/>
                         </button>
-                        <button onClick={() => handleDelete(user.id, user.displayName || user.name)} className="p-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors" disabled={user.id === auth.currentUser?.uid} title="ユーザー削除">
+                        <button onClick={() => handleDelete(user.id, user.displayName || user.name)} className="p-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors" disabled={user.id === auth.currentUser?.uid} title="ユーザーを完全に削除">
                           <Trash2 size={16}/>
                         </button>
                       </div>
