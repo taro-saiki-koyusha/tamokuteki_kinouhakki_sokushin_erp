@@ -8,6 +8,7 @@ import { UserManagement } from './pages/UserManagement';
 import { BulkActivityForm } from './pages/BulkActivityForm';
 import { MasterManagement } from './pages/MasterManagement';
 import { ProfileSettings } from './pages/ProfileSettings';
+import { CostManagement } from './pages/CostManagement';
 
 function App() {
   return (
@@ -26,6 +27,7 @@ function App() {
         <Route path="/masters" element={<MasterManagement />} />
         <Route path="*" element={<Navigate to="/" replace />} />
         <Route path="/profile" element={<ProfileSettings />} />
+        <Route path="/costs" element={<CostManagement />} />
       </Routes>
     </Router>
   );

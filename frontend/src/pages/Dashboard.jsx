@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link } from 'lucide-react'; 
+import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet } from 'lucide-react'; 
 import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, doc, getDoc, deleteDoc, where } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { db, auth } from '../firebase';
 import XlsxPopulate from 'xlsx-populate/browser/xlsx-populate';
 
-// 外部設定ファイルから組織名を読み込む
 import { ORGANIZATION_NAME } from '../constants';
 
 const formatTimestamp = (timestamp) => {
@@ -391,7 +390,6 @@ export const Dashboard = () => {
     return (
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto relative">
-          {/* 🚀 table-fixed を適用してレイアウトを固定化 */}
           <table className="w-full text-left border-collapse min-w-[1300px] table-fixed">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200 text-sm text-gray-700">
@@ -402,7 +400,6 @@ export const Dashboard = () => {
                   </div>
                 </th>
                 
-                {/* 🚀 w-full を指定して余分な幅をすべて吸収させる */}
                 <th className="p-3 font-bold w-full whitespace-nowrap">活動内容</th>
                 
                 <th className="p-3 font-bold w-20 text-center whitespace-nowrap">状態</th>
@@ -416,7 +413,6 @@ export const Dashboard = () => {
                 <th className="p-3 font-bold w-24 text-center whitespace-nowrap">登録者</th>
                 <th className="p-3 font-bold w-12 text-center whitespace-nowrap">写真</th>
                 
-                {/* 🚀 w-0（最小幅）を指定 */}
                 <th className="w-0 px-3 py-3 font-bold text-center whitespace-nowrap sticky right-0 bg-gray-100 shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-200">
                   操作
                 </th>
@@ -489,7 +485,6 @@ export const Dashboard = () => {
                       {hasImage ? <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded text-[9px] font-bold">あり</span> : <span className="text-gray-300 text-[10px]">-</span>}
                     </td>
 
-                    {/* 🚀 w-0 を指定して強制的に縮小 */}
                     <td className="w-0 px-2 py-2 text-center whitespace-nowrap sticky right-0 bg-white group-hover/row:bg-green-50 transition-colors shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-100">
                       <div className="flex gap-1.5 justify-center items-center w-max mx-auto">
                         <button onClick={(e) => handleCopyLink(act, e)} className="p-1.5 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded transition-colors" title="リンクをコピー">
@@ -544,11 +539,18 @@ export const Dashboard = () => {
           <button onClick={() => setActiveTab('home')} className={`flex items-center font-bold py-2 border-b-2 transition-colors ${activeTab === 'home' ? 'text-green-600 border-green-600' : 'text-gray-500 border-transparent hover:text-green-600'}`}>
             <Calendar size={18} className="mr-1.5"/> 活動一覧
           </button>
+          
           {(userRole === 'admin' || userRole === 'manager') && (
-            <button onClick={() => navigate('/groups')} className="flex items-center text-sm font-bold text-gray-500 hover:text-blue-600">
-              <Users size={18} className="mr-1"/> グループ管理
-            </button>
+            <>
+              <button onClick={() => navigate('/groups')} className="flex items-center text-sm font-bold text-gray-500 hover:text-blue-600">
+                <Users size={18} className="mr-1"/> グループ管理
+              </button>
+              <button onClick={() => navigate('/costs')} className="flex items-center text-sm font-bold text-gray-500 hover:text-green-600">
+                <Wallet size={18} className="mr-1"/> 作業費管理
+              </button>
+            </>
           )}
+
           {userRole === 'admin' && (
             <>
               <button onClick={() => navigate('/users')} className="flex items-center text-sm font-bold text-gray-500 hover:text-purple-600">
@@ -572,8 +574,12 @@ export const Dashboard = () => {
 
         <div className="md:hidden flex items-center space-x-3">
            {(userRole === 'admin' || userRole === 'manager') && (
-            <button onClick={() => navigate('/groups')} className="p-2 text-gray-500 hover:text-blue-600 transition-colors"><Users size={20} /></button>
+            <>
+              <button onClick={() => navigate('/groups')} className="p-2 text-gray-500 hover:text-blue-600 transition-colors"><Users size={20} /></button>
+              <button onClick={() => navigate('/costs')} className="p-2 text-gray-500 hover:text-green-600 transition-colors"><Wallet size={20} /></button>
+            </>
           )}
+
           {userRole === 'admin' && (
             <>
               <button onClick={() => navigate('/users')} className="p-2 text-gray-500 hover:text-purple-600 transition-colors"><UserCog size={20} /></button>
