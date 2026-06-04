@@ -289,6 +289,12 @@ export const Dashboard = () => {
   const roleLabel = userRole === 'admin' ? '管理者' : userRole === 'manager' ? '事務・役員' : '現場リーダー';
   const showDeleteColumn = userRole === 'admin' || (userRole === 'reporter' && (canEditOwn || canEditGroup));
 
+  // 🚀 表示名を取得（システムユーザーデータから優先して取得）
+  const displayUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || 
+                          systemUsers.find(u => u.id === currentUser?.uid)?.displayName || 
+                          currentUser?.displayName || 
+                          'ユーザー';
+
   const ActivityCard = ({ activity }) => {
     const images = activity.imageUrls || (activity.imageUrl ? [activity.imageUrl] : []);
     const isThisExporting = exportingId === activity.id;
@@ -600,7 +606,8 @@ export const Dashboard = () => {
           <div>
             <p className="text-gray-600 text-sm">こんにちは、</p>
             <h2 className="text-xl md:text-2xl font-bold text-gray-900 flex items-center">
-              {currentUser?.displayName || 'ユーザー'} さん
+              {/* 🚀 ここを変更：取得した正式な表示名を表示 */}
+              {displayUserName} さん
               <span className="ml-2 text-[10px] bg-gray-200 text-gray-700 px-2 py-1 rounded-full font-bold">権限: {roleLabel}</span>
             </h2>
           </div>
