@@ -6,11 +6,15 @@ import { ArrowLeft, Wallet, Download, Search, Users, Tractor, Package, Loader2, 
 import { db, auth } from '../firebase';
 import { ORGANIZATION_NAME } from '../constants';
 
-const getFiscalYear = (dateString) => {
+// 🚀 改修：開始月（startMonth）を引数で受け取るように変更
+const getFiscalYear = (dateString, startMonth = 4) => {
   if (!dateString) return new Date().getFullYear();
   const d = new Date(dateString);
   if (isNaN(d)) return new Date().getFullYear();
-  return d.getMonth() < 3 ? d.getFullYear() - 1 : d.getFullYear();
+  
+  // JSのgetMonth()は 0(1月) 〜 11(12月) を返す。
+  // 設定された開始月（例：4）より小さい月（0, 1, 2）の場合は前年度扱いにする。
+  return d.getMonth() < (startMonth - 1) ? d.getFullYear() - 1 : d.getFullYear();
 };
 
 export const CostManagement = () => {
@@ -24,6 +28,9 @@ export const CostManagement = () => {
   const [materialsList, setMaterialsList] = useState([]); 
   const [groupsList, setGroupsList] = useState([]);
   const [systemUsers, setSystemUsers] = useState([]); 
+  
+  // 🚀 新規：システム設定（開始月）を保持するステート（初期値4）
+  const [fiscalYearStartMonth, setFiscalYearStartMonth] = useState(4);
 
   const [userRole, setUserRole] = useState('reporter');
   const [userGroupIds, setUserGroupIds] = useState([]);
@@ -40,6 +47,13 @@ export const CostManagement = () => {
     const unsubMaterials = onSnapshot(collection(db, 'materials'), s => setMaterialsList(s.docs.map(d => ({ id: d.id, ...d.data() }))));
     const unsubGroups = onSnapshot(collection(db, 'groups'), s => setGroupsList(s.docs.map(d => ({ id: d.id, ...d.data() }))));
     const unsubUsers = onSnapshot(collection(db, 'users'), s => setSystemUsers(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+
+    // 🚀 新規：システム設定の監視を追加
+    const unsubSettings = onSnapshot(doc(db, 'settings', 'system'), (docSnap) => {
+      if (docSnap.exists() && docSnap.data().fiscalYearStartMonth) {
+        setFiscalYearStartMonth(docSnap.data().fiscalYearStartMonth);
+      }
+    });
 
     let unsubscribeActivities = null;
 
@@ -76,21 +90,32 @@ export const CostManagement = () => {
     });
 
     return () => {
-      unsubMembers(); unsubMachines(); unsubMaterials(); unsubGroups(); unsubUsers(); unsubscribeAuth();
+      unsubMembers(); unsubMachines(); unsubMaterials(); unsubGroups(); unsubUsers(); unsubscribeAuth(); unsubSettings();
       if (unsubscribeActivities) unsubscribeActivities();
     };
   }, [navigate]);
 
+  // 🚀 改修：計算に fiscalYearStartMonth を使用
   const availableYears = useMemo(() => {
-    const years = activities.map(act => getFiscalYear(act.date));
+    const years = activities.map(act => getFiscalYear(act.date, fiscalYearStartMonth));
     const uniqueYears = [...new Set(years)].sort((a, b) => b - a);
-    if (uniqueYears.length === 0) return [getFiscalYear(new Date())];
+    if (uniqueYears.length === 0) return [getFiscalYear(new Date(), fiscalYearStartMonth)];
     return uniqueYears;
-  }, [activities]);
+  }, [activities, fiscalYearStartMonth]);
 
+  // 🚀 新規：設定変更時や初期ロード時に、選択中年度がリストに無ければ現在年度に合わせる
+  useEffect(() => {
+    if (selectedYear !== 'all' && availableYears.length > 0) {
+      if (!availableYears.includes(Number(selectedYear))) {
+        setSelectedYear(getFiscalYear(new Date(), fiscalYearStartMonth).toString());
+      }
+    }
+  }, [fiscalYearStartMonth, availableYears, selectedYear]);
+
+  // 🚀 改修：計算に fiscalYearStartMonth を使用
   const filteredActivities = useMemo(() => {
     return activities.filter(act => {
-      const actFY = getFiscalYear(act.date).toString();
+      const actFY = getFiscalYear(act.date, fiscalYearStartMonth).toString();
       const matchYear = selectedYear === 'all' || actFY === selectedYear;
       const matchGroup = selectedGroup === 'all' || act.groupId === selectedGroup;
       const isCompleted = act.status !== '未実施';
@@ -109,7 +134,7 @@ export const CostManagement = () => {
       
       return true;
     }).sort((a, b) => new Date(a.date) - new Date(b.date)); 
-  }, [activities, selectedYear, selectedGroup, userRole, myName, membersList]);
+  }, [activities, selectedYear, selectedGroup, userRole, myName, membersList, fiscalYearStartMonth]);
 
   const aggregatedData = useMemo(() => {
     let totalPersonnelCost = 0;

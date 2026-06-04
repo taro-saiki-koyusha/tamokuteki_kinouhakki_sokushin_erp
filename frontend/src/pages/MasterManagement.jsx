@@ -1,20 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp, query, orderBy } from 'firebase/firestore';
-import { ArrowLeft, Plus, Trash2, Edit, X, Check, Tractor, DollarSign, Settings, Package } from 'lucide-react';
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp, query, orderBy, setDoc } from 'firebase/firestore';
+import { ArrowLeft, Plus, Trash2, Edit, X, Check, Tractor, DollarSign, Settings, Package, Calendar } from 'lucide-react';
 import { db } from '../firebase';
 
 export const MasterManagement = () => {
   const navigate = useNavigate();
   const [machines, setMachines] = useState([]);
   const [members, setMembers] = useState([]);
-  const [materials, setMaterials] = useState([]); // 🚀 資材マスタを追加
-  const [activeTab, setActiveTab] = useState('members'); // 'members', 'machines', 'materials'
+  const [materials, setMaterials] = useState([]); 
+  const [systemSettings, setSystemSettings] = useState({ fiscalYearStartMonth: 4 }); // 🚀 新規: システム設定の初期値
+  
+  const [activeTab, setActiveTab] = useState('members'); // 'members', 'machines', 'materials', 'settings' // 🚀 settings を追加
 
   const [editingId, setEditingId] = useState(null);
   const [editData, setEditData] = useState({});
+  const [isSavingSettings, setIsSavingSettings] = useState(false); // 🚀 設定保存中のローディング状態
 
   useEffect(() => {
+    // 既存のマスタデータの読み込み
     const unsubMembers = onSnapshot(query(collection(db, 'members'), orderBy('name')), (snapshot) => {
       setMembers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
@@ -24,170 +28,264 @@ export const MasterManagement = () => {
     const unsubMaterials = onSnapshot(query(collection(db, 'materials'), orderBy('name')), (snapshot) => {
       setMaterials(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
-    return () => { unsubMembers(); unsubMachines(); unsubMaterials(); };
+
+    // 🚀 新規: システム設定データの読み込み (settingsコレクションの 'system' ドキュメントを監視)
+    const unsubSettings = onSnapshot(doc(db, 'settings', 'system'), (docSnap) => {
+      if (docSnap.exists()) {
+        setSystemSettings(docSnap.data());
+      }
+    });
+
+    return () => {
+      unsubMembers();
+      unsubMachines();
+      unsubMaterials();
+      unsubSettings(); // 🚀 監視解除を追加
+    };
   }, []);
 
   const handleAdd = async (type) => {
-    const colName = type === 'members' ? 'members' : type === 'machines' ? 'machines' : 'materials';
-    
-    let newData;
-    if (type === 'members') newData = { name: '新規作業単価', defaultWage: 1350, isAgri: true };
-    else if (type === 'machines') newData = { name: '新規機械', defaultPrice: 1000 };
-    else newData = { name: '新規資材', defaultPrice: 500, unit: '個' }; // 🚀 資材用の初期データ（単位付き）
-    
     try {
-      const docRef = await addDoc(collection(db, colName), { ...newData, createdAt: serverTimestamp() });
-      setEditingId(docRef.id);
-      setEditData(newData);
-    } catch (e) { 
-      console.error(e);
-      alert('追加に失敗しました。Firebaseのセキュリティルール（権限）を確認してください。\n' + e.message); 
+      const collectionRef = collection(db, type);
+      const newData = {
+        name: `新しい${type === 'members' ? 'メンバー' : type === 'machines' ? '機械' : '資材'}`,
+        createdAt: serverTimestamp()
+      };
+      
+      if (type === 'members') {
+        newData.defaultWage = 0;
+        newData.isAgri = true;
+      } else if (type === 'machines') {
+        newData.defaultPrice = 0;
+      } else if (type === 'materials') {
+        newData.defaultPrice = 0;
+        newData.unit = '個';
+      }
+
+      await addDoc(collectionRef, newData);
+    } catch (error) {
+      console.error("エラー:", error);
+      alert('追加に失敗しました');
     }
   };
 
   const handleUpdate = async (type, id) => {
-    const colName = type === 'members' ? 'members' : type === 'machines' ? 'machines' : 'materials';
     try {
-      await updateDoc(doc(db, colName, id), editData);
+      await updateDoc(doc(db, type, id), {
+        ...editData,
+        updatedAt: serverTimestamp()
+      });
       setEditingId(null);
-    } catch (e) { 
-      console.error(e); 
-      alert('更新に失敗しました。');
+      setEditData({});
+    } catch (error) {
+      console.error("エラー:", error);
+      alert('更新に失敗しました');
     }
   };
 
   const handleDelete = async (type, id, name) => {
-    if (!window.confirm(`${name} を削除してもよろしいですか？`)) return;
-    const colName = type === 'members' ? 'members' : type === 'machines' ? 'machines' : 'materials';
-    try { 
-      await deleteDoc(doc(db, colName, id)); 
-    } catch (e) { 
-      console.error(e); 
-      alert('削除に失敗しました。');
+    if (window.confirm(`${name} を削除しますか？\n（※過去の実績データには影響しません）`)) {
+      try {
+        await deleteDoc(doc(db, type, id));
+      } catch (error) {
+        console.error("エラー:", error);
+        alert('削除に失敗しました');
+      }
     }
   };
 
-  // 表示するリストの出し分け
-  const currentList = activeTab === 'members' ? members : activeTab === 'machines' ? machines : materials;
+  // 🚀 新規: システム設定の保存処理
+  const handleSaveSettings = async () => {
+    setIsSavingSettings(true);
+    try {
+      // settingsコレクションの 'system' ドキュメントに保存（上書き・新規作成）
+      await setDoc(doc(db, 'settings', 'system'), {
+        fiscalYearStartMonth: Number(systemSettings.fiscalYearStartMonth),
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      alert('システム設定を保存しました。');
+    } catch (error) {
+      console.error("設定保存エラー:", error);
+      alert('設定の保存に失敗しました。');
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
+  const getTabData = () => {
+    if (activeTab === 'members') return { data: members, title: 'メンバー・単価', icon: <DollarSign size={20} className="mr-2" /> };
+    if (activeTab === 'machines') return { data: machines, title: '機械・利用料', icon: <Tractor size={20} className="mr-2" /> };
+    if (activeTab === 'materials') return { data: materials, title: '資材・単価', icon: <Package size={20} className="mr-2" /> };
+    return { data: [], title: 'システム設定', icon: <Settings size={20} className="mr-2" /> }; // 🚀 settings用の戻り値を追加
+  };
+
+  const { data: currentData, title, icon } = getTabData();
+  const inputClass = "w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 text-sm";
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
+    <div className="min-h-screen bg-gray-50 pb-20 md:pb-12">
       <header className="bg-white shadow-sm px-4 py-3 flex items-center sticky top-0 z-30">
         <button onClick={() => navigate('/dashboard')} className="mr-4 text-gray-500 hover:text-gray-700">
           <ArrowLeft size={24} />
         </button>
-        <h1 className="text-lg font-bold text-gray-800 flex items-center">
+        <h1 className="text-xl font-bold text-gray-800 flex items-center">
           <Settings className="w-6 h-6 mr-2 text-blue-600" />
-          単価・マスタ管理
+          マスタ・設定管理
         </h1>
       </header>
 
-      <main className="p-4 max-w-5xl mx-auto">
-        {/* 🚀 3つのタブに拡張 */}
-        <div className="flex flex-col sm:flex-row bg-white p-1 rounded-xl border border-gray-200 mb-6 shadow-sm gap-1">
-          <button onClick={() => setActiveTab('members')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center transition-all ${activeTab === 'members' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}>
-            <DollarSign size={18} className="mr-2" /> 作業単価・人件費
+      <main className="p-4 max-w-5xl mx-auto space-y-6">
+        
+        {/* 🚀 タブメニューに「システム設定」を追加 */}
+        <div className="bg-white rounded-xl shadow-sm p-1 inline-flex overflow-x-auto w-full md:w-auto">
+          <button onClick={() => { setActiveTab('members'); setEditingId(null); }} className={`flex-1 md:flex-none whitespace-nowrap px-4 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'members' ? 'bg-blue-600 text-white shadow' : 'text-gray-600 hover:bg-gray-100'}`}>
+            メンバー単価
           </button>
-          <button onClick={() => setActiveTab('machines')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center transition-all ${activeTab === 'machines' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}>
-            <Tractor size={18} className="mr-2" /> 機械・利用料
+          <button onClick={() => { setActiveTab('machines'); setEditingId(null); }} className={`flex-1 md:flex-none whitespace-nowrap px-4 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'machines' ? 'bg-blue-600 text-white shadow' : 'text-gray-600 hover:bg-gray-100'}`}>
+            機械利用料
           </button>
-          <button onClick={() => setActiveTab('materials')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center transition-all ${activeTab === 'materials' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}>
-            <Package size={18} className="mr-2" /> 資材・材料費
+          <button onClick={() => { setActiveTab('materials'); setEditingId(null); }} className={`flex-1 md:flex-none whitespace-nowrap px-4 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'materials' ? 'bg-blue-600 text-white shadow' : 'text-gray-600 hover:bg-gray-100'}`}>
+            資材単価
+          </button>
+          <button onClick={() => { setActiveTab('settings'); setEditingId(null); }} className={`flex-1 md:flex-none whitespace-nowrap px-4 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'settings' ? 'bg-gray-800 text-white shadow' : 'text-gray-600 hover:bg-gray-100'}`}>
+            システム設定
           </button>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="p-4 bg-gray-50 border-b flex justify-between items-center">
-            <h2 className="font-bold text-gray-700">
-              {activeTab === 'members' ? '作業単価リスト' : activeTab === 'machines' ? '機械リスト' : '資材リスト'}
-            </h2>
-            <button onClick={() => handleAdd(activeTab)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center hover:bg-blue-700 transition-colors">
-              <Plus size={18} className="mr-1" /> 新規追加
-            </button>
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="flex justify-between items-center p-4 border-b border-gray-100 bg-gray-50/50">
+            <h2 className="text-lg font-bold text-gray-800 flex items-center">{icon} {title}</h2>
+            {activeTab !== 'settings' && (
+              <button onClick={() => handleAdd(activeTab)} className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm">
+                <Plus size={16} className="mr-1" /> 新規追加
+              </button>
+            )}
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[600px]">
-              <thead>
-                <tr className="text-xs text-gray-400 uppercase tracking-wider border-b">
-                  <th className="px-6 py-3 font-bold">名称</th>
-                  <th className="px-6 py-3 font-bold">
-                    {activeTab === 'members' ? '人件費単価' : activeTab === 'machines' ? '利用料単価' : '資材単価'}
-                  </th>
-                  {activeTab === 'members' && <th className="px-6 py-3 font-bold text-center">区分</th>}
-                  <th className="px-6 py-3 font-bold text-center w-24">操作</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {currentList.map((item) => (
-                  <tr key={item.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4">
-                      {editingId === item.id ? (
-                        <input type="text" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500" placeholder="名称" />
-                      ) : (
-                        <span className="font-bold text-gray-800">{item.name}</span>
+          {/* 🚀 システム設定タブのコンテンツ */}
+          {activeTab === 'settings' ? (
+            <div className="p-6 space-y-6">
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-5">
+                <h3 className="font-bold text-blue-900 flex items-center mb-4 border-b border-blue-200 pb-2">
+                  <Calendar className="w-5 h-5 mr-2" /> 事業年度の基本設定
+                </h3>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                  <label className="text-sm font-bold text-gray-700 min-w-[150px]">年度の開始月</label>
+                  <select 
+                    value={systemSettings.fiscalYearStartMonth || 4} 
+                    onChange={(e) => setSystemSettings({ ...systemSettings, fiscalYearStartMonth: Number(e.target.value) })}
+                    className="w-full sm:w-48 border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 font-bold"
+                  >
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(month => (
+                      <option key={month} value={month}>{month}月 開始</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500">※ この月を起点として、ダッシュボードや実績一覧の「年度」が自動計算されます。</p>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-gray-100">
+                <button 
+                  onClick={handleSaveSettings} 
+                  disabled={isSavingSettings}
+                  className="px-6 py-3 bg-gray-800 text-white rounded-xl font-bold hover:bg-gray-900 transition-all flex items-center disabled:opacity-50"
+                >
+                  {isSavingSettings ? '保存中...' : <><Check size={18} className="mr-2" /> 設定を保存する</>}
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* 既存のマスタ一覧テーブル */
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[600px]">
+                <thead>
+                  <tr className="bg-gray-50/80 border-b border-gray-200 text-sm text-gray-600">
+                    <th className="p-4 font-bold w-1/3">名称</th>
+                    {activeTab === 'members' && <th className="p-4 font-bold text-center w-24">農業者区分</th>}
+                    <th className="p-4 font-bold text-right w-32">基本単価</th>
+                    {activeTab === 'materials' && <th className="p-4 font-bold text-center w-24">単位</th>}
+                    <th className="p-4 font-bold text-center w-28">操作</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {currentData.map(item => (
+                    <tr key={item.id} className="hover:bg-gray-50/50 transition-colors">
+                      <td className="p-4">
+                        {editingId === item.id ? (
+                          <input type="text" value={editData.name} onChange={(e) => setEditData({...editData, name: e.target.value})} className={inputClass} autoFocus />
+                        ) : (
+                          <span className="font-bold text-gray-800">{item.name}</span>
+                        )}
+                      </td>
+                      {activeTab === 'members' && (
+                        <td className="p-4 text-center">
+                          {editingId === item.id ? (
+                            <select value={editData.isAgri ? 'true' : 'false'} onChange={(e) => setEditData({...editData, isAgri: e.target.value === 'true'})} className={inputClass}>
+                              <option value="true">農業者</option>
+                              <option value="false">以外</option>
+                            </select>
+                          ) : (
+                            <span className={`text-[10px] px-2 py-1 rounded font-bold ${item.isAgri ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                              {item.isAgri ? '農業者' : '以外'}
+                            </span>
+                          )}
+                        </td>
                       )}
-                    </td>
-                    <td className="px-6 py-4">
-                      {editingId === item.id ? (
-                        <div className="flex items-center">
-                          <span className="mr-1 text-gray-400">¥</span>
-                          <input type="number" value={activeTab === 'members' ? editData.defaultWage : editData.defaultPrice} 
-                            onChange={e => setEditData({...editData, [activeTab === 'members' ? 'defaultWage' : 'defaultPrice']: parseInt(e.target.value)})} 
-                            className="w-24 border rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500" />
-                          
-                          {/* 🚀 資材の時だけ「単位」を入力可能にする */}
-                          {activeTab === 'materials' && (
+                      <td className="p-4">
+                        {editingId === item.id ? (
+                          <div className="flex items-center justify-end">
+                            <input 
+                              type="number" 
+                              value={activeTab === 'members' ? editData.defaultWage : activeTab === 'machines' ? editData.defaultPrice : editData.defaultPrice} 
+                              onChange={(e) => setEditData({...editData, [activeTab === 'members' ? 'defaultWage' : 'defaultPrice']: Number(e.target.value)})} 
+                              className={`${inputClass} text-right w-24`} 
+                              step="50" 
+                            />
+                            <span className="ml-2 text-sm text-gray-500">円</span>
+                          </div>
+                        ) : (
+                          <div className="text-right font-mono font-bold text-gray-700">
+                            ¥{(activeTab === 'members' ? item.defaultWage : activeTab === 'machines' ? item.defaultPrice : item.defaultPrice)?.toLocaleString() || 0}
+                          </div>
+                        )}
+                      </td>
+                      {activeTab === 'materials' && (
+                        <td className="p-4 text-center">
+                          {editingId === item.id ? (
+                            <input type="text" value={editData.unit || ''} onChange={(e) => setEditData({...editData, unit: e.target.value})} className={`${inputClass} text-center`} placeholder="例: 個, kg" />
+                          ) : (
+                            <span className="text-sm font-bold text-gray-600 bg-gray-100 px-2 py-1 rounded">
+                              {item.unit || '個'}
+                            </span>
+                          )}
+                        </td>
+                      )}
+                      <td className="p-4">
+                        <div className="flex justify-center space-x-2">
+                          {editingId === item.id ? (
                             <>
-                              <span className="mx-2 text-gray-400">/</span>
-                              <input type="text" value={editData.unit || '個'} onChange={e => setEditData({...editData, unit: e.target.value})} className="w-16 border rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500" placeholder="単位" />
+                              <button onClick={() => handleUpdate(activeTab, item.id)} className="p-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors" title="保存"><Check size={18}/></button>
+                              <button onClick={() => setEditingId(null)} className="p-2 bg-gray-100 text-gray-500 rounded-lg hover:bg-gray-200 transition-colors" title="キャンセル"><X size={18}/></button>
+                            </>
+                          ) : (
+                            <>
+                              <button onClick={() => { setEditingId(item.id); setEditData(item); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="編集"><Edit size={18}/></button>
+                              <button onClick={() => handleDelete(activeTab, item.id, item.name)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="削除"><Trash2 size={18}/></button>
                             </>
                           )}
                         </div>
-                      ) : (
-                        <span className="text-gray-600 font-mono">
-                          ¥{(activeTab === 'members' ? item.defaultWage : item.defaultPrice)?.toLocaleString() || 0}
-                          {activeTab === 'materials' && ` / ${item.unit || '個'}`}
-                        </span>
-                      )}
-                    </td>
-                    {activeTab === 'members' && (
-                      <td className="px-6 py-4 text-center">
-                        {editingId === item.id ? (
-                          <label className="inline-flex items-center cursor-pointer">
-                            <input type="checkbox" checked={editData.isAgri} onChange={e => setEditData({...editData, isAgri: e.target.checked})} className="sr-only peer" />
-                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                            <span className="ml-2 text-xs font-bold text-gray-500">{editData.isAgri ? '農業者' : '以外'}</span>
-                          </label>
-                        ) : (
-                          <span className={`text-[10px] px-2 py-1 rounded-full font-bold ${item.isAgri ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-700'}`}>
-                            {item.isAgri ? '農業者' : '農業者以外'}
-                          </span>
-                        )}
                       </td>
-                    )}
-                    <td className="px-6 py-4">
-                      <div className="flex justify-center space-x-2">
-                        {editingId === item.id ? (
-                          <>
-                            <button onClick={() => handleUpdate(activeTab, item.id)} className="p-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200"><Check size={18}/></button>
-                            <button onClick={() => setEditingId(null)} className="p-2 bg-gray-100 text-gray-500 rounded-lg hover:bg-gray-200"><X size={18}/></button>
-                          </>
-                        ) : (
-                          <>
-                            <button onClick={() => { setEditingId(item.id); setEditData(item); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"><Edit size={18}/></button>
-                            <button onClick={() => handleDelete(activeTab, item.id, item.name)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
-        <p className="mt-4 text-xs text-gray-400 text-center">※ ここでの変更は、今後の新規登録・修正分から適用されます。</p>
+        
+        {activeTab !== 'settings' && (
+          <p className="mt-4 text-xs text-gray-400 text-center font-bold">※ ここでの変更は、今後の新規登録・修正分から適用されます。</p>
+        )}
       </main>
     </div>
   );
