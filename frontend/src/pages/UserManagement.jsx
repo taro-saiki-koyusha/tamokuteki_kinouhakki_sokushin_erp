@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, doc, updateDoc, deleteDoc, onSnapshot, setDoc } from 'firebase/firestore'; 
-// 🚀 ここに Loader2 を追加しました！
-import { ArrowLeft, UserCog, Edit, Trash2, X, ShieldCheck, Mail, Wallet, Plus, CheckCircle, UserPlus, Phone, Hash, Users, Loader2 } from 'lucide-react'; 
+// 🚀 ChevronUp, ChevronDown を追加しました
+import { ArrowLeft, UserCog, Edit, Trash2, X, ShieldCheck, Mail, Wallet, Plus, CheckCircle, UserPlus, Phone, Hash, Users, Loader2, ChevronUp, ChevronDown } from 'lucide-react'; 
 import { db, auth } from '../firebase'; 
 import { initializeApp, deleteApp } from 'firebase/app'; 
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
@@ -17,6 +17,9 @@ export const UserManagement = () => {
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [successModal, setSuccessModal] = useState({ show: false, loginId: '', password: '' });
+
+  // 🚀 ソート用の状態管理（初期値は構成員番号の昇順）
+  const [sortConfig, setSortConfig] = useState({ key: 'memberNo', direction: 'asc' });
 
   const [newUser, setNewUser] = useState({
     displayName: '',
@@ -55,6 +58,45 @@ export const UserManagement = () => {
 
     return () => { unsubscribeUsers(); unsubscribeGroups(); };
   }, []);
+
+  // 🚀 ソート処理のロジック
+  const sortedUsers = useMemo(() => {
+    let sortableUsers = [...usersList];
+    if (sortConfig.key !== null) {
+      sortableUsers.sort((a, b) => {
+        let aValue = '';
+        let bValue = '';
+        
+        if (sortConfig.key === 'name') {
+          aValue = a.displayName || a.name || '';
+          bValue = b.displayName || b.name || '';
+        } else if (sortConfig.key === 'memberNo') {
+          aValue = a.memberNo || '';
+          bValue = b.memberNo || '';
+        }
+
+        // 構成員番号が未入力の場合は、常にリストの下に配置する
+        if (sortConfig.key === 'memberNo') {
+          if (aValue === '' && bValue !== '') return 1;
+          if (aValue !== '' && bValue === '') return -1;
+        }
+
+        // 日本語環境での自然順ソート（1, 2, 10 のように数値として比較）
+        const comparison = aValue.toString().localeCompare(bValue.toString(), 'ja', { numeric: true });
+        return sortConfig.direction === 'asc' ? comparison : -comparison;
+      });
+    }
+    return sortableUsers;
+  }, [usersList, sortConfig]);
+
+  // 🚀 ソートヘッダーのクリックハンドラー
+  const requestSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
 
   const handleDelete = async (id, name) => {
     if (id === auth.currentUser?.uid) {
@@ -486,15 +528,34 @@ export const UserManagement = () => {
             <table className="w-full text-left border-collapse min-w-[900px]">
               <thead>
                 <tr className="text-xs text-gray-400 uppercase tracking-wider border-b">
-                  <th className="px-4 py-3 font-bold">ユーザー名 / 連絡先</th>
-                  <th className="px-4 py-3 font-bold">構成員番号</th>
+                  {/* 🚀 クリックでソートできるように修正（ユーザー名） */}
+                  <th onClick={() => requestSort('name')} className="px-4 py-3 font-bold cursor-pointer hover:bg-gray-100 transition-colors select-none group" title="ユーザー名で並び替え">
+                    <div className="flex items-center text-gray-700">
+                      ユーザー名 / 連絡先
+                      {sortConfig.key === 'name' ? (
+                        sortConfig.direction === 'asc' ? <ChevronUp size={16} className="ml-1 text-blue-600" /> : <ChevronDown size={16} className="ml-1 text-blue-600" />
+                      ) : <ChevronDown size={16} className="ml-1 text-transparent group-hover:text-gray-300" />}
+                    </div>
+                  </th>
+
+                  {/* 🚀 クリックでソートできるように修正（構成員番号） */}
+                  <th onClick={() => requestSort('memberNo')} className="px-4 py-3 font-bold cursor-pointer hover:bg-gray-100 transition-colors select-none group" title="構成員番号で並び替え">
+                    <div className="flex items-center text-gray-700">
+                      構成員番号
+                      {sortConfig.key === 'memberNo' ? (
+                        sortConfig.direction === 'asc' ? <ChevronUp size={16} className="ml-1 text-blue-600" /> : <ChevronDown size={16} className="ml-1 text-blue-600" />
+                      ) : <ChevronDown size={16} className="ml-1 text-transparent group-hover:text-gray-300" />}
+                    </div>
+                  </th>
+
                   <th className="px-4 py-3 font-bold">権限</th>
                   <th className="px-4 py-3 font-bold">所属グループ</th>
                   <th className="px-4 py-3 font-bold text-center w-24">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {usersList.map((user) => (
+                {/* 🚀 ソート済みの配列（sortedUsers）を使用するように修正 */}
+                {sortedUsers.map((user) => (
                   <tr key={user.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-4">
                       <div className="flex items-center">
@@ -548,7 +609,7 @@ export const UserManagement = () => {
                     </td>
                   </tr>
                 ))}
-                {usersList.length === 0 && (
+                {sortedUsers.length === 0 && (
                   <tr>
                     <td colSpan="5" className="px-4 py-8 text-center text-gray-400 font-bold">ユーザーが見つかりません</td>
                   </tr>
