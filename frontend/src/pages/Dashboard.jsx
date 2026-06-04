@@ -228,16 +228,12 @@ export const Dashboard = () => {
           if (detail.participantName || wage || wId === 'zero') {
             memberTotal = detail.workTime * (wage?.defaultWage || 0);
             
-            // 🚀 F列（構成員番号）の出力ロジックを修正
-            // ユーザー管理マスタから、入力された名前に一致するユーザーを探す
             const participantName = detail.participantName || wage?.name || '名称未設定';
             const matchedUser = systemUsers.find(u => (u.displayName || u.name) === participantName);
-            
-            // 見つかった場合はその構成員番号を、見つからない・設定がない場合は「-」を出力
             const memberNo = matchedUser?.memberNo ? matchedUser.memberNo : '-';
 
             sheet2.cell(`A${row}`).value(participantName); 
-            sheet2.cell(`F${row}`).value(memberNo); // 🚀 構成員番号を出力
+            sheet2.cell(`F${row}`).value(memberNo); 
             sheet2.cell(`G${row}`).value(detail.workTime); 
             sheet2.cell(`J${row}`).value('時間'); 
             sheet2.cell(`L${row}`).value(wage?.defaultWage || 0); 
@@ -395,7 +391,8 @@ export const Dashboard = () => {
     return (
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto relative">
-          <table className="w-full text-left border-collapse min-w-[1300px]">
+          {/* 🚀 table-fixed を適用してレイアウトを固定化 */}
+          <table className="w-full text-left border-collapse min-w-[1300px] table-fixed">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200 text-sm text-gray-700">
                 <th onClick={toggleDateSort} className="p-3 font-bold w-32 cursor-pointer hover:bg-gray-200 transition-colors select-none group whitespace-nowrap" title="日付で並び替え">
@@ -404,21 +401,23 @@ export const Dashboard = () => {
                     {dateSortOrder === 'desc' ? <ChevronDown size={16} className="ml-1 text-blue-600 group-hover:text-blue-800" /> : <ChevronUp size={16} className="ml-1 text-blue-600 group-hover:text-blue-800" />}
                   </div>
                 </th>
-                <th className="p-3 font-bold whitespace-nowrap">活動内容</th>
+                
+                {/* 🚀 w-full を指定して余分な幅をすべて吸収させる */}
+                <th className="p-3 font-bold w-full whitespace-nowrap">活動内容</th>
+                
                 <th className="p-3 font-bold w-20 text-center whitespace-nowrap">状態</th>
                 <th className="p-3 font-bold w-24 text-center whitespace-nowrap">区分</th>
                 <th className="p-3 font-bold w-24 whitespace-nowrap">報告書NO</th>
-                
                 <th className="p-3 font-bold w-28 text-right whitespace-nowrap">予算額</th>
                 <th className="p-3 font-bold w-28 text-right whitespace-nowrap">実績額</th>
-
                 <th className="p-3 font-bold w-36 whitespace-nowrap">グループ</th>
                 <th className="p-3 font-bold w-40 whitespace-nowrap">活動場所</th>
                 <th className="p-3 font-bold w-20 whitespace-nowrap">項目番号</th>
                 <th className="p-3 font-bold w-24 text-center whitespace-nowrap">登録者</th>
                 <th className="p-3 font-bold w-12 text-center whitespace-nowrap">写真</th>
                 
-                <th className="p-3 font-bold w-48 text-center whitespace-nowrap sticky right-0 bg-gray-100 shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-200">
+                {/* 🚀 w-0（最小幅）を指定 */}
+                <th className="w-0 px-3 py-3 font-bold text-center whitespace-nowrap sticky right-0 bg-gray-100 shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-200">
                   操作
                 </th>
               </tr>
@@ -447,8 +446,7 @@ export const Dashboard = () => {
                 return (
                   <tr key={act.id} onClick={() => navigate(`/activity-form/${act.id}`, { state: { editData: act, isViewMode: true } })} className="border-b border-gray-100 hover:bg-green-50 cursor-pointer transition-colors group/row">
                     <td className="p-3 text-sm text-gray-700 whitespace-nowrap">{act.date}</td>
-                    
-                    <td className="p-3 text-sm font-bold text-gray-900 truncate max-w-[12rem]" title={act.activityType}>{act.activityType}</td>
+                    <td className="p-3 text-sm font-bold text-gray-900 whitespace-nowrap overflow-hidden text-ellipsis">{act.activityType}</td>
                     
                     <td className="p-3 text-center whitespace-nowrap">
                       <span className={`px-2 py-1 rounded-full text-[9px] font-bold border whitespace-nowrap ${statusLabel === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-600 border-green-100'}`}>
@@ -482,18 +480,18 @@ export const Dashboard = () => {
                       {actualCost > 0 ? `¥${actualCost.toLocaleString()}` : '-'}
                     </td>
 
-                    <td className="p-3 text-xs whitespace-nowrap">{groupInfo ? groupInfo.name : <span className="text-red-500">未登録</span>}</td>
-                    <td className="p-3 text-xs text-gray-600 truncate max-w-[10rem]" title={act.location}>{act.location}</td>
+                    <td className="p-3 text-xs whitespace-nowrap overflow-hidden text-ellipsis">{groupInfo ? groupInfo.name : <span className="text-red-500">未登録</span>}</td>
+                    <td className="p-3 text-xs text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis">{act.location}</td>
                     <td className="p-3 text-xs font-bold text-green-600 whitespace-nowrap">{act.activityNumbers?.join(', ')}</td>
-                    
-                    <td className="p-3 text-xs text-center text-gray-600 truncate max-w-[6rem]">{creatorName}</td>
+                    <td className="p-3 text-xs text-center text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis">{creatorName}</td>
                     
                     <td className="p-3 text-center whitespace-nowrap">
                       {hasImage ? <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded text-[9px] font-bold">あり</span> : <span className="text-gray-300 text-[10px]">-</span>}
                     </td>
 
-                    <td className="p-3 text-center whitespace-nowrap sticky right-0 bg-white group-hover/row:bg-green-50 transition-colors shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-100">
-                      <div className="flex gap-1.5 justify-center items-center">
+                    {/* 🚀 w-0 を指定して強制的に縮小 */}
+                    <td className="w-0 px-2 py-2 text-center whitespace-nowrap sticky right-0 bg-white group-hover/row:bg-green-50 transition-colors shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-100">
+                      <div className="flex gap-1.5 justify-center items-center w-max mx-auto">
                         <button onClick={(e) => handleCopyLink(act, e)} className="p-1.5 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded transition-colors" title="リンクをコピー">
                           <Link size={14} />
                         </button>
