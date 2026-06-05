@@ -26,7 +26,8 @@ export const CostManagement = () => {
   const [groupsList, setGroupsList] = useState([]);
   const [systemUsers, setSystemUsers] = useState([]); 
   
-  const [fiscalYearStartMonth, setFiscalYearStartMonth] = useState(4);
+  // 🚀 振込日データを含むシステム設定を保持
+  const [systemSettings, setSystemSettings] = useState({ fiscalYearStartMonth: 4, paymentDates: [] });
 
   const [userRole, setUserRole] = useState('reporter');
   const [userGroupIds, setUserGroupIds] = useState([]);
@@ -45,8 +46,12 @@ export const CostManagement = () => {
     const unsubUsers = onSnapshot(collection(db, 'users'), s => setSystemUsers(s.docs.map(d => ({ id: d.id, ...d.data() }))));
 
     const unsubSettings = onSnapshot(doc(db, 'settings', 'system'), (docSnap) => {
-      if (docSnap.exists() && docSnap.data().fiscalYearStartMonth) {
-        setFiscalYearStartMonth(docSnap.data().fiscalYearStartMonth);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setSystemSettings({
+          fiscalYearStartMonth: data.fiscalYearStartMonth || 4,
+          paymentDates: data.paymentDates || []
+        });
       }
     });
 
@@ -91,23 +96,23 @@ export const CostManagement = () => {
   }, [navigate]);
 
   const availableYears = useMemo(() => {
-    const years = activities.map(act => getFiscalYear(act.date, fiscalYearStartMonth));
+    const years = activities.map(act => getFiscalYear(act.date, systemSettings.fiscalYearStartMonth));
     const uniqueYears = [...new Set(years)].sort((a, b) => b - a);
-    if (uniqueYears.length === 0) return [getFiscalYear(new Date(), fiscalYearStartMonth)];
+    if (uniqueYears.length === 0) return [getFiscalYear(new Date(), systemSettings.fiscalYearStartMonth)];
     return uniqueYears;
-  }, [activities, fiscalYearStartMonth]);
+  }, [activities, systemSettings.fiscalYearStartMonth]);
 
   useEffect(() => {
     if (selectedYear !== 'all' && availableYears.length > 0) {
       if (!availableYears.includes(Number(selectedYear))) {
-        setSelectedYear(getFiscalYear(new Date(), fiscalYearStartMonth).toString());
+        setSelectedYear(getFiscalYear(new Date(), systemSettings.fiscalYearStartMonth).toString());
       }
     }
-  }, [fiscalYearStartMonth, availableYears, selectedYear]);
+  }, [systemSettings.fiscalYearStartMonth, availableYears, selectedYear]);
 
   const filteredActivities = useMemo(() => {
     return activities.filter(act => {
-      const actFY = getFiscalYear(act.date, fiscalYearStartMonth).toString();
+      const actFY = getFiscalYear(act.date, systemSettings.fiscalYearStartMonth).toString();
       const matchYear = selectedYear === 'all' || actFY === selectedYear;
       const matchGroup = selectedGroup === 'all' || act.groupId === selectedGroup;
       const isCompleted = act.status !== '未実施';
@@ -126,7 +131,7 @@ export const CostManagement = () => {
       
       return true;
     }).sort((a, b) => new Date(a.date) - new Date(b.date)); 
-  }, [activities, selectedYear, selectedGroup, userRole, myName, membersList, fiscalYearStartMonth]);
+  }, [activities, selectedYear, selectedGroup, userRole, myName, membersList, systemSettings.fiscalYearStartMonth]);
 
   const aggregatedData = useMemo(() => {
     let totalPersonnelCost = 0;
@@ -146,6 +151,10 @@ export const CostManagement = () => {
       }
 
       const groupInfo = groupsList.find(g => g.id === act.groupId);
+      
+      // 🚀 活動に紐づく振込日情報を取得
+      const paymentInfo = (systemSettings.paymentDates || []).find(p => p.id === act.paymentDateId);
+      const paymentLabel = paymentInfo ? `${paymentInfo.label}` : '未定';
 
       (act.participantDetails || []).forEach(pd => {
         const wId = pd.wageId || pd.memberId;
@@ -190,6 +199,7 @@ export const CostManagement = () => {
           date: act.date,
           activityType: act.activityType,
           groupName: groupInfo ? groupInfo.name : '未登録',
+          paymentLabel: paymentLabel, 
           workTime: pd.workTime || 0,
           pCost: pCost,
           machineTime: pd.machineTime || 0,
@@ -212,7 +222,7 @@ export const CostManagement = () => {
       grandTotal: totalPersonnelCost + totalMachineCost + totalMaterialCost,
       personnelArray
     };
-  }, [filteredActivities, membersList, machinesList, materialsList, groupsList, systemUsers, userRole, myName]);
+  }, [filteredActivities, membersList, machinesList, materialsList, groupsList, systemUsers, userRole, myName, systemSettings.paymentDates]);
 
   const handleExportDummy = () => {
     alert("全員分の支払明細一括出力機能は現在準備中です。\n※個人別の明細は、表の名前をクリックして「PDF出力」から印刷可能です。");
@@ -247,7 +257,7 @@ export const CostManagement = () => {
 
       {selectedPerson && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm no-print" onClick={() => setSelectedPerson(null)}>
-          <div className="bg-white w-full max-w-4xl max-h-[90vh] rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+          <div className="bg-white w-full max-w-5xl max-h-[90vh] rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center p-4 md:p-5 border-b border-gray-100 bg-gray-50">
               <h2 className="text-lg md:text-xl font-bold text-gray-800 flex items-center">
                 <FileText className="mr-2 text-blue-600" size={24} />
@@ -282,12 +292,13 @@ export const CostManagement = () => {
               </div>
 
               <div className="border border-gray-200 rounded-xl overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-[700px]">
+                <table className="w-full text-left border-collapse min-w-[800px]">
                   <thead>
                     <tr className="bg-gray-50 text-xs text-gray-500 border-b border-gray-200">
                       <th className="p-3 font-bold">日付</th>
                       <th className="p-3 font-bold">活動内容</th>
                       <th className="p-3 font-bold">グループ</th>
+                      <th className="p-3 font-bold">振込時期</th> 
                       <th className="p-3 font-bold text-right">作業時間</th>
                       <th className="p-3 font-bold text-right">人件費</th>
                       <th className="p-3 font-bold text-right">機械時間</th>
@@ -301,6 +312,7 @@ export const CostManagement = () => {
                         <td className="p-3 text-gray-600 whitespace-nowrap">{detail.date}</td>
                         <td className="p-3 font-bold text-gray-900">{detail.activityType}</td>
                         <td className="p-3 text-xs text-gray-500">{detail.groupName}</td>
+                        <td className="p-3 text-xs text-purple-600 font-bold whitespace-nowrap">{detail.paymentLabel}</td>
                         <td className="p-3 text-right text-gray-600">{detail.workTime}h</td>
                         <td className="p-3 text-right text-gray-600 font-mono">¥{detail.pCost.toLocaleString()}</td>
                         <td className="p-3 text-right text-gray-600">{detail.machineTime}h</td>
@@ -502,7 +514,6 @@ export const CostManagement = () => {
                         <tr key={act.id} onClick={() => navigate(`/activity-form/${act.id}`, { state: { editData: act, isViewMode: true } })} className="hover:bg-blue-50 cursor-pointer transition-colors group">
                           <td className="p-4 text-sm text-gray-600 whitespace-nowrap">{act.date}</td>
                           
-                          {/* 🚀 ロックバッジの追加 */}
                           <td className="p-4 text-sm font-bold text-gray-900 truncate max-w-[200px]">
                             <div className="flex items-center gap-2">
                               <span className="truncate">{act.activityType}</span>
@@ -539,6 +550,7 @@ export const CostManagement = () => {
         </main>
       </div>
 
+      {/* 🚀 PDF出力用のレイアウト */}
       {selectedPerson && (
         <div className="hidden print:block w-full text-black bg-white font-serif">
           <div className="text-center mb-8">
@@ -581,6 +593,7 @@ export const CostManagement = () => {
               <tr className="bg-gray-100">
                 <th className="border border-black p-2 text-center w-24">日付</th>
                 <th className="border border-black p-2 text-center">活動内容</th>
+                <th className="border border-black p-2 text-center w-24">振込時期</th> 
                 <th className="border border-black p-2 text-center w-16">作業時間</th>
                 <th className="border border-black p-2 text-center w-24">人件費</th>
                 <th className="border border-black p-2 text-center w-16">機械時間</th>
@@ -593,6 +606,7 @@ export const CostManagement = () => {
                 <tr key={idx}>
                   <td className="border border-black p-2 text-center">{detail.date}</td>
                   <td className="border border-black p-2">{detail.activityType}</td>
+                  <td className="border border-black p-2 text-center">{detail.paymentLabel}</td> 
                   <td className="border border-black p-2 text-right">{detail.workTime} h</td>
                   <td className="border border-black p-2 text-right">¥{detail.pCost.toLocaleString()}</td>
                   <td className="border border-black p-2 text-right">{detail.machineTime} h</td>
@@ -602,10 +616,6 @@ export const CostManagement = () => {
               ))}
             </tbody>
           </table>
-          
-          <div className="mt-12 pt-4 border-t border-gray-400 text-xs text-gray-500 text-center">
-            この明細書は「多面的機能支払交付金 申請管理システム」より自動出力されました。
-          </div>
         </div>
       )}
     </div>

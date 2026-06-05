@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
-import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2, Calculator, Package, Plus, CheckCircle, Copy, ListChecks, MessageSquare, Download, Link as LinkIcon, FileSpreadsheet, Printer, Hash, Lock, Unlock, Send } from 'lucide-react';
+import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2, Calculator, Package, Plus, CheckCircle, Copy, ListChecks, MessageSquare, Download, Link as LinkIcon, FileSpreadsheet, Printer, Hash, Lock, Unlock, Send, CreditCard } from 'lucide-react';
 import { collection, addDoc, doc, updateDoc, serverTimestamp, deleteDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -38,6 +38,9 @@ export const ActivityForm = () => {
   const [materialsList, setMaterialsList] = useState([]);
   const [groupsList, setGroupsList] = useState([]);
   const [systemUsers, setSystemUsers] = useState([]);
+
+  // 🚀 新規：システム設定（振込日など）を保持するステート
+  const [systemSettings, setSystemSettings] = useState({ paymentDates: [] });
   
   const [currentUser, setCurrentUser] = useState(null);
   const [userRole, setUserRole] = useState('reporter');
@@ -54,7 +57,7 @@ export const ActivityForm = () => {
   const [searchTerm, setSearchTerm] = useState("");
 
   const [formData, setFormData] = useState({
-    status: '実績入力済', planType: '当初計画', isEssential: false, groupId: '',
+    status: '実績入力済', planType: '当初計画', isEssential: false, groupId: '', paymentDateId: '', // 🚀 paymentDateId を追加
     date: new Date().toISOString().split('T')[0], startTime: '08:00', endTime: '10:00',
     location: '', activityType: '', activityNumbers: [], memo: '', reportNo: '',
     budget: ''
@@ -79,6 +82,7 @@ export const ActivityForm = () => {
             setFormData({
               status: data.status || '実績入力済', planType: data.planType || '当初計画',
               isEssential: data.isEssential || false, groupId: data.groupId || '',
+              paymentDateId: data.paymentDateId || '', // 🚀 データ取得時に反映
               date: data.date || '', startTime: data.startTime || '08:00', endTime: data.endTime || '10:00',
               location: data.location || '', activityType: data.activityType || '',
               activityNumbers: data.activityNumbers || [], memo: data.memo || '',
@@ -98,6 +102,7 @@ export const ActivityForm = () => {
       const d = location.state.editData;
       setFormData({
         status: d.status || '実績入力済', planType: d.planType || '当初計画', isEssential: d.isEssential || false, groupId: d.groupId || '',
+        paymentDateId: d.paymentDateId || '', // 🚀 データ取得時に反映
         date: d.date, startTime: d.startTime, endTime: d.endTime, location: d.location, activityType: d.activityType,
         activityNumbers: d.activityNumbers || [], memo: d.memo || '', reportNo: d.reportNo || '', budget: d.budget || '' 
       });
@@ -114,6 +119,13 @@ export const ActivityForm = () => {
     const unsubGroups = onSnapshot(collection(db, 'groups'), (s) => setGroupsList(s.docs.map(d => ({ id: d.id, ...d.data() }))));
     const unsubUsers = onSnapshot(collection(db, 'users'), (s) => setSystemUsers(s.docs.map(d => ({ id: d.id, ...d.data() }))));
     
+    // 🚀 新規：システム設定（振込日）の監視を追加
+    const unsubSettings = onSnapshot(doc(db, 'settings', 'system'), (docSnap) => {
+      if (docSnap.exists()) {
+        setSystemSettings(docSnap.data());
+      }
+    });
+
     const unsubAuth = onAuthStateChanged(auth, async (u) => {
       setCurrentUser(u);
       if (u) {
@@ -133,7 +145,7 @@ export const ActivityForm = () => {
         }
       }
     });
-    return () => { unsubAuth(); unsubGroups(); unsubMembers(); unsubMachines(); unsubMaterials(); unsubUsers(); };
+    return () => { unsubAuth(); unsubGroups(); unsubMembers(); unsubMachines(); unsubMaterials(); unsubUsers(); unsubSettings(); };
   }, [id, location.state]);
 
   const [successModal, setSuccessModal] = useState({ show: false, message: '' });
@@ -287,7 +299,8 @@ export const ActivityForm = () => {
     if (!editData) return;
     setFormData({
       status: editData.status || '実績入力済', planType: editData.planType || '当初計画', isEssential: editData.isEssential || false,
-      groupId: editData.groupId || '', date: editData.date || '', startTime: editData.startTime || '', endTime: editData.endTime || '',
+      groupId: editData.groupId || '', paymentDateId: editData.paymentDateId || '', // 🚀 反映
+      date: editData.date || '', startTime: editData.startTime || '', endTime: editData.endTime || '',
       location: editData.location || '', activityType: editData.activityType || '', activityNumbers: editData.activityNumbers || [],
       memo: editData.memo || '', reportNo: editData.reportNo || '', budget: editData.budget || ''
     });
@@ -390,7 +403,6 @@ export const ActivityForm = () => {
     setTimeout(() => { window.print(); }, 150);
   };
 
-  // 🚀 手動で提出（ロック）処理を行う
   const handleLockSubmit = async () => {
     if (window.confirm('この活動実績を「提出済」としてロックしますか？\n提出後は、一般ユーザーは内容の編集や削除ができなくなります。')) {
       try {
@@ -407,7 +419,6 @@ export const ActivityForm = () => {
     }
   };
 
-  // 🚀 管理者向け：ロック解除処理
   const toggleLock = async () => {
     if (!editData) return;
     const confirmMsg = 'ロックを解除して、一般ユーザーも編集できるようにしますか？';
@@ -503,7 +514,6 @@ export const ActivityForm = () => {
   const isCreator = editData?.createdBy === currentUser?.uid;
   const isInSameGroup = userGroups.includes(editData?.groupId);
   
-  // 🚀 編集・削除権限の判定（ロックされている場合、一般ユーザーはfalseになる）
   const canEditOrDelete = userRole === 'admin' || userRole === 'manager' || 
     (!editData?.isLocked && userRole === 'reporter' && canEditOwn && isCreator) || 
     (!editData?.isLocked && userRole === 'reporter' && canEditGroup && isInSameGroup);
@@ -628,7 +638,6 @@ export const ActivityForm = () => {
             <Sprout className="w-6 h-6 mr-2 text-green-600" />
             {editData ? (isViewMode ? '活動実績の詳細' : '活動実績の修正') : '活動実績の入力（計画追加）'}
           </h1>
-          {/* 🚀 ロックバッジの表示 */}
           {editData?.isLocked && (
             <span className="ml-3 bg-gray-600 text-white text-[10px] md:text-xs px-2.5 py-1 rounded-lg font-bold flex items-center shadow-sm whitespace-nowrap">
               <Lock size={14} className="mr-1" /> 提出済 (ロック)
@@ -643,14 +652,12 @@ export const ActivityForm = () => {
             </button>
           )}
 
-          {/* 🚀 管理者向けのロック解除ボタン（ロックされている場合のみ表示） */}
           {editData && isViewMode && editData.isLocked && (userRole === 'admin' || userRole === 'manager') && (
             <button type="button" onClick={toggleLock} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-orange-50 text-orange-600 rounded-lg font-bold hover:bg-orange-100 transition-colors text-sm md:text-base">
               <Unlock size={18} className="mr-1.5" /> <span className="hidden md:inline">提出ロック解除</span>
             </button>
           )}
 
-          {/* Excel / PDF出力 */}
           {editData && isViewMode && canExport && (
             <>
               <button type="button" onClick={handleExportSingleReport} disabled={isExporting} className={`flex items-center px-3 py-1.5 md:px-4 md:py-2 rounded-lg font-bold transition-colors text-sm md:text-base ${isExporting ? 'bg-blue-400 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
@@ -662,14 +669,12 @@ export const ActivityForm = () => {
             </>
           )}
 
-          {/* 🚀 提出（ロック）ボタン: 未ロック ＆ 編集権限ありの場合のみ表示 */}
           {editData && isViewMode && !editData.isLocked && canEditOrDelete && (
             <button type="button" onClick={handleLockSubmit} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition-colors text-sm md:text-base shadow-sm active:scale-95">
               <CheckCircle size={18} className="md:mr-1.5" /> <span className="hidden md:inline">提出する (ロック)</span>
             </button>
           )}
 
-          {/* 編集 / 削除ボタン */}
           {editData && isViewMode && canEditOrDelete && (
             <>
               <button type="button" onClick={() => setIsViewMode(false)} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-blue-50 text-blue-600 rounded-lg font-bold hover:bg-blue-100 transition-colors text-sm md:text-base"><Edit size={18} className="mr-1.5" /> <span className="hidden md:inline">編集</span></button>
@@ -752,6 +757,26 @@ export const ActivityForm = () => {
                   <option value="">グループを選択してください</option>
                   {selectableGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                 </select>
+              </div>
+
+              {/* 🚀 新規追加: 振込日（申請時期）の選択 */}
+              <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 mt-4">
+                <label className="block text-sm font-bold text-purple-900 mb-1 flex items-center">
+                  <CreditCard size={16} className="mr-1.5" /> 振込日（申請時期）
+                </label>
+                <select 
+                  name="paymentDateId" 
+                  value={formData.paymentDateId || ''} 
+                  onChange={handleChange} 
+                  disabled={isViewMode} 
+                  className={`${inputClass} border-purple-200 focus:ring-purple-500 bg-white`}
+                >
+                  <option value="">未設定</option>
+                  {(systemSettings.paymentDates || []).map(p => (
+                    <option key={p.id} value={p.id}>{p.label} {p.date ? `(${p.date})` : ''}</option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-purple-700 mt-1.5 font-bold">※ この活動をどのタイミングで申請・支払いするかを選択します。</p>
               </div>
 
               <div className="relative mt-4 pt-4 border-t border-gray-100">

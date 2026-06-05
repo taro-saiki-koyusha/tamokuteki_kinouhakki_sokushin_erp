@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp, query, orderBy, setDoc } from 'firebase/firestore';
-import { ArrowLeft, Plus, Trash2, Edit, X, Check, Tractor, DollarSign, Settings, Package, Calendar } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Edit, X, Check, Tractor, DollarSign, Settings, Package, Calendar, CreditCard } from 'lucide-react';
 import { db } from '../firebase';
 
 export const MasterManagement = () => {
@@ -9,16 +9,18 @@ export const MasterManagement = () => {
   const [machines, setMachines] = useState([]);
   const [members, setMembers] = useState([]);
   const [materials, setMaterials] = useState([]); 
-  const [systemSettings, setSystemSettings] = useState({ fiscalYearStartMonth: 4 }); // 🚀 新規: システム設定の初期値
+  const [systemSettings, setSystemSettings] = useState({ 
+    fiscalYearStartMonth: 4,
+    paymentDates: [] 
+  }); 
   
-  const [activeTab, setActiveTab] = useState('members'); // 'members', 'machines', 'materials', 'settings' // 🚀 settings を追加
+  const [activeTab, setActiveTab] = useState('members'); 
 
   const [editingId, setEditingId] = useState(null);
   const [editData, setEditData] = useState({});
-  const [isSavingSettings, setIsSavingSettings] = useState(false); // 🚀 設定保存中のローディング状態
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   useEffect(() => {
-    // 既存のマスタデータの読み込み
     const unsubMembers = onSnapshot(query(collection(db, 'members'), orderBy('name')), (snapshot) => {
       setMembers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
@@ -29,10 +31,13 @@ export const MasterManagement = () => {
       setMaterials(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    // 🚀 新規: システム設定データの読み込み (settingsコレクションの 'system' ドキュメントを監視)
     const unsubSettings = onSnapshot(doc(db, 'settings', 'system'), (docSnap) => {
       if (docSnap.exists()) {
-        setSystemSettings(docSnap.data());
+        const data = docSnap.data();
+        setSystemSettings({
+          fiscalYearStartMonth: data.fiscalYearStartMonth || 4,
+          paymentDates: data.paymentDates || [] 
+        });
       }
     });
 
@@ -40,7 +45,7 @@ export const MasterManagement = () => {
       unsubMembers();
       unsubMachines();
       unsubMaterials();
-      unsubSettings(); // 🚀 監視解除を追加
+      unsubSettings(); 
     };
   }, []);
 
@@ -94,13 +99,30 @@ export const MasterManagement = () => {
     }
   };
 
-  // 🚀 新規: システム設定の保存処理
+  const handleAddPaymentDate = () => {
+    setSystemSettings({
+      ...systemSettings,
+      paymentDates: [...systemSettings.paymentDates, { id: Date.now().toString(), label: '', date: '' }]
+    });
+  };
+
+  const handleUpdatePaymentDate = (index, field, value) => {
+    const newDates = [...systemSettings.paymentDates];
+    newDates[index][field] = value;
+    setSystemSettings({ ...systemSettings, paymentDates: newDates });
+  };
+
+  const handleRemovePaymentDate = (index) => {
+    const newDates = systemSettings.paymentDates.filter((_, i) => i !== index);
+    setSystemSettings({ ...systemSettings, paymentDates: newDates });
+  };
+
   const handleSaveSettings = async () => {
     setIsSavingSettings(true);
     try {
-      // settingsコレクションの 'system' ドキュメントに保存（上書き・新規作成）
       await setDoc(doc(db, 'settings', 'system'), {
         fiscalYearStartMonth: Number(systemSettings.fiscalYearStartMonth),
+        paymentDates: systemSettings.paymentDates, 
         updatedAt: serverTimestamp()
       }, { merge: true });
       alert('システム設定を保存しました。');
@@ -116,7 +138,7 @@ export const MasterManagement = () => {
     if (activeTab === 'members') return { data: members, title: 'メンバー・単価', icon: <DollarSign size={20} className="mr-2" /> };
     if (activeTab === 'machines') return { data: machines, title: '機械・利用料', icon: <Tractor size={20} className="mr-2" /> };
     if (activeTab === 'materials') return { data: materials, title: '資材・単価', icon: <Package size={20} className="mr-2" /> };
-    return { data: [], title: 'システム設定', icon: <Settings size={20} className="mr-2" /> }; // 🚀 settings用の戻り値を追加
+    return { data: [], title: 'システム設定', icon: <Settings size={20} className="mr-2" /> }; 
   };
 
   const { data: currentData, title, icon } = getTabData();
@@ -136,7 +158,6 @@ export const MasterManagement = () => {
 
       <main className="p-4 max-w-5xl mx-auto space-y-6">
         
-        {/* 🚀 タブメニューに「システム設定」を追加 */}
         <div className="bg-white rounded-xl shadow-sm p-1 inline-flex overflow-x-auto w-full md:w-auto">
           <button onClick={() => { setActiveTab('members'); setEditingId(null); }} className={`flex-1 md:flex-none whitespace-nowrap px-4 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'members' ? 'bg-blue-600 text-white shadow' : 'text-gray-600 hover:bg-gray-100'}`}>
             メンバー単価
@@ -162,9 +183,9 @@ export const MasterManagement = () => {
             )}
           </div>
 
-          {/* 🚀 システム設定タブのコンテンツ */}
           {activeTab === 'settings' ? (
-            <div className="p-6 space-y-6">
+            <div className="p-6 space-y-8">
+              
               <div className="bg-blue-50 border border-blue-100 rounded-xl p-5">
                 <h3 className="font-bold text-blue-900 flex items-center mb-4 border-b border-blue-200 pb-2">
                   <Calendar className="w-5 h-5 mr-2" /> 事業年度の基本設定
@@ -174,7 +195,7 @@ export const MasterManagement = () => {
                   <select 
                     value={systemSettings.fiscalYearStartMonth || 4} 
                     onChange={(e) => setSystemSettings({ ...systemSettings, fiscalYearStartMonth: Number(e.target.value) })}
-                    className="w-full sm:w-48 border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 font-bold"
+                    className="w-full sm:w-48 border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 font-bold bg-white"
                   >
                     {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(month => (
                       <option key={month} value={month}>{month}月 開始</option>
@@ -184,18 +205,70 @@ export const MasterManagement = () => {
                 </div>
               </div>
 
+              <div className="bg-purple-50 border border-purple-100 rounded-xl p-5">
+                <div className="flex justify-between items-center mb-4 border-b border-purple-200 pb-2">
+                  <h3 className="font-bold text-purple-900 flex items-center">
+                    <CreditCard className="w-5 h-5 mr-2" /> 振込日（申請時期）の設定
+                  </h3>
+                  <button 
+                    onClick={handleAddPaymentDate}
+                    className="text-sm font-bold text-purple-600 bg-white border border-purple-200 px-3 py-1.5 rounded-lg hover:bg-purple-100 transition-colors flex items-center shadow-sm"
+                  >
+                    <Plus size={16} className="mr-1" /> 追加
+                  </button>
+                </div>
+                
+                <div className="space-y-3">
+                  {systemSettings.paymentDates.length === 0 ? (
+                    <p className="text-sm text-purple-600/70 text-center py-4">振込日が設定されていません。「追加」ボタンから登録してください。</p>
+                  ) : (
+                    systemSettings.paymentDates.map((payment, index) => (
+                      <div key={payment.id} className="flex flex-col sm:flex-row gap-3 bg-white p-3 rounded-xl border border-purple-100 shadow-sm items-center relative group">
+                        <div className="flex-1 w-full sm:w-auto">
+                          <label className="block text-xs font-bold text-gray-500 mb-1">振込名称（例: 上期分, 8月末など）</label>
+                          <input 
+                            type="text" 
+                            value={payment.label} 
+                            onChange={(e) => handleUpdatePaymentDate(index, 'label', e.target.value)}
+                            placeholder="例：上期支払分"
+                            className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-purple-500 text-sm"
+                          />
+                        </div>
+                        {/* 🚀 カレンダー入力に変更 */}
+                        <div className="w-full sm:w-48">
+                          <label className="block text-xs font-bold text-gray-500 mb-1">振込日（目安）</label>
+                          <input 
+                            type="date" 
+                            value={payment.date} 
+                            onChange={(e) => handleUpdatePaymentDate(index, 'date', e.target.value)}
+                            className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-purple-500 text-sm"
+                          />
+                        </div>
+                        <button 
+                          onClick={() => handleRemovePaymentDate(index)}
+                          className="sm:mt-5 p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="削除"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <p className="text-xs text-purple-600/80 mt-4">※ ここで設定した振込日が、活動実績の入力画面で選択できるようになります。</p>
+              </div>
+
               <div className="pt-4 border-t border-gray-100">
                 <button 
                   onClick={handleSaveSettings} 
                   disabled={isSavingSettings}
-                  className="px-6 py-3 bg-gray-800 text-white rounded-xl font-bold hover:bg-gray-900 transition-all flex items-center disabled:opacity-50"
+                  className="px-6 py-3 bg-gray-800 text-white rounded-xl font-bold hover:bg-gray-900 transition-all flex items-center shadow-md active:scale-95 disabled:opacity-50"
                 >
-                  {isSavingSettings ? '保存中...' : <><Check size={18} className="mr-2" /> 設定を保存する</>}
+                  {isSavingSettings ? '保存中...' : <><Check size={18} className="mr-2" /> 全ての設定を保存する</>}
                 </button>
               </div>
             </div>
           ) : (
-            /* 既存のマスタ一覧テーブル */
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse min-w-[600px]">
                 <thead>
