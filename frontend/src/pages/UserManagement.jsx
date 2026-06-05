@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, doc, updateDoc, onSnapshot, setDoc } from 'firebase/firestore'; 
-import { ArrowLeft, UserCog, Edit, Trash2, X, ShieldCheck, Mail, Wallet, Plus, CheckCircle, UserPlus, Phone, Hash, Users, Loader2, ChevronUp, ChevronDown } from 'lucide-react'; 
+import { ArrowLeft, UserCog, Edit, Trash2, X, ShieldCheck, Mail, Wallet, Plus, CheckCircle, UserPlus, Phone, Hash, Users, Loader2, ChevronUp, ChevronDown, Copy } from 'lucide-react'; 
 import { db, auth } from '../firebase'; 
 import { initializeApp, deleteApp } from 'firebase/app'; 
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
-// 🚀 新しく Functions を呼び出すためのインポートを追加
 import { getFunctions, httpsCallable } from 'firebase/functions';
 
 export const UserManagement = () => {
@@ -20,7 +19,7 @@ export const UserManagement = () => {
   const [successModal, setSuccessModal] = useState({ show: false, loginId: '', password: '' });
 
   const [sortConfig, setSortConfig] = useState({ key: 'memberNo', direction: 'asc' });
-  const [isDeleting, setIsDeleting] = useState(false); // 🚀 削除中状態の管理
+  const [isDeleting, setIsDeleting] = useState(false); 
 
   const [newUser, setNewUser] = useState({
     displayName: '',
@@ -95,7 +94,6 @@ export const UserManagement = () => {
     setSortConfig({ key, direction });
   };
 
-  // 🚀 Cloud Functions を呼び出して完全削除する処理に変更
   const handleDelete = async (id, name) => {
     if (id === auth.currentUser?.uid) {
       alert("自分自身のアカウントは削除できません。");
@@ -104,14 +102,9 @@ export const UserManagement = () => {
     if (window.confirm(`ユーザー「${name}」をシステムから完全に削除しますか？\n（認証データ・名簿データの両方を消去します）\n※この操作は元に戻せません。`)) {
       setIsDeleting(true);
       try {
-        // 東京リージョンのCloud Functionsを指定して呼び出す
         const cloudFunctions = getFunctions(auth.app, 'asia-northeast1');
         const deleteUserFn = httpsCallable(cloudFunctions, 'deleteUser');
-        
-        // バックエンドに削除リクエストを送信
         await deleteUserFn({ uid: id });
-        
-        // ※Firestoreからの削除はバックエンド側で行うため、フロントエンドのdeleteDocは不要になります
       } catch (error) {
         console.error("削除エラー:", error);
         alert('削除に失敗しました。\n' + (error.message || ''));
@@ -217,6 +210,16 @@ export const UserManagement = () => {
     }
   };
 
+  // 🚀 コピー機能（ログインID用）
+  const handleCopyId = (textToCopy) => {
+    navigator.clipboard.writeText(textToCopy).then(() => {
+      alert('ログインIDをコピーしました！');
+    }).catch(err => {
+      console.error('コピー失敗:', err);
+      alert('コピーに失敗しました。');
+    });
+  };
+
   const getRoleBadge = (role) => {
     switch (role) {
       case 'admin': return <span className="bg-red-100 text-red-700 px-2 py-1 rounded-md text-xs font-bold border border-red-200 flex items-center w-max"><ShieldCheck size={12} className="mr-1"/>管理者</span>;
@@ -249,7 +252,6 @@ export const UserManagement = () => {
   return (
     <div className="min-h-screen bg-gray-50 pb-20 relative">
       
-      {/* 🚀 削除実行中の全画面オーバーレイ */}
       {isDeleting && (
         <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center p-4 bg-white/70 backdrop-blur-sm">
           <Loader2 className="w-12 h-12 text-red-600 animate-spin mb-4" />
@@ -257,7 +259,6 @@ export const UserManagement = () => {
         </div>
       )}
 
-      {/* 登録完了モーダル */}
       {successModal.show && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200">
@@ -551,17 +552,20 @@ export const UserManagement = () => {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[900px]">
+            <table className="w-full text-left border-collapse min-w-[1050px]">
               <thead>
                 <tr className="text-xs text-gray-400 uppercase tracking-wider border-b">
                   <th onClick={() => requestSort('name')} className="px-4 py-3 font-bold cursor-pointer hover:bg-gray-100 transition-colors select-none group" title="ユーザー名で並び替え">
                     <div className="flex items-center text-gray-700">
-                      ユーザー名 / 連絡先
+                      ユーザー名
                       {sortConfig.key === 'name' ? (
                         sortConfig.direction === 'asc' ? <ChevronUp size={16} className="ml-1 text-blue-600" /> : <ChevronDown size={16} className="ml-1 text-blue-600" />
                       ) : <ChevronDown size={16} className="ml-1 text-transparent group-hover:text-gray-300" />}
                     </div>
                   </th>
+
+                  {/* 🚀 ログインID の列ヘッダー */}
+                  <th className="px-4 py-3 font-bold text-gray-700">ログインID</th>
 
                   <th onClick={() => requestSort('memberNo')} className="px-4 py-3 font-bold cursor-pointer hover:bg-gray-100 transition-colors select-none group" title="構成員番号で並び替え">
                     <div className="flex items-center text-gray-700">
@@ -587,13 +591,26 @@ export const UserManagement = () => {
                         </div>
                         <div className="min-w-0">
                           <div className="font-bold text-gray-900 text-sm truncate">{user?.displayName || user?.name || '名称未設定'}</div>
-                          <div className="text-[10px] text-gray-500 truncate">
-                            {user?.email?.includes('@kamata.local') ? `📞 ${formatEmailForDisplay(user?.email)}` : `✉️ ${formatEmailForDisplay(user?.email)}`}
-                          </div>
                         </div>
                       </div>
                     </td>
                     
+                    {/* 🚀 ログインIDの表示とコピーボタン */}
+                    <td className="px-4 py-4">
+                      <div className="flex items-center">
+                        <span className="text-[10px] text-gray-500 font-mono bg-gray-100 px-2 py-1 rounded select-all">
+                          {formatEmailForDisplay(user?.email)}
+                        </span>
+                        <button 
+                          onClick={() => handleCopyId(formatEmailForDisplay(user?.email))} 
+                          className="ml-2 p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" 
+                          title="ログインIDをコピー"
+                        >
+                          <Copy size={14}/>
+                        </button>
+                      </div>
+                    </td>
+
                     <td className="px-4 py-4">
                       <span className="text-sm text-gray-700 font-mono">{user.memberNo || <span className="text-gray-300 text-xs">未設定</span>}</span>
                     </td>
@@ -634,7 +651,7 @@ export const UserManagement = () => {
                 ))}
                 {sortedUsers.length === 0 && (
                   <tr>
-                    <td colSpan="5" className="px-4 py-8 text-center text-gray-400 font-bold">ユーザーが見つかりません</td>
+                    <td colSpan="6" className="px-4 py-8 text-center text-gray-400 font-bold">ユーザーが見つかりません</td>
                   </tr>
                 )}
               </tbody>
