@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet } from 'lucide-react'; 
+import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock } from 'lucide-react'; 
 import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, doc, getDoc, deleteDoc, where } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -287,7 +287,6 @@ export const Dashboard = () => {
   };
 
   const roleLabel = userRole === 'admin' ? '管理者' : userRole === 'manager' ? '事務・役員' : '現場リーダー';
-  const showDeleteColumn = userRole === 'admin' || (userRole === 'reporter' && (canEditOwn || canEditGroup));
 
   // 🚀 表示名を取得（システムユーザーデータから優先して取得）
   const displayUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || 
@@ -306,9 +305,11 @@ export const Dashboard = () => {
     
     const isCreator = activity.createdBy === currentUser?.uid;
     const isInSameGroup = userGroupIds.includes(activity.groupId);
-    const canDeleteAct = userRole === 'admin' || 
-                         (userRole === 'reporter' && canEditOwn && isCreator) ||
-                         (userRole === 'reporter' && canEditGroup && isInSameGroup);
+    
+    // 🚀 ロックされている場合、reporterは削除できないように制御
+    const canDeleteAct = userRole === 'admin' || userRole === 'manager' ||
+                         (!activity.isLocked && userRole === 'reporter' && canEditOwn && isCreator) ||
+                         (!activity.isLocked && userRole === 'reporter' && canEditGroup && isInSameGroup);
 
     const budget = Number(activity.budget) || 0;
     const actualCost = calculateActivityCost(activity);
@@ -326,11 +327,19 @@ export const Dashboard = () => {
           <span className={`text-[10px] px-2 py-1 rounded-md font-bold border whitespace-nowrap ${statusLabel === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-600 border-green-100'}`}>
             {statusLabel}
           </span>
+
+          {/* 🚀 ロックされている場合は「提出済」バッジを表示 */}
+          {activity.isLocked && (
+            <span className="text-[10px] px-2 py-1 rounded-md font-bold border border-gray-500 bg-gray-600 text-white whitespace-nowrap flex items-center shadow-sm">
+              <Lock size={10} className="mr-1" /> 提出済
+            </span>
+          )}
           
           <button onClick={(e) => handleCopyLink(activity, e)} className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-md transition-colors" title="リンクをコピー">
             <Link size={15} />
           </button>
 
+          {/* 🚀 削除権限がある場合のみゴミ箱を表示 */}
           {canDeleteAct && (
             <button onClick={(e) => handleDeleteClick(activity.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="この実績を削除">
               <Trash2 size={16} />
@@ -436,9 +445,11 @@ export const Dashboard = () => {
                 
                 const isCreator = act.createdBy === currentUser?.uid;
                 const isInSameGroup = userGroupIds.includes(act.groupId);
-                const canDeleteAct = userRole === 'admin' || 
-                                     (userRole === 'reporter' && canEditOwn && isCreator) ||
-                                     (userRole === 'reporter' && canEditGroup && isInSameGroup);
+                
+                // 🚀 ロックされている場合、reporterは削除できないように制御
+                const canDeleteAct = userRole === 'admin' || userRole === 'manager' ||
+                                     (!act.isLocked && userRole === 'reporter' && canEditOwn && isCreator) ||
+                                     (!act.isLocked && userRole === 'reporter' && canEditGroup && isInSameGroup);
 
                 const creatorName = systemUsers.find(u => u.id === act.createdBy)?.displayName || '-';
 
@@ -446,14 +457,25 @@ export const Dashboard = () => {
                 const actualCost = calculateActivityCost(act);
 
                 return (
-                  <tr key={act.id} onClick={() => navigate(`/activity-form/${act.id}`, { state: { editData: act, isViewMode: true } })} className="border-b border-gray-100 hover:bg-green-50 cursor-pointer transition-colors group/row">
+                  <tr key={act.id} onClick={() => navigate(`/activity-form/${act.id}`, { state: { editData: act, isViewMode: true } })} className={`border-b border-gray-100 cursor-pointer transition-colors group/row ${act.isLocked ? 'hover:bg-gray-50/80' : 'hover:bg-green-50'}`}>
                     <td className="p-3 text-sm text-gray-700 whitespace-nowrap">{act.date}</td>
+                    
+                    {/* 🚀 活動内容を元の状態（1行表示）に戻す */}
                     <td className="p-3 text-sm font-bold text-gray-900 whitespace-nowrap overflow-hidden text-ellipsis">{act.activityType}</td>
                     
+                    {/* 🚀 状態の列に提出済バッジを配置 */}
                     <td className="p-3 text-center whitespace-nowrap">
-                      <span className={`px-2 py-1 rounded-full text-[9px] font-bold border whitespace-nowrap ${statusLabel === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-600 border-green-100'}`}>
-                        {statusLabel}
-                      </span>
+                      <div className="flex flex-col items-center gap-1">
+                        <span className={`px-2 py-1 rounded-full text-[9px] font-bold border whitespace-nowrap ${statusLabel === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-600 border-green-100'}`}>
+                          {statusLabel}
+                        </span>
+                        {/* 🚀 ロックバッジの表示 */}
+                        {act.isLocked && (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-gray-600 text-white flex items-center whitespace-nowrap shadow-sm border border-gray-500 shrink-0" title="提出済みのためロックされています">
+                            <Lock size={8} className="mr-1" /> 提出済
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     <td className="p-3 text-center whitespace-nowrap">
@@ -491,7 +513,7 @@ export const Dashboard = () => {
                       {hasImage ? <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded text-[9px] font-bold">あり</span> : <span className="text-gray-300 text-[10px]">-</span>}
                     </td>
 
-                    <td className="w-0 px-2 py-2 text-center whitespace-nowrap sticky right-0 bg-white group-hover/row:bg-green-50 transition-colors shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-100">
+                    <td className={`w-0 px-2 py-2 text-center whitespace-nowrap sticky right-0 bg-white transition-colors shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-100 ${act.isLocked ? 'group-hover/row:bg-gray-50/80' : 'group-hover/row:bg-green-50'}`}>
                       <div className="flex gap-1.5 justify-center items-center w-max mx-auto">
                         <button onClick={(e) => handleCopyLink(act, e)} className="p-1.5 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded transition-colors" title="リンクをコピー">
                           <Link size={14} />
@@ -508,7 +530,8 @@ export const Dashboard = () => {
                           </>
                         )}
 
-                        {showDeleteColumn && canDeleteAct && (
+                        {/* 🚀 削除権限がある場合のみ表示 */}
+                        {canDeleteAct && (
                           <button onClick={(e) => handleDeleteClick(act.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="削除">
                             <Trash2 size={14} />
                           </button>
@@ -606,7 +629,6 @@ export const Dashboard = () => {
           <div>
             <p className="text-gray-600 text-sm">こんにちは、</p>
             <h2 className="text-xl md:text-2xl font-bold text-gray-900 flex items-center">
-              {/* 🚀 ここを変更：取得した正式な表示名を表示 */}
               {displayUserName} さん
               <span className="ml-2 text-[10px] bg-gray-200 text-gray-700 px-2 py-1 rounded-full font-bold">権限: {roleLabel}</span>
             </h2>

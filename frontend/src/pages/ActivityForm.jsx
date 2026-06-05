@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
-import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2, Calculator, Package, Plus, CheckCircle, Copy, ListChecks, MessageSquare, Download, Link as LinkIcon, FileSpreadsheet, Printer, Hash } from 'lucide-react';
+import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2, Calculator, Package, Plus, CheckCircle, Copy, ListChecks, MessageSquare, Download, Link as LinkIcon, FileSpreadsheet, Printer, Hash, Lock, Unlock, Send } from 'lucide-react';
 import { collection, addDoc, doc, updateDoc, serverTimestamp, deleteDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -382,11 +382,47 @@ export const ActivityForm = () => {
       a.download = `活動報告書_${editData.date}.xlsx`;
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
+
     } catch (error) { console.error(error); alert('Excel作成エラーが発生しました。'); } finally { setIsExporting(false); }
   };
 
   const handleDirectPrint = () => {
     setTimeout(() => { window.print(); }, 150);
+  };
+
+  // 🚀 手動で提出（ロック）処理を行う
+  const handleLockSubmit = async () => {
+    if (window.confirm('この活動実績を「提出済」としてロックしますか？\n提出後は、一般ユーザーは内容の編集や削除ができなくなります。')) {
+      try {
+        await updateDoc(doc(db, 'activities', editData.id), {
+          isLocked: true,
+          updatedAt: serverTimestamp()
+        });
+        setEditData({ ...editData, isLocked: true });
+        alert('提出が完了し、データをロックしました。');
+      } catch (error) {
+        console.error(error);
+        alert('提出処理に失敗しました。');
+      }
+    }
+  };
+
+  // 🚀 管理者向け：ロック解除処理
+  const toggleLock = async () => {
+    if (!editData) return;
+    const confirmMsg = 'ロックを解除して、一般ユーザーも編集できるようにしますか？';
+    if (window.confirm(confirmMsg)) {
+      try {
+        await updateDoc(doc(db, 'activities', editData.id), {
+          isLocked: false,
+          updatedAt: serverTimestamp()
+        });
+        setEditData({ ...editData, isLocked: false });
+      } catch (error) {
+        console.error(error);
+        alert('ロック解除に失敗しました。');
+      }
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -449,6 +485,7 @@ export const ActivityForm = () => {
       else { 
         submitData.createdAt = serverTimestamp(); 
         submitData.createdBy = currentUser?.uid; 
+        submitData.isLocked = false;
         await addDoc(collection(db, 'activities'), submitData); 
         setSuccessModal({ show: true, message: '新しい活動実績を登録しました。' });
       }
@@ -465,9 +502,11 @@ export const ActivityForm = () => {
   
   const isCreator = editData?.createdBy === currentUser?.uid;
   const isInSameGroup = userGroups.includes(editData?.groupId);
+  
+  // 🚀 編集・削除権限の判定（ロックされている場合、一般ユーザーはfalseになる）
   const canEditOrDelete = userRole === 'admin' || userRole === 'manager' || 
-    (userRole === 'reporter' && canEditOwn && isCreator) || 
-    (userRole === 'reporter' && canEditGroup && isInSameGroup);
+    (!editData?.isLocked && userRole === 'reporter' && canEditOwn && isCreator) || 
+    (!editData?.isLocked && userRole === 'reporter' && canEditGroup && isInSameGroup);
     
   const canExport = userRole === 'admin' || userRole === 'manager';
   const selectableGroups = (userRole === 'admin' || userRole === 'manager') ? groupsList : groupsList.filter(g => userGroups.includes(g.id));
@@ -589,15 +628,29 @@ export const ActivityForm = () => {
             <Sprout className="w-6 h-6 mr-2 text-green-600" />
             {editData ? (isViewMode ? '活動実績の詳細' : '活動実績の修正') : '活動実績の入力（計画追加）'}
           </h1>
+          {/* 🚀 ロックバッジの表示 */}
+          {editData?.isLocked && (
+            <span className="ml-3 bg-gray-600 text-white text-[10px] md:text-xs px-2.5 py-1 rounded-lg font-bold flex items-center shadow-sm whitespace-nowrap">
+              <Lock size={14} className="mr-1" /> 提出済 (ロック)
+            </span>
+          )}
         </div>
         
-        <div className="flex space-x-2 md:space-x-3">
+        <div className="flex space-x-2 md:space-x-3 items-center">
           {editData && (
             <button type="button" onClick={handleCopyLink} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-purple-50 text-purple-600 rounded-lg font-bold hover:bg-purple-100 transition-colors text-sm md:text-base">
               <LinkIcon size={18} className="md:mr-1.5" /> <span className="hidden md:inline">リンクをコピー</span>
             </button>
           )}
 
+          {/* 🚀 管理者向けのロック解除ボタン（ロックされている場合のみ表示） */}
+          {editData && isViewMode && editData.isLocked && (userRole === 'admin' || userRole === 'manager') && (
+            <button type="button" onClick={toggleLock} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-orange-50 text-orange-600 rounded-lg font-bold hover:bg-orange-100 transition-colors text-sm md:text-base">
+              <Unlock size={18} className="mr-1.5" /> <span className="hidden md:inline">提出ロック解除</span>
+            </button>
+          )}
+
+          {/* Excel / PDF出力 */}
           {editData && isViewMode && canExport && (
             <>
               <button type="button" onClick={handleExportSingleReport} disabled={isExporting} className={`flex items-center px-3 py-1.5 md:px-4 md:py-2 rounded-lg font-bold transition-colors text-sm md:text-base ${isExporting ? 'bg-blue-400 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
@@ -609,6 +662,14 @@ export const ActivityForm = () => {
             </>
           )}
 
+          {/* 🚀 提出（ロック）ボタン: 未ロック ＆ 編集権限ありの場合のみ表示 */}
+          {editData && isViewMode && !editData.isLocked && canEditOrDelete && (
+            <button type="button" onClick={handleLockSubmit} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition-colors text-sm md:text-base shadow-sm active:scale-95">
+              <CheckCircle size={18} className="md:mr-1.5" /> <span className="hidden md:inline">提出する (ロック)</span>
+            </button>
+          )}
+
+          {/* 編集 / 削除ボタン */}
           {editData && isViewMode && canEditOrDelete && (
             <>
               <button type="button" onClick={() => setIsViewMode(false)} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-blue-50 text-blue-600 rounded-lg font-bold hover:bg-blue-100 transition-colors text-sm md:text-base"><Edit size={18} className="mr-1.5" /> <span className="hidden md:inline">編集</span></button>
@@ -634,7 +695,6 @@ export const ActivityForm = () => {
                 <input type="text" name="activityType" value={formData.activityType} onChange={handleChange} disabled={isViewMode} className={inputClass} placeholder="例：内郷地区の草刈り" required />
               </div>
 
-              {/* 🚀 報告書NOをここに移動しました */}
               {editData ? (
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">報告書NO (自動採番)</label>
@@ -668,7 +728,6 @@ export const ActivityForm = () => {
                 </div>
               )}
 
-              {/* 🚀 ステータスと計画区分、対象グループをここに移動しました */}
               <div className="flex flex-col sm:flex-row gap-4 mb-2 mt-4 pt-4 border-t border-gray-100">
                 <div className="flex-1 min-w-0">
                   <label className="block text-sm font-bold text-gray-700 mb-1">ステータス</label>
@@ -695,7 +754,6 @@ export const ActivityForm = () => {
                 </select>
               </div>
 
-              {/* 🚀 申請項目を移動 */}
               <div className="relative mt-4 pt-4 border-t border-gray-100">
                 <label className="block text-sm font-bold text-gray-700 mb-1">申請用の活動項目を選択 (最大6つ)</label>
                 <button type="button" onClick={() => !isViewMode && setIsDropdownOpen(!isDropdownOpen)} className={`w-full min-w-0 box-border text-left bg-white border border-gray-300 rounded-xl p-3 flex justify-between items-center ${isViewMode ? 'bg-gray-100 cursor-not-allowed opacity-100' : 'focus:ring-2 focus:ring-green-500'}`}>
