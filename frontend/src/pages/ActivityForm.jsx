@@ -640,7 +640,7 @@ export const ActivityForm = () => {
           </h1>
           {editData?.isLocked && (
             <span className="ml-3 bg-gray-600 text-white text-[10px] md:text-xs px-2.5 py-1 rounded-lg font-bold flex items-center shadow-sm whitespace-nowrap">
-              <Lock size={14} className="mr-1" /> 提出済 (ロック)
+              <Lock size={14} className="mr-1" /> 申請書提出済 (ロック)
             </span>
           )}
         </div>
@@ -654,7 +654,7 @@ export const ActivityForm = () => {
 
           {editData && isViewMode && editData.isLocked && (userRole === 'admin' || userRole === 'manager') && (
             <button type="button" onClick={toggleLock} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-orange-50 text-orange-600 rounded-lg font-bold hover:bg-orange-100 transition-colors text-sm md:text-base">
-              <Unlock size={18} className="mr-1.5" /> <span className="hidden md:inline">提出ロック解除</span>
+              <Unlock size={18} className="mr-1.5" /> <span className="hidden md:inline">申請書提出ロック解除</span>
             </button>
           )}
 
@@ -671,7 +671,7 @@ export const ActivityForm = () => {
 
           {editData && isViewMode && !editData.isLocked && canEditOrDelete && (
             <button type="button" onClick={handleLockSubmit} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition-colors text-sm md:text-base shadow-sm active:scale-95">
-              <CheckCircle size={18} className="md:mr-1.5" /> <span className="hidden md:inline">提出する (ロック)</span>
+              <CheckCircle size={18} className="md:mr-1.5" /> <span className="hidden md:inline">申請書提出 (ロック)</span>
             </button>
           )}
 

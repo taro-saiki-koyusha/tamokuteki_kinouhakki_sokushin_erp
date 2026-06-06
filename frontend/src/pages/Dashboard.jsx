@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock } from 'lucide-react'; 
+import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock, Map } from 'lucide-react'; // 🚀 Mapアイコンを追加
 import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, doc, getDoc, deleteDoc, where } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -286,9 +286,16 @@ export const Dashboard = () => {
     return pCost + mCost + matCost;
   };
 
+  // 🚀 地図画像を開く関数
+  const handleOpenMap = () => {
+    // TODO: ここにFirebase Storage等にアップロードした地図画像の公開URLを設定してください
+    const mapImageUrl = "/kamata_noudou.jpg"; 
+  
+      window.open(mapImageUrl, '_blank');
+  };
+
   const roleLabel = userRole === 'admin' ? '管理者' : userRole === 'manager' ? '事務・役員' : '現場リーダー';
 
-  // 🚀 表示名を取得（システムユーザーデータから優先して取得）
   const displayUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || 
                           systemUsers.find(u => u.id === currentUser?.uid)?.displayName || 
                           currentUser?.displayName || 
@@ -306,7 +313,6 @@ export const Dashboard = () => {
     const isCreator = activity.createdBy === currentUser?.uid;
     const isInSameGroup = userGroupIds.includes(activity.groupId);
     
-    // 🚀 ロックされている場合、reporterは削除できないように制御
     const canDeleteAct = userRole === 'admin' || userRole === 'manager' ||
                          (!activity.isLocked && userRole === 'reporter' && canEditOwn && isCreator) ||
                          (!activity.isLocked && userRole === 'reporter' && canEditGroup && isInSameGroup);
@@ -328,7 +334,6 @@ export const Dashboard = () => {
             {statusLabel}
           </span>
 
-          {/* 🚀 ロックされている場合は「提出済」バッジを表示 */}
           {activity.isLocked && (
             <span className="text-[10px] px-2 py-1 rounded-md font-bold border border-gray-500 bg-gray-600 text-white whitespace-nowrap flex items-center shadow-sm">
               <Lock size={10} className="mr-1" /> 提出済
@@ -339,7 +344,6 @@ export const Dashboard = () => {
             <Link size={15} />
           </button>
 
-          {/* 🚀 削除権限がある場合のみゴミ箱を表示 */}
           {canDeleteAct && (
             <button onClick={(e) => handleDeleteClick(activity.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="この実績を削除">
               <Trash2 size={16} />
@@ -446,7 +450,6 @@ export const Dashboard = () => {
                 const isCreator = act.createdBy === currentUser?.uid;
                 const isInSameGroup = userGroupIds.includes(act.groupId);
                 
-                // 🚀 ロックされている場合、reporterは削除できないように制御
                 const canDeleteAct = userRole === 'admin' || userRole === 'manager' ||
                                      (!act.isLocked && userRole === 'reporter' && canEditOwn && isCreator) ||
                                      (!act.isLocked && userRole === 'reporter' && canEditGroup && isInSameGroup);
@@ -460,16 +463,13 @@ export const Dashboard = () => {
                   <tr key={act.id} onClick={() => navigate(`/activity-form/${act.id}`, { state: { editData: act, isViewMode: true } })} className={`border-b border-gray-100 cursor-pointer transition-colors group/row ${act.isLocked ? 'hover:bg-gray-50/80' : 'hover:bg-green-50'}`}>
                     <td className="p-3 text-sm text-gray-700 whitespace-nowrap">{act.date}</td>
                     
-                    {/* 🚀 活動内容を元の状態（1行表示）に戻す */}
                     <td className="p-3 text-sm font-bold text-gray-900 whitespace-nowrap overflow-hidden text-ellipsis">{act.activityType}</td>
                     
-                    {/* 🚀 状態の列に提出済バッジを配置 */}
                     <td className="p-3 text-center whitespace-nowrap">
                       <div className="flex flex-col items-center gap-1">
                         <span className={`px-2 py-1 rounded-full text-[9px] font-bold border whitespace-nowrap ${statusLabel === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-600 border-green-100'}`}>
                           {statusLabel}
                         </span>
-                        {/* 🚀 ロックバッジの表示 */}
                         {act.isLocked && (
                           <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-gray-600 text-white flex items-center whitespace-nowrap shadow-sm border border-gray-500 shrink-0" title="提出済みのためロックされています">
                             <Lock size={8} className="mr-1" /> 提出済
@@ -530,7 +530,6 @@ export const Dashboard = () => {
                           </>
                         )}
 
-                        {/* 🚀 削除権限がある場合のみ表示 */}
                         {canDeleteAct && (
                           <button onClick={(e) => handleDeleteClick(act.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="削除">
                             <Trash2 size={14} />
@@ -655,6 +654,11 @@ export const Dashboard = () => {
                 </button>
               </div>
             )}
+
+            {/* 🚀 新規追加：エリアマップ ボタン */}
+            <button onClick={handleOpenMap} className="flex items-center bg-gray-800 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm hover:bg-gray-900 active:scale-95 transition-all">
+              <Map size={18} className="mr-1.5" /> エリアマップ
+            </button>
             
             <button onClick={() => navigate('/bulk-activity')} className="flex items-center bg-blue-100 text-blue-700 border border-blue-200 px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm hover:bg-blue-200 active:scale-95 transition-all">
               <LayoutList size={18} className="mr-1.5" /> 一括登録
