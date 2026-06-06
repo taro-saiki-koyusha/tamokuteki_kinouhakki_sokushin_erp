@@ -170,7 +170,6 @@ export const ActivityForm = () => {
   const updateParticipant = (index, field, value) => {
     const newList = [...participantDetails];
     
-    // 🚀 ユーザー変更時に農業者区分を自動判定
     if (field === 'participantName') {
       const selectedUser = systemUsers.find(u => (u.name || u.displayName) === value);
       if (selectedUser) {
@@ -204,7 +203,6 @@ export const ActivityForm = () => {
     const baseHours = calculateBaseHours();
     const newParticipants = selectedRosterIds.map(userId => {
       const user = systemUsers.find(u => u.id === userId); 
-      // 🚀 自動判定して追加
       return { 
         participantName: user ? (user.name || user.displayName || '未設定') : '', 
         isManualName: false, 
@@ -422,7 +420,7 @@ export const ActivityForm = () => {
   };
 
   const handleLockSubmit = async () => {
-    if (window.confirm('この活動実績を「提出済」としてロックしますか？\n提出後は、一般ユーザーは内容の編集や削除ができなくなります。')) {
+    if (window.confirm('この活動実績を「申請書提出済」としてロックしますか？\n申請書提出後は、一般ユーザーは内容の編集や削除ができなくなります。')) {
       try {
         await updateDoc(doc(db, 'activities', editData.id), {
           isLocked: true,
@@ -670,7 +668,8 @@ export const ActivityForm = () => {
             </button>
           )}
 
-          {editData && isViewMode && editData.isLocked && (userRole === 'admin' || userRole === 'manager') && (
+          {/* 🚀 提出ロック解除（管理者のみ） */}
+          {editData && isViewMode && editData.isLocked && userRole === 'admin' && (
             <button type="button" onClick={toggleLock} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-orange-50 text-orange-600 rounded-lg font-bold hover:bg-orange-100 transition-colors text-sm md:text-base">
               <Unlock size={18} className="mr-1.5" /> <span className="hidden md:inline">申請書提出ロック解除</span>
             </button>
@@ -687,9 +686,10 @@ export const ActivityForm = () => {
             </>
           )}
 
-          {editData && isViewMode && !editData.isLocked && canEditOrDelete && (
+          {/* 🚀 申請書提出ロック（管理者のみ） */}
+          {editData && isViewMode && !editData.isLocked && userRole === 'admin' && (
             <button type="button" onClick={handleLockSubmit} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition-colors text-sm md:text-base shadow-sm active:scale-95">
-              <CheckCircle size={18} className="md:mr-1.5" /> <span className="hidden md:inline">申請書提出 (ロック)</span>
+              <CheckCircle size={18} className="md:mr-1.5" /> <span className="hidden md:inline">申請書提出済(ロック)</span>
             </button>
           )}
 
@@ -720,7 +720,7 @@ export const ActivityForm = () => {
 
               {editData ? (
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">報告書NO (自動採番)</label>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">報告書No. (自動採番)</label>
                   <div className="flex gap-2 items-center">
                     <input 
                       type="text" 
@@ -747,7 +747,7 @@ export const ActivityForm = () => {
                 </div>
               ) : (
                 <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm text-gray-500 font-bold flex items-center">
-                  <CheckCircle size={16} className="mr-2 text-green-500" /> 報告書NOは登録時に自動で設定されます。
+                  <CheckCircle size={16} className="mr-2 text-green-500" /> 報告書No.は登録時に自動で設定されます。
                 </div>
               )}
 
@@ -755,8 +755,8 @@ export const ActivityForm = () => {
                 <div className="flex-1 min-w-0">
                   <label className="block text-sm font-bold text-gray-700 mb-1">ステータス</label>
                   <select name="status" value={formData.status} onChange={handleChange} disabled={isViewMode} className={`w-full min-w-0 box-border border rounded-xl p-3 font-bold focus:ring-2 focus:ring-green-500 disabled:opacity-100 ${formData.status === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-300' : 'bg-green-50 text-green-700 border-green-300'}`}>
-                    <option value="未実施">未実施（計画用）</option>
-                    <option value="実績入力済">実績入力済（完了）</option>
+                    <option value="未実施">未実施</option>
+                    <option value="実績入力済">実績入力済（作業完了）</option>
                   </select>
                 </div>
                 <div className="flex-1 min-w-0">
@@ -1257,7 +1257,7 @@ export const ActivityForm = () => {
             <h1 className="text-2xl font-bold text-center border-b-4 border-black pb-2 mb-6">活動状況写真台帳</h1>
             <table className="w-full border-2 border-black border-collapse mb-6 text-sm">
               <tbody>
-                <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">報告書NO</th><td className="border border-black p-3" colSpan="3">{editData.reportNo || '（未設定）'}</td></tr>
+                <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">報告書No.</th><td className="border border-black p-3" colSpan="3">{editData.reportNo || '（未設定）'}</td></tr>
                 <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">実施年月日</th><td className="border border-black p-3 w-1/4">{editData.date}</td><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">活動項目番号</th><td className="border border-black p-3 w-1/4">{editData.activityNumbers?.join(', ')}</td></tr>
                 <tr><th className="border border-black bg-gray-100 p-3 text-left">実施場所</th><td className="border border-black p-3" colSpan="3">{editData.location}</td></tr>
                 <tr><th className="border border-black bg-gray-100 p-3 text-left">活動内容</th><td className="border border-black p-3" colSpan="3">{editData.activityType}</td></tr>
