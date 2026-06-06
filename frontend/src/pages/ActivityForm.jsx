@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
-import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2, Calculator, Package, Plus, CheckCircle, Copy, ListChecks, MessageSquare, Download, Link as LinkIcon, FileSpreadsheet, Printer, Hash, Lock, Unlock, Send, CreditCard } from 'lucide-react';
+import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2, Calculator, Package, Plus, CheckCircle, Copy, MessageSquare, Download, Link as LinkIcon, FileSpreadsheet, Printer, Hash, Lock, Unlock, CreditCard } from 'lucide-react';
 import { collection, addDoc, doc, updateDoc, serverTimestamp, deleteDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -38,8 +38,6 @@ export const ActivityForm = () => {
   const [materialsList, setMaterialsList] = useState([]);
   const [groupsList, setGroupsList] = useState([]);
   const [systemUsers, setSystemUsers] = useState([]);
-
-  // 🚀 新規：システム設定（振込日など）を保持するステート
   const [systemSettings, setSystemSettings] = useState({ paymentDates: [] });
   
   const [currentUser, setCurrentUser] = useState(null);
@@ -57,7 +55,7 @@ export const ActivityForm = () => {
   const [searchTerm, setSearchTerm] = useState("");
 
   const [formData, setFormData] = useState({
-    status: '実績入力済', planType: '当初計画', isEssential: false, groupId: '', paymentDateId: '', // 🚀 paymentDateId を追加
+    status: '実績入力済', planType: '当初計画', isEssential: false, groupId: '', paymentDateId: '',
     date: new Date().toISOString().split('T')[0], startTime: '08:00', endTime: '10:00',
     location: '', activityType: '', activityNumbers: [], memo: '', reportNo: '',
     budget: ''
@@ -82,7 +80,7 @@ export const ActivityForm = () => {
             setFormData({
               status: data.status || '実績入力済', planType: data.planType || '当初計画',
               isEssential: data.isEssential || false, groupId: data.groupId || '',
-              paymentDateId: data.paymentDateId || '', // 🚀 データ取得時に反映
+              paymentDateId: data.paymentDateId || '',
               date: data.date || '', startTime: data.startTime || '08:00', endTime: data.endTime || '10:00',
               location: data.location || '', activityType: data.activityType || '',
               activityNumbers: data.activityNumbers || [], memo: data.memo || '',
@@ -102,7 +100,7 @@ export const ActivityForm = () => {
       const d = location.state.editData;
       setFormData({
         status: d.status || '実績入力済', planType: d.planType || '当初計画', isEssential: d.isEssential || false, groupId: d.groupId || '',
-        paymentDateId: d.paymentDateId || '', // 🚀 データ取得時に反映
+        paymentDateId: d.paymentDateId || '',
         date: d.date, startTime: d.startTime, endTime: d.endTime, location: d.location, activityType: d.activityType,
         activityNumbers: d.activityNumbers || [], memo: d.memo || '', reportNo: d.reportNo || '', budget: d.budget || '' 
       });
@@ -119,7 +117,6 @@ export const ActivityForm = () => {
     const unsubGroups = onSnapshot(collection(db, 'groups'), (s) => setGroupsList(s.docs.map(d => ({ id: d.id, ...d.data() }))));
     const unsubUsers = onSnapshot(collection(db, 'users'), (s) => setSystemUsers(s.docs.map(d => ({ id: d.id, ...d.data() }))));
     
-    // 🚀 新規：システム設定（振込日）の監視を追加
     const unsubSettings = onSnapshot(doc(db, 'settings', 'system'), (docSnap) => {
       if (docSnap.exists()) {
         setSystemSettings(docSnap.data());
@@ -172,6 +169,15 @@ export const ActivityForm = () => {
 
   const updateParticipant = (index, field, value) => {
     const newList = [...participantDetails];
+    
+    // 🚀 ユーザー変更時に農業者区分を自動判定
+    if (field === 'participantName') {
+      const selectedUser = systemUsers.find(u => (u.name || u.displayName) === value);
+      if (selectedUser) {
+        newList[index].isAgri = selectedUser.isAgri !== false;
+      }
+    }
+    
     newList[index][field] = value;
     
     if (field === 'machineId' && value !== '' && newList[index].machineTime === 0) {
@@ -198,7 +204,16 @@ export const ActivityForm = () => {
     const baseHours = calculateBaseHours();
     const newParticipants = selectedRosterIds.map(userId => {
       const user = systemUsers.find(u => u.id === userId); 
-      return { participantName: user ? (user.name || user.displayName || '未設定') : '', isManualName: false, wageId: '', isAgri: true, workTime: baseHours, machineId: '', machineTime: 0 };
+      // 🚀 自動判定して追加
+      return { 
+        participantName: user ? (user.name || user.displayName || '未設定') : '', 
+        isManualName: false, 
+        wageId: '', 
+        isAgri: user ? (user.isAgri !== false) : true, 
+        workTime: baseHours, 
+        machineId: '', 
+        machineTime: 0 
+      };
     });
     setParticipantDetails([...participantDetails, ...newParticipants]);
     setShowRosterModal(false);
@@ -213,20 +228,23 @@ export const ActivityForm = () => {
   };
   const removeMaterial = (index) => setMaterialDetails(materialDetails.filter((_, i) => i !== index));
 
-  const summary = participantDetails.reduce((acc, p) => {
-    let isAgri = p.isAgri;
-    if (isAgri === undefined) {
-      const wId = p.wageId || p.memberId;
-      if (wId && wId !== 'zero') {
-        const wage = membersList.find(m => m.id === wId);
-        isAgri = wage ? wage.isAgri : true;
-      } else {
-        isAgri = true;
+  const summary = useMemo(() => {
+    return participantDetails.reduce((acc, p) => {
+      let isAgri = p.isAgri;
+      if (isAgri === undefined) {
+        const wId = p.wageId || p.memberId;
+        if (wId && wId !== 'zero') {
+          const wage = membersList.find(m => m.id === wId);
+          isAgri = wage ? wage.isAgri : true;
+        } else {
+          isAgri = true;
+        }
       }
-    }
-    if (isAgri) acc.agri += 1; else acc.nonAgri += 1;
-    return acc;
-  }, { agri: 0, nonAgri: 0 });
+      if (isAgri) acc.agri += 1; else acc.nonAgri += 1;
+      return acc;
+    }, { agri: 0, nonAgri: 0 });
+  }, [participantDetails, membersList]);
+
   const totalParticipants = summary.agri + summary.nonAgri;
 
   const { totalPersonnelCost, totalMachineCost, totalMaterialCost } = useMemo(() => {
@@ -299,7 +317,7 @@ export const ActivityForm = () => {
     if (!editData) return;
     setFormData({
       status: editData.status || '実績入力済', planType: editData.planType || '当初計画', isEssential: editData.isEssential || false,
-      groupId: editData.groupId || '', paymentDateId: editData.paymentDateId || '', // 🚀 反映
+      groupId: editData.groupId || '', paymentDateId: editData.paymentDateId || '',
       date: editData.date || '', startTime: editData.startTime || '', endTime: editData.endTime || '',
       location: editData.location || '', activityType: editData.activityType || '', activityNumbers: editData.activityNumbers || [],
       memo: editData.memo || '', reportNo: editData.reportNo || '', budget: editData.budget || ''
@@ -759,7 +777,6 @@ export const ActivityForm = () => {
                 </select>
               </div>
 
-              {/* 🚀 新規追加: 振込日（申請時期）の選択 */}
               <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 mt-4">
                 <label className="block text-sm font-bold text-purple-900 mb-1 flex items-center">
                   <CreditCard size={16} className="mr-1.5" /> 振込日（申請時期）
@@ -957,11 +974,11 @@ export const ActivityForm = () => {
                       <div className="flex flex-wrap md:flex-nowrap gap-3 items-center w-full">
                         
                         <div className="flex gap-2 w-full md:w-auto">
+                          {/* 🚀 農業者区分：自動判定で表示のみ（disabled={true}） */}
                           <select
                             value={isAgri ? 'true' : 'false'}
-                            onChange={(e) => updateParticipant(index, 'isAgri', e.target.value === 'true')}
-                            disabled={isViewMode}
-                            className={`w-20 md:w-24 shrink-0 box-border border border-gray-300 rounded-xl p-2 text-xs md:text-sm font-bold focus:ring-2 focus:ring-green-500 disabled:opacity-100 cursor-pointer ${isAgri ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-700'}`}
+                            disabled={true} 
+                            className={`w-20 md:w-24 shrink-0 box-border border border-gray-300 rounded-xl p-2 text-xs md:text-sm font-bold opacity-100 ${isAgri ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-700'}`}
                           >
                             <option value="true">農業者</option>
                             <option value="false">以外</option>

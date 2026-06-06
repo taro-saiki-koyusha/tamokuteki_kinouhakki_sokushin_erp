@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, doc, updateDoc, onSnapshot, setDoc } from 'firebase/firestore'; 
-import { ArrowLeft, UserCog, Edit, Trash2, X, ShieldCheck, Mail, Wallet, Plus, CheckCircle, UserPlus, Phone, Hash, Users, Loader2, ChevronUp, ChevronDown, Copy } from 'lucide-react'; 
+import { ArrowLeft, UserCog, Edit, Trash2, X, ShieldCheck, Mail, Wallet, Plus, CheckCircle, UserPlus, Phone, Hash, Users, Loader2, ChevronUp, ChevronDown, Copy, Sprout } from 'lucide-react'; // 🚀 Sproutを追加
 import { db, auth } from '../firebase'; 
 import { initializeApp, deleteApp } from 'firebase/app'; 
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
@@ -29,7 +29,8 @@ export const UserManagement = () => {
     memberNo: '', 
     groupIds: [],
     canEditOwn: false,
-    canEditGroup: false
+    canEditGroup: false,
+    isAgri: true // 🚀 新規: 農業者区分の初期値
   });
 
   useEffect(() => {
@@ -181,6 +182,7 @@ export const UserManagement = () => {
         groupIds: newUser.groupIds,
         canEditOwn: newUser.canEditOwn,
         canEditGroup: newUser.canEditGroup,
+        isAgri: newUser.isAgri !== false, // 🚀 新規: 農業者区分を保存
         createdAt: new Date()
       });
 
@@ -190,7 +192,7 @@ export const UserManagement = () => {
       setSuccessModal({ show: true, loginId: displayId, password: newUser.password });
 
       setNewUser({
-        displayName: '', phone: '', password: '', role: 'reporter', memberNo: '', groupIds: [], canEditOwn: false, canEditGroup: false
+        displayName: '', phone: '', password: '', role: 'reporter', memberNo: '', groupIds: [], canEditOwn: false, canEditGroup: false, isAgri: true
       });
       setIsAddingUser(false);
 
@@ -210,7 +212,6 @@ export const UserManagement = () => {
     }
   };
 
-  // 🚀 コピー機能（ログインID用）
   const handleCopyId = (textToCopy) => {
     navigator.clipboard.writeText(textToCopy).then(() => {
       alert('ログインIDをコピーしました！');
@@ -332,6 +333,21 @@ export const UserManagement = () => {
                   <p className="text-[10px] text-gray-500 mt-1">※Excel出力時にこの番号が反映されます。</p>
                 </div>
 
+                {/* 🚀 新規追加: 農業者区分（新規登録時） */}
+                <div className="pt-2 border-t border-gray-100">
+                  <label className="block text-sm font-bold text-gray-700 mb-2">農業者区分</label>
+                  <div className="flex space-x-6">
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <input type="radio" name="newIsAgri" value="true" checked={newUser.isAgri !== false} onChange={() => setNewUser({...newUser, isAgri: true})} className="w-4 h-4 text-green-600 focus:ring-green-500" />
+                      <span className="text-sm font-bold text-gray-700">農業者</span>
+                    </label>
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <input type="radio" name="newIsAgri" value="false" checked={newUser.isAgri === false} onChange={() => setNewUser({...newUser, isAgri: false})} className="w-4 h-4 text-orange-500 focus:ring-orange-500" />
+                      <span className="text-sm font-bold text-gray-700">以外 (非農家等)</span>
+                    </label>
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">初期パスワード <span className="text-red-500">*</span></label>
                   <input type="text" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} required minLength="6" className="w-full border border-gray-300 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500 font-mono" placeholder="6文字以上 (例：123456)" />
@@ -446,6 +462,24 @@ export const UserManagement = () => {
                   className="w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-purple-500"
                   placeholder="例：1234 または 法人名"
                 />
+              </div>
+
+              {/* 🚀 新規追加: 農業者区分（編集時） */}
+              <div className="mb-6">
+                <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center">
+                  <Sprout size={16} className="mr-1 text-gray-500" />
+                  農業者区分
+                </label>
+                <div className="flex space-x-6 bg-white border border-gray-300 rounded-xl p-3">
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input type="radio" name="editIsAgri" value="true" checked={editingUser?.isAgri !== false} onChange={() => setEditingUser({...editingUser, isAgri: true})} className="w-4 h-4 text-green-600 focus:ring-green-500" />
+                    <span className="text-sm font-bold text-gray-700">農業者</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input type="radio" name="editIsAgri" value="false" checked={editingUser?.isAgri === false} onChange={() => setEditingUser({...editingUser, isAgri: false})} className="w-4 h-4 text-orange-500 focus:ring-orange-500" />
+                    <span className="text-sm font-bold text-gray-700">以外 (非農家等)</span>
+                  </label>
+                </div>
               </div>
 
               <div className="mb-6">
@@ -564,7 +598,6 @@ export const UserManagement = () => {
                     </div>
                   </th>
 
-                  {/* 🚀 ログインID の列ヘッダー */}
                   <th className="px-4 py-3 font-bold text-gray-700">ログインID</th>
 
                   <th onClick={() => requestSort('memberNo')} className="px-4 py-3 font-bold cursor-pointer hover:bg-gray-100 transition-colors select-none group" title="構成員番号で並び替え">
@@ -595,7 +628,6 @@ export const UserManagement = () => {
                       </div>
                     </td>
                     
-                    {/* 🚀 ログインIDの表示とコピーボタン */}
                     <td className="px-4 py-4">
                       <div className="flex items-center">
                         <span className="text-[10px] text-gray-500 font-mono bg-gray-100 px-2 py-1 rounded select-all">
@@ -615,9 +647,15 @@ export const UserManagement = () => {
                       <span className="text-sm text-gray-700 font-mono">{user.memberNo || <span className="text-gray-300 text-xs">未設定</span>}</span>
                     </td>
 
+                    {/* 🚀 権限の横に農業者バッジを追加 */}
                     <td className="px-4 py-4">
                       <div className="flex flex-col space-y-1">
                         {getRoleBadge(user.role)}
+                        {user.isAgri === false ? (
+                          <span className="bg-orange-50 text-orange-600 px-2 py-1 rounded-md text-[10px] font-bold border border-orange-100 w-max">農業者以外</span>
+                        ) : (
+                          <span className="bg-green-50 text-green-600 px-2 py-1 rounded-md text-[10px] font-bold border border-green-100 w-max">農業者</span>
+                        )}
                         {user.role === 'reporter' && (user.canEditOwn || user.canEditGroup) && (
                           <span className="text-[9px] text-blue-500 font-bold border border-blue-200 px-1.5 rounded w-max">特別編集権限あり</span>
                         )}
