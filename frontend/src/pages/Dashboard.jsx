@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock, Map } from 'lucide-react'; // 🚀 Mapアイコンを追加
+import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock, Map } from 'lucide-react'; 
 import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, doc, getDoc, deleteDoc, where } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -209,6 +209,16 @@ export const Dashboard = () => {
       sheet1.cell('O7').value(Number(activity.participantsNonAgri || 0)); 
       sheet1.cell('Q7').value(Number(activity.participants || 0)); 
       sheet1.cell('S7').value(activity.activityNumbers?.join(', ')); 
+
+      // 🚀 追加：支払区分の番号をY7セルに出力
+      let paymentCategoryNum = '';
+      if (activity.paymentCategory) {
+        if (activity.paymentCategory.includes('1') || activity.paymentCategory.includes('１')) paymentCategoryNum = 1;
+        else if (activity.paymentCategory.includes('2') || activity.paymentCategory.includes('２')) paymentCategoryNum = 2;
+        else if (activity.paymentCategory.includes('3') || activity.paymentCategory.includes('３')) paymentCategoryNum = 3;
+      }
+      sheet1.cell('Y7').value(paymentCategoryNum);
+
       sheet1.cell('AA7').value(activity.activityType || '');          
       sheet1.cell('A8').value(activity.memo || '');
       
@@ -286,12 +296,9 @@ export const Dashboard = () => {
     return pCost + mCost + matCost;
   };
 
-  // 🚀 地図画像を開く関数
   const handleOpenMap = () => {
-    // TODO: ここにFirebase Storage等にアップロードした地図画像の公開URLを設定してください
-    const mapImageUrl = "/kamata_noudou.jpg"; 
-  
-      window.open(mapImageUrl, '_blank');
+    const mapImageUrl = "/map.jpg"; 
+    window.open(mapImageUrl, '_blank');
   };
 
   const roleLabel = userRole === 'admin' ? '管理者' : userRole === 'manager' ? '事務・役員' : '現場リーダー';
@@ -655,7 +662,6 @@ export const Dashboard = () => {
               </div>
             )}
 
-            {/* 🚀 新規追加：エリアマップ ボタン */}
             <button onClick={handleOpenMap} className="flex items-center bg-gray-800 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm hover:bg-gray-900 active:scale-95 transition-all">
               <Map size={18} className="mr-1.5" /> エリアマップ
             </button>
@@ -850,6 +856,7 @@ export const Dashboard = () => {
                 <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">実施年月日</th><td className="border border-black p-3 w-1/4">{printActivity.date}</td><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">活動項目番号</th><td className="border border-black p-3 w-1/4">{printActivity.activityNumbers?.join(', ')}</td></tr>
                 <tr><th className="border border-black bg-gray-100 p-3 text-left">実施場所</th><td className="border border-black p-3" colSpan="3">{printActivity.location}</td></tr>
                 <tr><th className="border border-black bg-gray-100 p-3 text-left">活動内容</th><td className="border border-black p-3" colSpan="3">{printActivity.activityType}</td></tr>
+                <tr><th className="border border-black bg-gray-100 p-3 text-left">支払区分</th><td className="border border-black p-3" colSpan="3">{printActivity.paymentCategory}</td></tr>
                 <tr><th className="border border-black bg-gray-100 p-3 text-left">参加人数</th><td className="border border-black p-3" colSpan="3">計 {printActivity.participants} 名 （農業者：{printActivity.participantsAgri}名 ／ 農業者以外：{printActivity.participantsNonAgri}名）</td></tr>
               </tbody>
             </table>

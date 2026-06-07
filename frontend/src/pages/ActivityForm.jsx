@@ -55,7 +55,7 @@ export const ActivityForm = () => {
   const [searchTerm, setSearchTerm] = useState("");
 
   const [formData, setFormData] = useState({
-    status: '実績入力済', planType: '当初計画', isEssential: false, groupId: '', paymentDateId: '',
+    status: '実績入力済', planType: '当初計画', isEssential: false, groupId: '', paymentCategory: '', paymentDateId: '',
     date: new Date().toISOString().split('T')[0], startTime: '08:00', endTime: '10:00',
     location: '', activityType: '', activityNumbers: [], memo: '', reportNo: '',
     budget: ''
@@ -80,6 +80,7 @@ export const ActivityForm = () => {
             setFormData({
               status: data.status || '実績入力済', planType: data.planType || '当初計画',
               isEssential: data.isEssential || false, groupId: data.groupId || '',
+              paymentCategory: data.paymentCategory || '',
               paymentDateId: data.paymentDateId || '',
               date: data.date || '', startTime: data.startTime || '08:00', endTime: data.endTime || '10:00',
               location: data.location || '', activityType: data.activityType || '',
@@ -100,6 +101,7 @@ export const ActivityForm = () => {
       const d = location.state.editData;
       setFormData({
         status: d.status || '実績入力済', planType: d.planType || '当初計画', isEssential: d.isEssential || false, groupId: d.groupId || '',
+        paymentCategory: d.paymentCategory || '',
         paymentDateId: d.paymentDateId || '',
         date: d.date, startTime: d.startTime, endTime: d.endTime, location: d.location, activityType: d.activityType,
         activityNumbers: d.activityNumbers || [], memo: d.memo || '', reportNo: d.reportNo || '', budget: d.budget || '' 
@@ -315,7 +317,7 @@ export const ActivityForm = () => {
     if (!editData) return;
     setFormData({
       status: editData.status || '実績入力済', planType: editData.planType || '当初計画', isEssential: editData.isEssential || false,
-      groupId: editData.groupId || '', paymentDateId: editData.paymentDateId || '',
+      groupId: editData.groupId || '', paymentCategory: editData.paymentCategory || '', paymentDateId: editData.paymentDateId || '',
       date: editData.date || '', startTime: editData.startTime || '', endTime: editData.endTime || '',
       location: editData.location || '', activityType: editData.activityType || '', activityNumbers: editData.activityNumbers || [],
       memo: editData.memo || '', reportNo: editData.reportNo || '', budget: editData.budget || ''
@@ -364,6 +366,16 @@ export const ActivityForm = () => {
       sheet1.cell('O7').value(Number(editData.participantsNonAgri || 0));
       sheet1.cell('Q7').value(Number(editData.participants || 0));
       sheet1.cell('S7').value(editData.activityNumbers?.join(', '));
+
+      // 🚀 修正：7行目のY列（25列目）に支払区分の番号を出力
+      let paymentCategoryNum = '';
+      if (editData.paymentCategory) {
+        if (editData.paymentCategory.includes('1') || editData.paymentCategory.includes('１')) paymentCategoryNum = 1;
+        else if (editData.paymentCategory.includes('2') || editData.paymentCategory.includes('２')) paymentCategoryNum = 2;
+        else if (editData.paymentCategory.includes('3') || editData.paymentCategory.includes('３')) paymentCategoryNum = 3;
+      }
+      sheet1.cell(7, 25).value(paymentCategoryNum);
+
       sheet1.cell('AA7').value(editData.activityType || '');
       sheet1.cell('A8').value(editData.memo || '');
 
@@ -668,7 +680,6 @@ export const ActivityForm = () => {
             </button>
           )}
 
-          {/* 🚀 提出ロック解除（管理者のみ） */}
           {editData && isViewMode && editData.isLocked && userRole === 'admin' && (
             <button type="button" onClick={toggleLock} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-orange-50 text-orange-600 rounded-lg font-bold hover:bg-orange-100 transition-colors text-sm md:text-base">
               <Unlock size={18} className="mr-1.5" /> <span className="hidden md:inline">申請書提出ロック解除</span>
@@ -686,7 +697,6 @@ export const ActivityForm = () => {
             </>
           )}
 
-          {/* 🚀 申請書提出ロック（管理者のみ） */}
           {editData && isViewMode && !editData.isLocked && userRole === 'admin' && (
             <button type="button" onClick={handleLockSubmit} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition-colors text-sm md:text-base shadow-sm active:scale-95">
               <CheckCircle size={18} className="md:mr-1.5" /> <span className="hidden md:inline">申請書提出済(ロック)</span>
@@ -771,9 +781,25 @@ export const ActivityForm = () => {
 
               <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
                 <label className="block text-sm font-bold text-blue-900 mb-1">対象グループ <span className="text-red-500">*</span></label>
-                <select name="groupId" value={formData.groupId} onChange={handleChange} disabled={isViewMode} className={`${inputClass} border-blue-200 focus:ring-blue-500`} required>
+                <select name="groupId" value={formData.groupId} onChange={handleChange} disabled={isViewMode} className={`${inputClass} border-blue-200 focus:ring-blue-500 bg-white`} required>
                   <option value="">グループを選択してください</option>
                   {selectableGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                </select>
+              </div>
+
+              <div className="bg-teal-50 p-4 rounded-xl border border-teal-100 mt-4">
+                <label className="block text-sm font-bold text-teal-900 mb-1">支払区分</label>
+                <select 
+                  name="paymentCategory" 
+                  value={formData.paymentCategory} 
+                  onChange={handleChange} 
+                  disabled={isViewMode} 
+                  className={`${inputClass} border-teal-200 focus:ring-teal-500 bg-white`} 
+                >
+                  <option value="">選択してください</option>
+                  <option value="１ 農地維持支払">１ 農地維持支払</option>
+                  <option value="２ 資源向上支払（共同）">２ 資源向上支払（共同）</option>
+                  <option value="３ 資源向上支払（長寿命化）">３ 資源向上支払（長寿命化）</option>
                 </select>
               </div>
 
@@ -974,7 +1000,6 @@ export const ActivityForm = () => {
                       <div className="flex flex-wrap md:flex-nowrap gap-3 items-center w-full">
                         
                         <div className="flex gap-2 w-full md:w-auto">
-                          {/* 🚀 農業者区分：自動判定で表示のみ（disabled={true}） */}
                           <select
                             value={isAgri ? 'true' : 'false'}
                             disabled={true} 
@@ -1122,7 +1147,7 @@ export const ActivityForm = () => {
                 const matTotal = (detail.quantity || 0) * matPrice;
 
                 return (
-                  <div key={index} className="bg-gray-50 border border-gray-200 rounded-2xl p-4 relative group flex flex-col md:flex-row gap-3 md:items-center">
+                  <div key={index} className="bg-white border border-gray-200 rounded-2xl p-4 relative group flex flex-col md:flex-row gap-3 md:items-center">
                     {!isViewMode && (
                       <button type="button" onClick={() => removeMaterial(index)} className="absolute -top-2 right-0 md:-right-2 bg-white text-red-500 p-1.5 rounded-full border border-red-100 shadow-sm transition-opacity z-10"><Trash2 size={16} /></button>
                     )}
@@ -1261,6 +1286,7 @@ export const ActivityForm = () => {
                 <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">実施年月日</th><td className="border border-black p-3 w-1/4">{editData.date}</td><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">活動項目番号</th><td className="border border-black p-3 w-1/4">{editData.activityNumbers?.join(', ')}</td></tr>
                 <tr><th className="border border-black bg-gray-100 p-3 text-left">実施場所</th><td className="border border-black p-3" colSpan="3">{editData.location}</td></tr>
                 <tr><th className="border border-black bg-gray-100 p-3 text-left">活動内容</th><td className="border border-black p-3" colSpan="3">{editData.activityType}</td></tr>
+                <tr><th className="border border-black bg-gray-100 p-3 text-left">支払区分</th><td className="border border-black p-3" colSpan="3">{editData.paymentCategory}</td></tr>
                 <tr><th className="border border-black bg-gray-100 p-3 text-left">参加人数</th><td className="border border-black p-3" colSpan="3">計 {editData.participants} 名 （農業者：{editData.participantsAgri}名 ／ 農業者以外：{editData.participantsNonAgri}名）</td></tr>
               </tbody>
             </table>
