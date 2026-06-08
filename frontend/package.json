@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "deploy": "npm run build && firebase deploy --only hosting"
+    "deploy": "npm run build && firebase deploy --only hosting",
+    "test": "jest"
   },
   "dependencies": {
     "exceljs": "^4.4.0",
@@ -19,8 +20,13 @@
     "xlsx-populate": "^1.21.0"
   },
   "devDependencies": {
+    "@babel/core": "^7.29.7",
+    "@babel/preset-env": "^7.29.7",
+    "@babel/preset-react": "^7.29.7",
     "@tailwindcss/vite": "^4.0.0",
     "@vitejs/plugin-react": "^4.0.0",
+    "babel-jest": "^30.4.1",
+    "jest": "^30.4.2",
     "tailwindcss": "^4.0.0",
     "vite": "^5.0.0"
   }
