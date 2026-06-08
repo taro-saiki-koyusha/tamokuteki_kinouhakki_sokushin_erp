@@ -39,6 +39,14 @@ export const Dashboard = () => {
   const [materialsList, setMaterialsList] = useState([]); 
   const [groupsList, setGroupsList] = useState([]);
   const [systemUsers, setSystemUsers] = useState([]); 
+  
+  const [systemSettings, setSystemSettings] = useState({ 
+    fiscalYearStartMonth: 4, 
+    paymentDates: [],
+    budgetAgriMaintain: 0,
+    budgetResourceJoint: 0,
+    budgetResourceLongLife: 0
+  });
 
   const [displayMode, setDisplayMode] = useState(() => localStorage.getItem('dashboardDisplayMode') || 'group');
   const [viewStyle, setViewStyle] = useState(() => localStorage.getItem('dashboardViewStyle') || 'card');
@@ -77,6 +85,19 @@ export const Dashboard = () => {
     });
     const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
       setSystemUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    const unsubSettings = onSnapshot(doc(db, 'settings', 'system'), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setSystemSettings({
+          fiscalYearStartMonth: data.fiscalYearStartMonth || 4,
+          paymentDates: data.paymentDates || [],
+          budgetAgriMaintain: data.budgetAgriMaintain || 0,
+          budgetResourceJoint: data.budgetResourceJoint || 0,
+          budgetResourceLongLife: data.budgetResourceLongLife || 0
+        });
+      }
     });
 
     let unsubscribeData = null;
@@ -134,6 +155,7 @@ export const Dashboard = () => {
       unsubMachines();
       unsubMaterials();
       unsubUsers();
+      unsubSettings(); 
       if (unsubscribeData) unsubscribeData();
     };
   }, []);
@@ -211,7 +233,6 @@ export const Dashboard = () => {
       sheet1.cell('Q7').value(Number(activity.participants || 0)); 
       sheet1.cell('S7').value(activity.activityNumbers?.join(', ')); 
 
-      // 支払区分番号をY7セル (7行目, 25列目) に出力
       let paymentCategoryNum = '';
       if (activity.paymentCategory) {
         if (activity.paymentCategory.includes('1') || activity.paymentCategory.includes('１')) paymentCategoryNum = 1;
@@ -220,7 +241,6 @@ export const Dashboard = () => {
       }
       sheet1.cell(7, 25).value(paymentCategoryNum);
 
-      // 具体的な活動内容をAE7セル (7行目, 31列目) に出力
       sheet1.cell(7, 31).value(activity.activityType || '');          
       sheet1.cell('A8').value(activity.memo || '');
       
@@ -298,40 +318,34 @@ export const Dashboard = () => {
     return pCost + mCost + matCost;
   };
 
-  // 🚀 新規：支払区分ごとの予算・実績集計ロジック
   const paymentCategoryTotals = useMemo(() => {
     const totals = {
-      agriMaintain: { name: '１ 農地維持支払', budget: 0, actual: 0 },
-      resourceJoint: { name: '２ 資源向上支払（共同）', budget: 0, actual: 0 },
-      resourceLongLife: { name: '３ 資源向上支払（長寿命化）', budget: 0, actual: 0 },
+      agriMaintain: { name: '１ 農地維持支払', budget: systemSettings.budgetAgriMaintain || 0, actual: 0 },
+      resourceJoint: { name: '２ 資源向上支払（共同）', budget: systemSettings.budgetResourceJoint || 0, actual: 0 },
+      resourceLongLife: { name: '３ 資源向上支払（長寿命化）', budget: systemSettings.budgetResourceLongLife || 0, actual: 0 },
       unassigned: { name: '未設定 / その他', budget: 0, actual: 0 }
     };
 
     activities.forEach(act => {
       const statusLabel = act.status || '実績入力済';
-      if (statusLabel === '未実施') return; // 未実施は除外（必要に応じて含める場合は条件を変更）
+      if (statusLabel === '未実施') return; 
 
-      const budget = Number(act.budget) || 0;
       const actual = calculateActivityCost(act);
       const category = act.paymentCategory || '';
 
       if (category.includes('1') || category.includes('１')) {
-        totals.agriMaintain.budget += budget;
         totals.agriMaintain.actual += actual;
       } else if (category.includes('2') || category.includes('２')) {
-        totals.resourceJoint.budget += budget;
         totals.resourceJoint.actual += actual;
       } else if (category.includes('3') || category.includes('３')) {
-        totals.resourceLongLife.budget += budget;
         totals.resourceLongLife.actual += actual;
       } else {
-        totals.unassigned.budget += budget;
         totals.unassigned.actual += actual;
       }
     });
 
     return Object.values(totals);
-  }, [activities, membersList, machinesList, materialsList]);
+  }, [activities, systemSettings, membersList, machinesList, materialsList]);
 
   const handleOpenMap = () => {
     const mapImageUrl = "/map.jpg"; 
@@ -409,6 +423,13 @@ export const Dashboard = () => {
             ) : (
               <span className="bg-red-50 text-red-500 text-[10px] px-2 py-1 rounded-md font-bold border border-red-100 mb-1">未登録</span>
             )}
+            
+            {/* 🚀 カード表示側にも支払区分を表示 */}
+            {activity.paymentCategory && (
+              <span className="ml-1 bg-teal-50 text-teal-700 text-[9px] px-2 py-1 rounded-md font-bold border border-teal-100 truncate max-w-[120px]">
+                {activity.paymentCategory}
+              </span>
+            )}
           </div>
           {activity.reportNo && <div className="flex items-center text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded-md w-max mb-1">NO: {activity.reportNo}</div>}
           <div className="flex items-center"><Calendar className="mr-2 h-4 w-4" />{activity.date}</div>
@@ -453,7 +474,8 @@ export const Dashboard = () => {
     return (
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto relative">
-          <table className="w-full text-left border-collapse min-w-[1300px] table-fixed">
+          {/* 🚀 min-w を少し広げて支払区分の列を追加できるように調整 */}
+          <table className="w-full text-left border-collapse min-w-[1450px] table-fixed">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200 text-sm text-gray-700">
                 <th onClick={toggleDateSort} className="p-3 font-bold w-32 cursor-pointer hover:bg-gray-200 transition-colors select-none group whitespace-nowrap" title="日付で並び替え">
@@ -466,7 +488,11 @@ export const Dashboard = () => {
                 <th className="p-3 font-bold w-full whitespace-nowrap">活動内容</th>
                 
                 <th className="p-3 font-bold w-20 text-center whitespace-nowrap">状態</th>
-                <th className="p-3 font-bold w-24 text-center whitespace-nowrap">区分</th>
+                <th className="p-3 font-bold w-24 text-center whitespace-nowrap">計画区分</th>
+                
+                {/* 🚀 新規追加：支払区分列 */}
+                <th className="p-3 font-bold w-32 whitespace-nowrap">支払区分</th>
+                
                 <th className="p-3 font-bold w-24 whitespace-nowrap">報告書NO</th>
                 <th className="p-3 font-bold w-28 text-right whitespace-nowrap">予算額</th>
                 <th className="p-3 font-bold w-28 text-right whitespace-nowrap">実績額</th>
@@ -539,7 +565,12 @@ export const Dashboard = () => {
                       </div>
                     </td>
 
-                    <td className="p-3 text-sm font-bold text-blue-600 whitespace-nowrap">{act.reportNo}</td>
+                    {/* 🚀 新規追加：支払区分セルの出力 */}
+                    <td className="p-3 text-[10px] text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis font-bold">
+                      {act.paymentCategory || '-'}
+                    </td>
+
+                    <td className="p-3 text-sm font-bold text-blue-600 whitespace-nowrap">{act.reportNo || '-'}</td>
                     
                     <td className="p-3 text-sm font-bold text-gray-700 whitespace-nowrap text-right">
                       {budget > 0 ? `¥${budget.toLocaleString()}` : '-'}
@@ -713,7 +744,6 @@ export const Dashboard = () => {
           </div>
         </div>
 
-        {/* 🚀 新規追加：支払区分ごとの集計状況パネル */}
         {activities.length > 0 && (
           <div className="mb-8 bg-white p-5 rounded-2xl shadow-sm border border-gray-200 animate-in fade-in duration-300">
             <h3 className="font-extrabold text-gray-800 text-base flex items-center mb-4 border-b border-gray-100 pb-2">
@@ -734,11 +764,11 @@ export const Dashboard = () => {
                       </div>
                       <div className="space-y-1">
                         <div className="flex justify-between text-[11px] text-gray-500">
-                          <span>予算額:</span>
+                          <span>予算枠額:</span>
                           <span className="font-bold font-mono">¥{cat.budget.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between text-[11px] text-gray-500">
-                          <span>実績額:</span>
+                          <span>消化実績:</span>
                           <span className={`font-black font-mono ${isOverBudget ? 'text-red-600' : 'text-blue-700'}`}>
                             ¥{cat.actual.toLocaleString()}
                           </span>
@@ -747,7 +777,7 @@ export const Dashboard = () => {
                     </div>
                     {cat.budget > 0 && (
                       <div className={`mt-3 pt-2 border-t border-gray-200 border-dashed flex justify-between text-xs font-bold ${remaining < 0 ? 'text-red-500' : 'text-green-600'}`}>
-                        <span>予算残:</span>
+                        <span>予算枠残:</span>
                         <span className="font-mono">¥{remaining.toLocaleString()}</span>
                       </div>
                     )}
@@ -957,3 +987,5 @@ export const Dashboard = () => {
     </div>
   );
 };
+
+export default Dashboard;

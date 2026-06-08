@@ -11,7 +11,10 @@ export const MasterManagement = () => {
   const [materials, setMaterials] = useState([]); 
   const [systemSettings, setSystemSettings] = useState({ 
     fiscalYearStartMonth: 4,
-    paymentDates: [] 
+    paymentDates: [],
+    budgetAgriMaintain: 0,
+    budgetResourceJoint: 0,
+    budgetResourceLongLife: 0
   }); 
   
   const [activeTab, setActiveTab] = useState('members'); 
@@ -36,7 +39,10 @@ export const MasterManagement = () => {
         const data = docSnap.data();
         setSystemSettings({
           fiscalYearStartMonth: data.fiscalYearStartMonth || 4,
-          paymentDates: data.paymentDates || [] 
+          paymentDates: data.paymentDates || [],
+          budgetAgriMaintain: data.budgetAgriMaintain || 0,
+          budgetResourceJoint: data.budgetResourceJoint || 0,
+          budgetResourceLongLife: data.budgetResourceLongLife || 0
         });
       }
     });
@@ -123,6 +129,9 @@ export const MasterManagement = () => {
       await setDoc(doc(db, 'settings', 'system'), {
         fiscalYearStartMonth: Number(systemSettings.fiscalYearStartMonth),
         paymentDates: systemSettings.paymentDates, 
+        budgetAgriMaintain: Number(systemSettings.budgetAgriMaintain || 0),
+        budgetResourceJoint: Number(systemSettings.budgetResourceJoint || 0),
+        budgetResourceLongLife: Number(systemSettings.budgetResourceLongLife || 0),
         updatedAt: serverTimestamp()
       }, { merge: true });
       alert('システム設定を保存しました。');
@@ -205,6 +214,52 @@ export const MasterManagement = () => {
                 </div>
               </div>
 
+              {/* 🚀 新規追加：支払区分別の予算枠設定 */}
+              <div className="bg-green-50 border border-green-100 rounded-xl p-5">
+                <h3 className="font-bold text-green-900 flex items-center mb-4 border-b border-green-200 pb-2">
+                  <DollarSign className="w-5 h-5 mr-2" /> 本年度の支払区分別予算設定
+                </h3>
+                <div className="space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                    <label className="text-sm font-bold text-gray-700 min-w-[240px]">１ 農地維持支払 予算</label>
+                    <div className="flex items-center w-full sm:w-64">
+                      <span className="text-gray-500 mr-2 font-bold">¥</span>
+                      <input 
+                        type="number" 
+                        value={systemSettings.budgetAgriMaintain || 0} 
+                        onChange={(e) => setSystemSettings({ ...systemSettings, budgetAgriMaintain: Number(e.target.value) })}
+                        className="w-full border border-gray-300 rounded-lg p-2 text-right font-bold font-mono text-sm focus:ring-2 focus:ring-green-500"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                    <label className="text-sm font-bold text-gray-700 min-w-[240px]">２ 資源向上支払（共同） 予算</label>
+                    <div className="flex items-center w-full sm:w-64">
+                      <span className="text-gray-500 mr-2 font-bold">¥</span>
+                      <input 
+                        type="number" 
+                        value={systemSettings.budgetResourceJoint || 0} 
+                        onChange={(e) => setSystemSettings({ ...systemSettings, budgetResourceJoint: Number(e.target.value) })}
+                        className="w-full border border-gray-300 rounded-lg p-2 text-right font-bold font-mono text-sm focus:ring-2 focus:ring-green-500"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                    <label className="text-sm font-bold text-gray-700 min-w-[240px]">３ 資源向上支払（長寿命化） 予算</label>
+                    <div className="flex items-center w-full sm:w-64">
+                      <span className="text-gray-500 mr-2 font-bold">¥</span>
+                      <input 
+                        type="number" 
+                        value={systemSettings.budgetResourceLongLife || 0} 
+                        onChange={(e) => setSystemSettings({ ...systemSettings, budgetResourceLongLife: Number(e.target.value) })}
+                        className="w-full border border-gray-300 rounded-lg p-2 text-right font-bold font-mono text-sm focus:ring-2 focus:ring-green-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-3">※ ここで設定した全体の総予算額枠が、ダッシュボードの「支払区分別の集計状況」に反映されます。</p>
+              </div>
+
               <div className="bg-purple-50 border border-purple-100 rounded-xl p-5">
                 <div className="flex justify-between items-center mb-4 border-b border-purple-200 pb-2">
                   <h3 className="font-bold text-purple-900 flex items-center">
@@ -234,7 +289,6 @@ export const MasterManagement = () => {
                             className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-purple-500 text-sm"
                           />
                         </div>
-                        {/* 🚀 カレンダー入力に変更 */}
                         <div className="w-full sm:w-48">
                           <label className="block text-xs font-bold text-gray-500 mb-1">振込日（目安）</label>
                           <input 
@@ -363,3 +417,5 @@ export const MasterManagement = () => {
     </div>
   );
 };
+
+export default MasterManagement;

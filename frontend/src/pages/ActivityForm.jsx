@@ -763,7 +763,7 @@ export const ActivityForm = () => {
 
               <div className="flex flex-col sm:flex-row gap-4 mb-2 mt-4 pt-4 border-t border-gray-100">
                 <div className="flex-1 min-w-0">
-                  <label className="block text-sm font-bold text-gray-700 mb-1">ステータス</label>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">状態</label>
                   <select name="status" value={formData.status} onChange={handleChange} disabled={isViewMode} className={`w-full min-w-0 box-border border rounded-xl p-3 font-bold focus:ring-2 focus:ring-green-500 disabled:opacity-100 ${formData.status === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-300' : 'bg-green-50 text-green-700 border-green-300'}`}>
                     <option value="未実施">未実施</option>
                     <option value="実績入力済">実績入力済（作業完了）</option>
