@@ -188,6 +188,7 @@ export const Dashboard = () => {
   };
 
   const handleExportSingleReport = async (activity) => {
+    if (!activity) return;
     setExportingId(activity.id); 
     try {
       const response = await fetch(`/様式1_活動報告書_農地維持支払.xlsx?t=${Date.now()}`);
@@ -210,16 +211,17 @@ export const Dashboard = () => {
       sheet1.cell('Q7').value(Number(activity.participants || 0)); 
       sheet1.cell('S7').value(activity.activityNumbers?.join(', ')); 
 
-      // 🚀 追加：支払区分の番号をY7セルに出力
+      // 支払区分番号をY7セル (7行目, 25列目) に出力
       let paymentCategoryNum = '';
       if (activity.paymentCategory) {
         if (activity.paymentCategory.includes('1') || activity.paymentCategory.includes('１')) paymentCategoryNum = 1;
         else if (activity.paymentCategory.includes('2') || activity.paymentCategory.includes('２')) paymentCategoryNum = 2;
         else if (activity.paymentCategory.includes('3') || activity.paymentCategory.includes('３')) paymentCategoryNum = 3;
       }
-      sheet1.cell('Y7').value(paymentCategoryNum);
+      sheet1.cell(7, 25).value(paymentCategoryNum);
 
-      sheet1.cell('AA7').value(activity.activityType || '');          
+      // 具体的な活動内容をAE7セル (7行目, 31列目) に出力
+      sheet1.cell(7, 31).value(activity.activityType || '');          
       sheet1.cell('A8').value(activity.memo || '');
       
       const sheet2 = workbook.sheet('日当借上支払明細') || workbook.sheets()[1];
@@ -295,6 +297,41 @@ export const Dashboard = () => {
     });
     return pCost + mCost + matCost;
   };
+
+  // 🚀 新規：支払区分ごとの予算・実績集計ロジック
+  const paymentCategoryTotals = useMemo(() => {
+    const totals = {
+      agriMaintain: { name: '１ 農地維持支払', budget: 0, actual: 0 },
+      resourceJoint: { name: '２ 資源向上支払（共同）', budget: 0, actual: 0 },
+      resourceLongLife: { name: '３ 資源向上支払（長寿命化）', budget: 0, actual: 0 },
+      unassigned: { name: '未設定 / その他', budget: 0, actual: 0 }
+    };
+
+    activities.forEach(act => {
+      const statusLabel = act.status || '実績入力済';
+      if (statusLabel === '未実施') return; // 未実施は除外（必要に応じて含める場合は条件を変更）
+
+      const budget = Number(act.budget) || 0;
+      const actual = calculateActivityCost(act);
+      const category = act.paymentCategory || '';
+
+      if (category.includes('1') || category.includes('１')) {
+        totals.agriMaintain.budget += budget;
+        totals.agriMaintain.actual += actual;
+      } else if (category.includes('2') || category.includes('２')) {
+        totals.resourceJoint.budget += budget;
+        totals.resourceJoint.actual += actual;
+      } else if (category.includes('3') || category.includes('３')) {
+        totals.resourceLongLife.budget += budget;
+        totals.resourceLongLife.actual += actual;
+      } else {
+        totals.unassigned.budget += budget;
+        totals.unassigned.actual += actual;
+      }
+    });
+
+    return Object.values(totals);
+  }, [activities, membersList, machinesList, materialsList]);
 
   const handleOpenMap = () => {
     const mapImageUrl = "/map.jpg"; 
@@ -675,6 +712,51 @@ export const Dashboard = () => {
             </button>
           </div>
         </div>
+
+        {/* 🚀 新規追加：支払区分ごとの集計状況パネル */}
+        {activities.length > 0 && (
+          <div className="mb-8 bg-white p-5 rounded-2xl shadow-sm border border-gray-200 animate-in fade-in duration-300">
+            <h3 className="font-extrabold text-gray-800 text-base flex items-center mb-4 border-b border-gray-100 pb-2">
+              <BarChart2 size={18} className="text-blue-600 mr-2" />
+              支払区分別の集計状況 (作業完了実績分のみ)
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {paymentCategoryTotals.map((cat, idx) => {
+                const isOverBudget = cat.actual > cat.budget && cat.budget > 0;
+                const remaining = cat.budget - cat.actual;
+                if (cat.budget === 0 && cat.actual === 0 && cat.name.includes('未設定')) return null;
+
+                return (
+                  <div key={idx} className="bg-gray-50 p-4 rounded-xl border border-gray-200 flex flex-col justify-between">
+                    <div>
+                      <div className="text-xs font-black text-gray-600 truncate mb-2" title={cat.name}>
+                        {cat.name}
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-[11px] text-gray-500">
+                          <span>予算額:</span>
+                          <span className="font-bold font-mono">¥{cat.budget.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between text-[11px] text-gray-500">
+                          <span>実績額:</span>
+                          <span className={`font-black font-mono ${isOverBudget ? 'text-red-600' : 'text-blue-700'}`}>
+                            ¥{cat.actual.toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    {cat.budget > 0 && (
+                      <div className={`mt-3 pt-2 border-t border-gray-200 border-dashed flex justify-between text-xs font-bold ${remaining < 0 ? 'text-red-500' : 'text-green-600'}`}>
+                        <span>予算残:</span>
+                        <span className="font-mono">¥{remaining.toLocaleString()}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {loading ? (
           <div className="text-center py-20 text-gray-400">読み込み中...</div>
