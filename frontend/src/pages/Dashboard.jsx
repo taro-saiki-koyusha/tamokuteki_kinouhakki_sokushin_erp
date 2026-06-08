@@ -348,7 +348,7 @@ export const Dashboard = () => {
   }, [activities, systemSettings, membersList, machinesList, materialsList]);
 
   const handleOpenMap = () => {
-    const mapImageUrl = "/map.jpg"; 
+    const mapImageUrl = "/kamata_noudou.jpg"; 
     window.open(mapImageUrl, '_blank');
   };
 
