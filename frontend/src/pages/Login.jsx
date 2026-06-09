@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Sprout, LogIn, AlertCircle, Mail, Lock, UserPlus, Phone, Download, Share } from 'lucide-react';
+import { Sprout, LogIn, AlertCircle, Mail, Lock, UserPlus, Phone, Download, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-// 🚀 signInWithRedirect と getRedirectResult を復活
-import { signInWithPopup, signInWithRedirect, getRedirectResult, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, setPersistence, browserLocalPersistence } from 'firebase/auth';
+import { signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'; 
 import { auth, googleProvider, db } from '../firebase'; 
 
@@ -21,10 +20,112 @@ export const Login = () => {
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
 
+  // 安全のため、初期状態を「無効（false）」にして最初からグレーアウトさせる
+  const [isSafeChrome, setIsSafeChrome] = useState(false);
+
   const isLineBrowser = /Line/i.test(navigator.userAgent);
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
   const isIOSChrome = isIOS && /CriOS/i.test(navigator.userAgent);
-  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+  // 確実なPWA判定ロジック
+  useEffect(() => {
+    const checkBrowserEnvironment = () => {
+      try {
+        const ua = window.navigator.userAgent.toLowerCase();
+        
+        // 1. Chrome系ブラウザか判定 (Edge, Opera, Braveなどの派生ブラウザは弾く)
+        const isChromeBrowser = (ua.includes('chrome') || ua.includes('crios')) && 
+                                !ua.includes('edg') && !ua.includes('opr') && !ua.includes('brave');
+
+        if (!isChromeBrowser) {
+          setIsSafeChrome(false);
+          return;
+        }
+
+        // 2. 標準的なPWA判定
+        if (window.navigator.standalone === true) {
+          setIsSafeChrome(false);
+          return;
+        }
+        
+        if (window.matchMedia && (
+          window.matchMedia('(display-mode: standalone)').matches ||
+          window.matchMedia('(display-mode: fullscreen)').matches ||
+          window.matchMedia('(display-mode: minimal-ui)').matches
+        )) {
+          setIsSafeChrome(false);
+          return;
+        }
+
+        // 3. Android WebAPK判定
+        if (document.referrer.includes('android-app://')) {
+          setIsSafeChrome(false);
+          return;
+        }
+
+        // 4. iPhone(iOS)の特殊なPWA判定（画面サイズによる強制的検知）
+        const isIOSDevice = /iphone|ipad|ipod/.test(ua);
+        if (isIOSDevice) {
+          const browserUIHeight = window.screen.height - window.innerHeight;
+          if (browserUIHeight < 120) {
+            setIsSafeChrome(false);
+            return;
+          }
+        }
+
+        setIsSafeChrome(true);
+      } catch (err) {
+        setIsSafeChrome(false);
+      }
+    };
+
+    checkBrowserEnvironment();
+    window.addEventListener('resize', checkBrowserEnvironment);
+
+    // JSのフォールバッククラス付与
+    if (window.navigator.standalone === true || document.referrer.includes('android-app://')) {
+      document.body.classList.add('is-pwa');
+    }
+    const ua2 = window.navigator.userAgent.toLowerCase();
+    if (/iphone|ipad|ipod/.test(ua2) && (window.screen.height - window.innerHeight < 120)) {
+      document.body.classList.add('is-pwa');
+    }
+
+    return () => {
+      window.removeEventListener('resize', checkBrowserEnvironment);
+      document.body.classList.remove('is-pwa');
+    };
+  }, []);
+
+  // 完全に新しい最新ソースコードを強制的にロードさせる処理
+  const handleForceUpdate = async () => {
+    setLoading(true);
+    setError("システムを最新状態に更新中...");
+    try {
+      // ① Service Workerを強制アップデート
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (let registration of registrations) {
+          await registration.update();
+        }
+      }
+      
+      // ② 古い画像やアセットのキャッシュストレージを完全削除
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        for (let key of keys) {
+          await caches.delete(key);
+        }
+      }
+
+      // ③ キャッシュを無視させるためURLにタイムスタンプを付与して強制リロード
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.location.href = `${cleanUrl}?u=${Date.now()}`;
+    } catch (err) {
+      console.error("強制更新エラー:", err);
+      window.location.reload();
+    }
+  };
 
   const createUserData = async (user, name) => {
     const userRef = doc(db, 'users', user.uid);
@@ -39,26 +140,6 @@ export const Login = () => {
       });
     }
   };
-
-  // 🚀 Googleログイン画面から戻ってきた時の処理（フリーズしないように修正）
-  useEffect(() => {
-    const checkRedirectResult = async () => {
-      try {
-        // ※ここでは setLoading(true) にしない！（フリーズの原因になるため）
-        const result = await getRedirectResult(auth);
-        if (result) {
-          // ログインが成功してデータが返ってきた時だけローディングにする
-          setLoading(true);
-          await createUserData(result.user);
-          navigate('/dashboard');
-        }
-      } catch (err) {
-        console.error("Redirect Error:", err);
-        setError("Googleログインエラー: iPhoneの設定で「サイト越えトラッキングを防ぐ」がオンになっているか、LINEなどのアプリ内ブラウザを使用している可能性があります。Safariで開き直してお試しください。");
-      }
-    };
-    checkRedirectResult();
-  }, [navigate]);
 
   useEffect(() => {
     const savedId = localStorage.getItem('kamata_saved_login_id');
@@ -85,23 +166,20 @@ export const Login = () => {
     }
   };
 
-  // Googleログイン実行
   const handleGoogleLogin = async () => {
+    if (!isSafeChrome) return; 
+    
     setError(null);
+    setLoading(true);
     try {
-      await setPersistence(auth, browserLocalPersistence);
-      if (isMobile) {
-        // スマホの場合は画面が切り替わるリダイレクト方式
-        await signInWithRedirect(auth, googleProvider);
-      } else {
-        // パソコンの場合はポップアップ方式
-        setLoading(true);
-        const result = await signInWithPopup(auth, googleProvider);
-        await createUserData(result.user);
-        navigate('/dashboard');
-      }
+      const result = await signInWithPopup(auth, googleProvider);
+      await createUserData(result.user, result.user.displayName);
+      navigate('/dashboard');
     } catch (err) {
-      setError("Googleログイン画面への移動に失敗しました。");
+      console.error("Google Login Error:", err);
+      if (err.code !== 'auth/popup-closed-by-user' && err.code !== 'auth/cancelled-popup-request') {
+         setError("Googleログインに失敗しました。もう一度お試しください。");
+      }
       setLoading(false);
     }
   };
@@ -130,8 +208,6 @@ export const Login = () => {
         const cleanPhone = loginIdInput.replace(/[^0-9]/g, '');
         finalLoginId = `${cleanPhone}@kamata.local`;
       }
-
-      await setPersistence(auth, browserLocalPersistence);
 
       if (isSignUp) {
         const result = await createUserWithEmailAndPassword(auth, finalLoginId, password);
@@ -183,6 +259,18 @@ export const Login = () => {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center py-8 px-4 relative">
       
+      <style>{`
+        .pwa-warning-section { display: none; }
+        
+        @media all and (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
+          .google-login-section { display: none !important; }
+          .pwa-warning-section { display: block !important; }
+        }
+
+        body.is-pwa .google-login-section { display: none !important; }
+        body.is-pwa .pwa-warning-section { display: block !important; }
+      `}</style>
+
       {showInstallModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200">
@@ -332,27 +420,56 @@ export const Login = () => {
             </button>
           </div>
 
-          <div className="relative mb-5">
-            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200"></div></div>
-            <div className="relative flex justify-center text-xs"><span className="px-2 bg-white text-gray-400">またはGoogleでログイン</span></div>
+          <div className="google-login-section">
+            <div className="relative mb-5">
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200"></div></div>
+              <div className="relative flex justify-center text-xs"><span className="px-2 bg-white text-gray-400">またはGoogleでログイン</span></div>
+            </div>
+
+            <button 
+              type="button" 
+              onClick={handleGoogleLogin} 
+              disabled={loading || !isSafeChrome} 
+              className={`w-full flex justify-center items-center py-2.5 border rounded-lg font-bold text-sm transition-all shadow-sm ${(!isSafeChrome || loading) ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 active:scale-95'}`}
+            >
+              <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="" className={`w-4 h-4 mr-2 ${!isSafeChrome ? 'opacity-40 grayscale' : ''}`} />
+              Googleアカウントを使用
+            </button>
           </div>
 
-          <button type="button" onClick={handleGoogleLogin} disabled={loading} className="w-full flex justify-center items-center py-2.5 border border-gray-300 rounded-lg font-bold text-gray-700 text-sm bg-white hover:bg-gray-50 transition-all shadow-sm">
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="" className="w-4 h-4 mr-2" />
-            Googleアカウントを使用
-          </button>
+          <div className="pwa-warning-section mt-4">
+            <div className="text-center bg-orange-50 p-2.5 rounded-lg border border-orange-100 shadow-sm">
+              <p className="text-xs text-orange-700 font-bold leading-relaxed">
+                ※セキュリティ上の理由により、Googleログインは<span className="underline">Chromeブラウザ専用</span>です（アプリ版やSafariは不可）。<br/>IDとパスワードでログインしてください。
+              </p>
+            </div>
+          </div>
+
         </div>
 
-        <div className="mt-6 w-full">
+        {/* 🚀 アプリ追加ボタンと並べて、強制更新ボタンを配置 */}
+        <div className="mt-6 w-full space-y-3">
           <button 
             type="button"
             onClick={handleInstallClick}
-            className="w-full flex justify-center items-center py-3.5 bg-white text-gray-800 border-2 border-gray-200 rounded-xl font-bold hover:bg-gray-50 transition-all shadow-sm"
+            className="w-full flex justify-center items-center py-3.5 bg-white text-gray-800 border-2 border-gray-200 rounded-xl font-bold hover:bg-gray-50 transition-all shadow-sm text-sm"
           >
             <Download className="mr-2 h-5 w-5 text-green-600" />
             スマホのホーム画面に追加する（アプリ化）
           </button>
+
+          <button 
+            type="button"
+            onClick={handleForceUpdate}
+            disabled={loading}
+            className="w-full flex justify-center items-center py-2.5 bg-gray-200 text-gray-600 border border-gray-300 rounded-xl font-bold hover:bg-gray-300 transition-all text-xs"
+            title="アプリに最新の修正内容を強制反映します"
+          >
+            <RefreshCw className={`mr-2 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+            アプリを最新状態に更新（強制キャッシュクリア）
+          </button>
         </div>
+
       </div>
     </div>
   );
