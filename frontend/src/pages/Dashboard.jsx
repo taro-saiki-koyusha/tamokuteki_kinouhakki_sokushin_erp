@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock, Map } from 'lucide-react'; 
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock, Map, MoreVertical, Edit, Info, History } from 'lucide-react'; 
 import { useNavigate } from 'react-router-dom';
-import { collection, query, onSnapshot, doc, getDoc, deleteDoc, where } from 'firebase/firestore';
+// 🚀 ログ用に addDoc, serverTimestamp を追加インポート
+import { collection, query, onSnapshot, doc, getDoc, deleteDoc, where, addDoc, serverTimestamp } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { db, auth } from '../firebase';
 import XlsxPopulate from 'xlsx-populate/browser/xlsx-populate';
@@ -23,6 +24,88 @@ const formatTimestamp = (timestamp) => {
     return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   }
   return '-';
+};
+
+const useLongPress = (onLongPress, onClick, ms = 500) => {
+  const timerRef = useRef(null);
+  const isLongPress = useRef(false);
+  const startPos = useRef({ x: 0, y: 0 });
+
+  const start = (e) => {
+    isLongPress.current = false;
+    
+    if (e.touches && e.touches.length > 0) {
+      startPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    } else {
+      startPos.current = { x: e.clientX, y: e.clientY };
+    }
+
+    timerRef.current = setTimeout(() => {
+      isLongPress.current = true;
+      if (window.navigator && window.navigator.vibrate) {
+        window.navigator.vibrate(50);
+      }
+      onLongPress(e);
+    }, ms);
+  };
+
+  const move = (e) => {
+    if (!timerRef.current) return;
+    
+    let currentPos = { x: 0, y: 0 };
+    if (e.touches && e.touches.length > 0) {
+      currentPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    } else {
+      currentPos = { x: e.clientX, y: e.clientY };
+    }
+
+    const distance = Math.sqrt(
+      Math.pow(currentPos.x - startPos.current.x, 2) + 
+      Math.pow(currentPos.y - startPos.current.y, 2)
+    );
+
+    if (distance > 15) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  const clear = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  const click = (e) => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    if (isLongPress.current) {
+      e.stopPropagation();
+      e.preventDefault();
+      return;
+    }
+    if (onClick) onClick(e);
+  };
+
+  const contextMenu = (e) => {
+    e.preventDefault();
+  };
+
+  return {
+    onMouseDown: start,
+    onTouchStart: start,
+    onMouseMove: move,
+    onTouchMove: move,
+    onMouseUp: clear,
+    onMouseLeave: clear,
+    onTouchEnd: clear,
+    onTouchCancel: clear,
+    onClick: click,
+    onContextMenu: contextMenu
+  };
 };
 
 export const Dashboard = () => {
@@ -62,6 +145,8 @@ export const Dashboard = () => {
   const [canEditOwn, setCanEditOwn] = useState(false);
   const [canEditGroup, setCanEditGroup] = useState(false);
   const [deletingActivityId, setDeletingActivityId] = useState(null);
+
+  const [actionMenuActivity, setActionMenuActivity] = useState(null);
 
   useEffect(() => {
     const fallbackTimer = setTimeout(() => {
@@ -185,12 +270,29 @@ export const Dashboard = () => {
   const handleDeleteClick = (id, e) => {
     e.stopPropagation(); 
     setDeletingActivityId(id);
+    setActionMenuActivity(null); 
   };
 
   const executeDelete = async () => {
     if (!deletingActivityId) return;
     try {
+      // 🚀 ログ記録用に削除対象のデータを取得
+      const targetAct = activities.find(a => a.id === deletingActivityId);
       await deleteDoc(doc(db, 'activities', deletingActivityId));
+      
+      // 🚀 操作履歴（ログ）の書き込み
+      if (targetAct) {
+        const currentUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || currentUser?.displayName || '名称未設定';
+        await addDoc(collection(db, 'audit_logs'), {
+          action: 'DELETE',
+          userName: currentUserName,
+          userId: currentUser?.uid || 'unknown',
+          target: '活動実績',
+          details: `活動日: ${targetAct.date} の記録（${targetAct.activityType || '無題'}）を削除しました`,
+          createdAt: serverTimestamp()
+        });
+      }
+
       setDeletingActivityId(null);
     } catch (error) {
       console.error("削除エラー:", error);
@@ -199,7 +301,7 @@ export const Dashboard = () => {
   };
 
   const handleCopyLink = (activity, e) => {
-    e.stopPropagation(); 
+    e?.stopPropagation(); 
     const link = `${window.location.origin}/activity-form/${activity.id}`;
     navigator.clipboard.writeText(link).then(() => {
       alert("この活動の専用リンクをコピーしました！\nメールやLINE等に貼り付けて共有できます。");
@@ -207,11 +309,13 @@ export const Dashboard = () => {
       console.error("コピー失敗:", err);
       alert("リンクのコピーに失敗しました。");
     });
+    setActionMenuActivity(null);
   };
 
   const handleExportSingleReport = async (activity) => {
     if (!activity) return;
     setExportingId(activity.id); 
+    setActionMenuActivity(null); 
     try {
       const response = await fetch(`/様式1_活動報告書_農地維持支払.xlsx?t=${Date.now()}`);
       if (!response.ok) throw new Error('テンプレートが見つかりません');
@@ -285,7 +389,7 @@ export const Dashboard = () => {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `活動報告書_${activity.date}.xlsx`; 
+      a.download = `活動報告書_${activity.reportNo ? activity.reportNo + '_' : ''}${activity.date}.xlsx`; 
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch (error) { console.error(error); alert('Excel作成エラー'); } finally { setExportingId(null); }
@@ -293,7 +397,15 @@ export const Dashboard = () => {
 
   const handleDirectPrint = (activity) => {
     setPrintActivity(activity);
-    setTimeout(() => { window.print(); }, 150);
+    setActionMenuActivity(null); 
+    const reportNoStr = activity?.reportNo ? `${activity.reportNo}_` : '';
+    const dateStr = activity?.date || '';
+    setTimeout(() => { 
+      const originalTitle = document.title;
+      document.title = `活動報告書_${reportNoStr}${dateStr}`;
+      window.print(); 
+      document.title = originalTitle;
+    }, 150);
   };
 
   const calculateActivityCost = (act) => {
@@ -348,7 +460,7 @@ export const Dashboard = () => {
   }, [activities, systemSettings, membersList, machinesList, materialsList]);
 
   const handleOpenMap = () => {
-    const mapImageUrl = "/kamata_noudou.jpg"; 
+    const mapImageUrl = "/map.jpg"; 
     window.open(mapImageUrl, '_blank');
   };
 
@@ -359,22 +471,25 @@ export const Dashboard = () => {
                           currentUser?.displayName || 
                           'ユーザー';
 
+  const getPermissions = (activity) => {
+    const isCreator = activity.createdBy === currentUser?.uid;
+    const isInSameGroup = userGroupIds.includes(activity.groupId);
+    const canExport = userRole === 'admin' || userRole === 'manager';
+    const canDeleteAct = userRole === 'admin' || userRole === 'manager' ||
+                         (!activity.isLocked && userRole === 'reporter' && canEditOwn && isCreator) ||
+                         (!activity.isLocked && userRole === 'reporter' && canEditGroup && isInSameGroup);
+    return { canExport, canDeleteAct };
+  };
+
   const ActivityCard = ({ activity }) => {
     const images = activity.imageUrls || (activity.imageUrl ? [activity.imageUrl] : []);
     const isThisExporting = exportingId === activity.id;
-    const canExport = userRole === 'admin' || userRole === 'manager';
+    const { canExport, canDeleteAct } = getPermissions(activity);
     const groupInfo = groupsList.find(g => g.id === activity.groupId);
     
     const statusLabel = activity.status || '実績入力済';
     const planTypeLabel = activity.planType || '当初計画'; 
     
-    const isCreator = activity.createdBy === currentUser?.uid;
-    const isInSameGroup = userGroupIds.includes(activity.groupId);
-    
-    const canDeleteAct = userRole === 'admin' || userRole === 'manager' ||
-                         (!activity.isLocked && userRole === 'reporter' && canEditOwn && isCreator) ||
-                         (!activity.isLocked && userRole === 'reporter' && canEditGroup && isInSameGroup);
-
     const budget = Number(activity.budget) || 0;
     const actualCost = calculateActivityCost(activity);
 
@@ -424,7 +539,6 @@ export const Dashboard = () => {
               <span className="bg-red-50 text-red-500 text-[10px] px-2 py-1 rounded-md font-bold border border-red-100 mb-1">未登録</span>
             )}
             
-            {/* 🚀 カード表示側にも支払区分を表示 */}
             {activity.paymentCategory && (
               <span className="ml-1 bg-teal-50 text-teal-700 text-[9px] px-2 py-1 rounded-md font-bold border border-teal-100 truncate max-w-[120px]">
                 {activity.paymentCategory}
@@ -472,13 +586,19 @@ export const Dashboard = () => {
     };
 
     return (
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden relative">
+        {(userRole === 'admin' || userRole === 'manager') && (
+          <div className="md:hidden bg-blue-50/80 px-3 py-2 text-[10px] text-blue-600 flex items-center font-bold border-b border-blue-100">
+            <Info className="w-3.5 h-3.5 mr-1.5 shrink-0" /> 
+            <span>各行を<span className="bg-blue-100 px-1 rounded mx-0.5">長押し</span>するとメニュー（Excel出力など）が表示されます</span>
+          </div>
+        )}
+
         <div className="overflow-x-auto relative">
-          {/* 🚀 min-w を少し広げて支払区分の列を追加できるように調整 */}
-          <table className="w-full text-left border-collapse min-w-[1450px] table-fixed">
+          <table className="w-full text-left border-collapse min-w-[1450px] table-fixed select-none">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200 text-sm text-gray-700">
-                <th onClick={toggleDateSort} className="p-3 font-bold w-32 cursor-pointer hover:bg-gray-200 transition-colors select-none group whitespace-nowrap" title="日付で並び替え">
+                <th onClick={toggleDateSort} className="p-3 font-bold w-32 cursor-pointer hover:bg-gray-200 transition-colors group whitespace-nowrap" title="日付で並び替え">
                   <div className="flex items-center text-blue-700">
                     日付
                     {dateSortOrder === 'desc' ? <ChevronDown size={16} className="ml-1 text-blue-600 group-hover:text-blue-800" /> : <ChevronUp size={16} className="ml-1 text-blue-600 group-hover:text-blue-800" />}
@@ -488,11 +608,8 @@ export const Dashboard = () => {
                 <th className="p-3 font-bold w-full whitespace-nowrap">活動内容</th>
                 
                 <th className="p-3 font-bold w-20 text-center whitespace-nowrap">状態</th>
-                <th className="p-3 font-bold w-24 text-center whitespace-nowrap">計画区分</th>
-                
-                {/* 🚀 新規追加：支払区分列 */}
+                <th className="p-3 font-bold w-24 text-center whitespace-nowrap">区分</th>
                 <th className="p-3 font-bold w-32 whitespace-nowrap">支払区分</th>
-                
                 <th className="p-3 font-bold w-24 whitespace-nowrap">報告書NO</th>
                 <th className="p-3 font-bold w-28 text-right whitespace-nowrap">予算額</th>
                 <th className="p-3 font-bold w-28 text-right whitespace-nowrap">実績額</th>
@@ -502,7 +619,7 @@ export const Dashboard = () => {
                 <th className="p-3 font-bold w-24 text-center whitespace-nowrap">登録者</th>
                 <th className="p-3 font-bold w-12 text-center whitespace-nowrap">写真</th>
                 
-                <th className="w-0 px-3 py-3 font-bold text-center whitespace-nowrap sticky right-0 bg-gray-100 shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-200">
+                <th className="w-0 px-3 py-3 font-bold text-center whitespace-nowrap sticky right-0 bg-gray-100 shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-200 hidden md:table-cell">
                   操作
                 </th>
               </tr>
@@ -511,31 +628,40 @@ export const Dashboard = () => {
               {activitiesToRender.map(act => {
                 const groupInfo = groupsList.find(g => g.id === act.groupId);
                 const isThisExporting = exportingId === act.id;
-                const canExport = userRole === 'admin' || userRole === 'manager';
+                const { canExport, canDeleteAct } = getPermissions(act);
                 const hasImage = (act.imageUrls && act.imageUrls.length > 0) || act.imageUrl;
                 
                 const statusLabel = act.status || '実績入力済';
                 const planTypeLabel = act.planType || '当初計画';
-                
-                const isCreator = act.createdBy === currentUser?.uid;
-                const isInSameGroup = userGroupIds.includes(act.groupId);
-                
-                const canDeleteAct = userRole === 'admin' || userRole === 'manager' ||
-                                     (!act.isLocked && userRole === 'reporter' && canEditOwn && isCreator) ||
-                                     (!act.isLocked && userRole === 'reporter' && canEditGroup && isInSameGroup);
-
                 const creatorName = systemUsers.find(u => u.id === act.createdBy)?.displayName || '-';
 
                 const budget = Number(act.budget) || 0;
                 const actualCost = calculateActivityCost(act);
 
+                const longPressProps = useLongPress(
+                  () => {
+                    if (userRole === 'admin' || userRole === 'manager') {
+                      setActionMenuActivity(act);
+                    }
+                  }, 
+                  (e) => {
+                    navigate(`/activity-form/${act.id}`, { state: { editData: act, isViewMode: true } });
+                  },
+                  500 
+                ); 
+
                 return (
-                  <tr key={act.id} onClick={() => navigate(`/activity-form/${act.id}`, { state: { editData: act, isViewMode: true } })} className={`border-b border-gray-100 cursor-pointer transition-colors group/row ${act.isLocked ? 'hover:bg-gray-50/80' : 'hover:bg-green-50'}`}>
-                    <td className="p-3 text-sm text-gray-700 whitespace-nowrap">{act.date}</td>
+                  <tr 
+                    key={act.id} 
+                    {...longPressProps}
+                    style={{ WebkitTouchCallout: 'none' }}
+                    className={`border-b border-gray-100 cursor-pointer transition-colors group/row active:bg-gray-200 ${act.isLocked ? 'hover:bg-gray-50/80' : 'hover:bg-green-50'}`}
+                  >
+                    <td className="p-3 text-sm text-gray-700 whitespace-nowrap pointer-events-none">{act.date}</td>
                     
-                    <td className="p-3 text-sm font-bold text-gray-900 whitespace-nowrap overflow-hidden text-ellipsis">{act.activityType}</td>
+                    <td className="p-3 text-sm font-bold text-gray-900 whitespace-nowrap overflow-hidden text-ellipsis pointer-events-none">{act.activityType}</td>
                     
-                    <td className="p-3 text-center whitespace-nowrap">
+                    <td className="p-3 text-center whitespace-nowrap pointer-events-none">
                       <div className="flex flex-col items-center gap-1">
                         <span className={`px-2 py-1 rounded-full text-[9px] font-bold border whitespace-nowrap ${statusLabel === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-600 border-green-100'}`}>
                           {statusLabel}
@@ -548,7 +674,7 @@ export const Dashboard = () => {
                       </div>
                     </td>
 
-                    <td className="p-3 text-center whitespace-nowrap">
+                    <td className="p-3 text-center whitespace-nowrap pointer-events-none">
                       <div className="flex flex-col items-center space-y-1">
                         <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border whitespace-nowrap ${
                           planTypeLabel === '当初計画' ? 'bg-blue-50 text-blue-600 border-blue-100' :
@@ -565,30 +691,29 @@ export const Dashboard = () => {
                       </div>
                     </td>
 
-                    {/* 🚀 新規追加：支払区分セルの出力 */}
-                    <td className="p-3 text-[10px] text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis font-bold">
+                    <td className="p-3 text-[10px] text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis font-bold pointer-events-none">
                       {act.paymentCategory || '-'}
                     </td>
 
-                    <td className="p-3 text-sm font-bold text-blue-600 whitespace-nowrap">{act.reportNo || '-'}</td>
+                    <td className="p-3 text-sm font-bold text-blue-600 whitespace-nowrap pointer-events-none">{act.reportNo || '-'}</td>
                     
-                    <td className="p-3 text-sm font-bold text-gray-700 whitespace-nowrap text-right">
+                    <td className="p-3 text-sm font-bold text-gray-700 whitespace-nowrap text-right pointer-events-none">
                       {budget > 0 ? `¥${budget.toLocaleString()}` : '-'}
                     </td>
-                    <td className={`p-3 text-sm font-bold whitespace-nowrap text-right ${actualCost > budget && budget > 0 ? 'text-red-600' : 'text-blue-700'}`}>
+                    <td className={`p-3 text-sm font-bold whitespace-nowrap text-right pointer-events-none ${actualCost > budget && budget > 0 ? 'text-red-600' : 'text-blue-700'}`}>
                       {actualCost > 0 ? `¥${actualCost.toLocaleString()}` : '-'}
                     </td>
 
-                    <td className="p-3 text-xs whitespace-nowrap overflow-hidden text-ellipsis">{groupInfo ? groupInfo.name : <span className="text-red-500">未登録</span>}</td>
-                    <td className="p-3 text-xs text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis">{act.location}</td>
-                    <td className="p-3 text-xs font-bold text-green-600 whitespace-nowrap">{act.activityNumbers?.join(', ')}</td>
-                    <td className="p-3 text-xs text-center text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis">{creatorName}</td>
+                    <td className="p-3 text-xs whitespace-nowrap overflow-hidden text-ellipsis pointer-events-none">{groupInfo ? groupInfo.name : <span className="text-red-500">未登録</span>}</td>
+                    <td className="p-3 text-xs text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis pointer-events-none">{act.location}</td>
+                    <td className="p-3 text-xs font-bold text-green-600 whitespace-nowrap pointer-events-none">{act.activityNumbers?.join(', ')}</td>
+                    <td className="p-3 text-xs text-center text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis pointer-events-none">{creatorName}</td>
                     
-                    <td className="p-3 text-center whitespace-nowrap">
+                    <td className="p-3 text-center whitespace-nowrap pointer-events-none">
                       {hasImage ? <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded text-[9px] font-bold">あり</span> : <span className="text-gray-300 text-[10px]">-</span>}
                     </td>
 
-                    <td className={`w-0 px-2 py-2 text-center whitespace-nowrap sticky right-0 bg-white transition-colors shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-100 ${act.isLocked ? 'group-hover/row:bg-gray-50/80' : 'group-hover/row:bg-green-50'}`}>
+                    <td className={`w-0 px-2 py-2 text-center whitespace-nowrap sticky right-0 bg-white transition-colors shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-100 hidden md:table-cell ${act.isLocked ? 'group-hover/row:bg-gray-50/80' : 'group-hover/row:bg-green-50'}`} onClick={(e) => e.stopPropagation()}>
                       <div className="flex gap-1.5 justify-center items-center w-max mx-auto">
                         <button onClick={(e) => handleCopyLink(act, e)} className="p-1.5 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded transition-colors" title="リンクをコピー">
                           <Link size={14} />
@@ -596,10 +721,10 @@ export const Dashboard = () => {
 
                         {canExport && (
                           <>
-                            <button onClick={(e) => { e.stopPropagation(); handleExportSingleReport(act); }} disabled={isThisExporting} className={`px-2 py-1.5 rounded-lg font-bold text-[9px] flex items-center transition-colors ${isThisExporting ? 'bg-blue-400 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`} title="Excel出力">
+                            <button onClick={(e) => handleExportSingleReport(act)} disabled={isThisExporting} className={`px-2 py-1.5 rounded-lg font-bold text-[9px] flex items-center transition-colors ${isThisExporting ? 'bg-blue-400 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`} title="Excel出力">
                               <FileSpreadsheet size={12} className="mr-1" />Excel
                             </button>
-                            <button onClick={(e) => { e.stopPropagation(); handleDirectPrint(act); }} className="px-2 py-1.5 bg-white text-gray-700 border border-gray-300 rounded-lg font-bold text-[9px] flex items-center hover:bg-gray-50 transition-colors" title="PDF出力">
+                            <button onClick={(e) => handleDirectPrint(act)} className="px-2 py-1.5 bg-white text-gray-700 border border-gray-300 rounded-lg font-bold text-[9px] flex items-center hover:bg-gray-50 transition-colors" title="PDF出力">
                               <Printer size={12} className="mr-1" />PDF
                             </button>
                           </>
@@ -623,7 +748,7 @@ export const Dashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 pb-20 md:pb-8 print:bg-white print:pb-0">
+    <div className="min-h-screen bg-gray-100 pb-20 md:pb-8 print:bg-white print:pb-0 relative">
       <style>{`
         @media print {
           body { background: white !important; }
@@ -662,6 +787,9 @@ export const Dashboard = () => {
               <button onClick={() => navigate('/masters')} className="flex items-center text-sm font-bold text-gray-500 hover:text-blue-600">
                 <Settings size={18} className="mr-1"/> マスタ管理
               </button>
+              <button onClick={() => navigate('/audit-logs')} className="flex items-center text-sm font-bold text-gray-500 hover:text-orange-600">
+                <History size={18} className="mr-1"/> 操作履歴
+              </button>
             </>
           )}
 
@@ -687,6 +815,7 @@ export const Dashboard = () => {
             <>
               <button onClick={() => navigate('/users')} className="p-2 text-gray-500 hover:text-purple-600 transition-colors"><UserCog size={20} /></button>
               <button onClick={() => navigate('/masters')} className="p-2 text-gray-500 hover:text-blue-600 transition-colors"><Settings size={20} /></button>
+              <button onClick={() => navigate('/audit-logs')} className="p-2 text-gray-500 hover:text-orange-600 transition-colors" title="操作履歴"><History size={20} /></button>
             </>
           )}
           
@@ -929,8 +1058,79 @@ export const Dashboard = () => {
         )}
       </main>
 
+      {/* 🚀 長押し時の操作メニュー（ボトムシート） */}
+      {actionMenuActivity && (
+        <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setActionMenuActivity(null)}>
+          <div 
+            className="bg-white w-full sm:w-[400px] rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-200"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-5 pb-3 border-b border-gray-100">
+              <div>
+                <div className="text-xs text-gray-500 font-bold mb-1">{actionMenuActivity.date}</div>
+                <h3 className="font-bold text-gray-900 text-lg truncate w-64">{actionMenuActivity.activityType || '無題の活動'}</h3>
+              </div>
+              <button onClick={() => setActionMenuActivity(null)} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-full text-gray-500 transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="space-y-3">
+              <button 
+                onClick={() => {
+                  navigate(`/activity-form/${actionMenuActivity.id}`, { state: { editData: actionMenuActivity, isViewMode: false } });
+                  setActionMenuActivity(null);
+                }} 
+                className="w-full flex items-center p-3 rounded-xl hover:bg-blue-50 text-blue-700 transition-colors border border-transparent hover:border-blue-100 group"
+              >
+                <div className="bg-blue-100 p-2 rounded-lg mr-3 group-hover:bg-blue-200 transition-colors"><Edit size={20} /></div>
+                <span className="font-bold">この活動を編集する</span>
+              </button>
+              
+              {getPermissions(actionMenuActivity).canExport && (
+                <>
+                  <button 
+                    onClick={() => handleExportSingleReport(actionMenuActivity)} 
+                    className="w-full flex items-center p-3 rounded-xl hover:bg-green-50 text-green-700 transition-colors border border-transparent hover:border-green-100 group"
+                  >
+                    <div className="bg-green-100 p-2 rounded-lg mr-3 group-hover:bg-green-200 transition-colors"><FileSpreadsheet size={20} /></div>
+                    <span className="font-bold">Excelで出力する (活動報告書)</span>
+                  </button>
+                  
+                  <button 
+                    onClick={() => handleDirectPrint(actionMenuActivity)} 
+                    className="w-full flex items-center p-3 rounded-xl hover:bg-gray-50 text-gray-800 transition-colors border border-transparent hover:border-gray-200 group"
+                  >
+                    <div className="bg-gray-200 p-2 rounded-lg mr-3 group-hover:bg-gray-300 transition-colors"><Printer size={20} /></div>
+                    <span className="font-bold">PDFで出力・印刷する</span>
+                  </button>
+                </>
+              )}
+
+              <button 
+                onClick={(e) => handleCopyLink(actionMenuActivity, e)} 
+                className="w-full flex items-center p-3 rounded-xl hover:bg-purple-50 text-purple-700 transition-colors border border-transparent hover:border-purple-100 group"
+              >
+                <div className="bg-purple-100 p-2 rounded-lg mr-3 group-hover:bg-purple-200 transition-colors"><Link size={20} /></div>
+                <span className="font-bold">共有リンクをコピーする</span>
+              </button>
+              
+              {getPermissions(actionMenuActivity).canDeleteAct && (
+                <button 
+                  onClick={(e) => handleDeleteClick(actionMenuActivity.id, e)} 
+                  className="w-full flex items-center p-3 rounded-xl hover:bg-red-50 text-red-600 transition-colors border border-transparent hover:border-red-100 group mt-2 pt-4 border-t border-gray-100"
+                >
+                  <div className="bg-red-100 p-2 rounded-lg mr-3 group-hover:bg-red-200 transition-colors"><Trash2 size={20} /></div>
+                  <span className="font-bold">この活動を削除する</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {deletingActivityId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setDeletingActivityId(null)}>
+        <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setDeletingActivityId(null)}>
           <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
             <div className="p-5 flex flex-col items-center text-center">
               <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-4">

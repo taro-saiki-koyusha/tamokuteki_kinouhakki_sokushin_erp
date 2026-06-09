@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2, Calculator, Package, Plus, CheckCircle, Copy, MessageSquare, Download, Link as LinkIcon, FileSpreadsheet, Printer, Hash, Lock, Unlock, CreditCard } from 'lucide-react';
+// 🚀 ログ用に addDoc, serverTimestamp を確実に取得
 import { collection, addDoc, doc, updateDoc, serverTimestamp, deleteDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -330,7 +331,22 @@ export const ActivityForm = () => {
 
   const handleDelete = async () => {
     if (window.confirm('本当にこの実績を削除しますか？')) {
-      try { await deleteDoc(doc(db, 'activities', editData.id)); navigate('/dashboard'); } 
+      try { 
+        await deleteDoc(doc(db, 'activities', editData.id)); 
+
+        // 🚀 操作履歴（ログ）の書き込み
+        const currentUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || currentUser?.displayName || '名称未設定';
+        await addDoc(collection(db, 'audit_logs'), {
+          action: 'DELETE',
+          userName: currentUserName,
+          userId: currentUser?.uid || 'unknown',
+          target: '活動実績',
+          details: `活動日: ${editData.date} の記録（${editData.activityType || '無題'}）を削除しました`,
+          createdAt: serverTimestamp()
+        });
+
+        navigate('/dashboard'); 
+      } 
       catch (error) { console.error(error); alert('削除エラー'); }
     }
   };
@@ -367,7 +383,6 @@ export const ActivityForm = () => {
       sheet1.cell('Q7').value(Number(editData.participants || 0));
       sheet1.cell('S7').value(editData.activityNumbers?.join(', '));
 
-      // 🚀 修正：7行目のY列（25列目）に支払区分の番号を出力
       let paymentCategoryNum = '';
       if (editData.paymentCategory) {
         if (editData.paymentCategory.includes('1') || editData.paymentCategory.includes('１')) paymentCategoryNum = 1;
@@ -438,6 +453,18 @@ export const ActivityForm = () => {
           isLocked: true,
           updatedAt: serverTimestamp()
         });
+
+        // 🚀 操作履歴（ログ）の書き込み
+        const currentUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || currentUser?.displayName || '名称未設定';
+        await addDoc(collection(db, 'audit_logs'), {
+          action: 'UPDATE',
+          userName: currentUserName,
+          userId: currentUser?.uid || 'unknown',
+          target: '活動実績',
+          details: `活動日: ${editData.date} の記録（${editData.activityType || '無題'}）を「提出済」としてロックしました`,
+          createdAt: serverTimestamp()
+        });
+
         setEditData({ ...editData, isLocked: true });
         alert('提出が完了し、データをロックしました。');
       } catch (error) {
@@ -456,6 +483,18 @@ export const ActivityForm = () => {
           isLocked: false,
           updatedAt: serverTimestamp()
         });
+
+        // 🚀 操作履歴（ログ）の書き込み
+        const currentUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || currentUser?.displayName || '名称未設定';
+        await addDoc(collection(db, 'audit_logs'), {
+          action: 'UPDATE',
+          userName: currentUserName,
+          userId: currentUser?.uid || 'unknown',
+          target: '活動実績',
+          details: `活動日: ${editData.date} の記録（${editData.activityType || '無題'}）の提出済ロックを解除しました`,
+          createdAt: serverTimestamp()
+        });
+
         setEditData({ ...editData, isLocked: false });
       } catch (error) {
         console.error(error);
@@ -516,9 +555,22 @@ export const ActivityForm = () => {
         updatedAt: serverTimestamp() 
       };
 
+      const currentUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || currentUser?.displayName || '名称未設定';
+
       if (editData) { 
         submitData.updatedBy = currentUser?.uid; 
         await updateDoc(doc(db, 'activities', editData.id), submitData); 
+
+        // 🚀 操作履歴（ログ）の書き込み: 更新
+        await addDoc(collection(db, 'audit_logs'), {
+          action: 'UPDATE',
+          userName: currentUserName,
+          userId: currentUser?.uid || 'unknown',
+          target: '活動実績',
+          details: `活動日: ${formData.date} の記録（${formData.activityType || '無題'}）を更新しました`,
+          createdAt: serverTimestamp()
+        });
+
         setSuccessModal({ show: true, message: '活動実績を修正しました。' });
       } 
       else { 
@@ -526,6 +578,17 @@ export const ActivityForm = () => {
         submitData.createdBy = currentUser?.uid; 
         submitData.isLocked = false;
         await addDoc(collection(db, 'activities'), submitData); 
+
+        // 🚀 操作履歴（ログ）の書き込み: 新規作成
+        await addDoc(collection(db, 'audit_logs'), {
+          action: 'CREATE',
+          userName: currentUserName,
+          userId: currentUser?.uid || 'unknown',
+          target: '活動実績',
+          details: `活動日: ${formData.date} の記録（${formData.activityType || '無題'}）を新規登録しました`,
+          createdAt: serverTimestamp()
+        });
+
         setSuccessModal({ show: true, message: '新しい活動実績を登録しました。' });
       }
     } catch (error) { 

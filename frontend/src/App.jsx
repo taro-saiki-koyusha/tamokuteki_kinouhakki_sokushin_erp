@@ -9,6 +9,8 @@ import { BulkActivityForm } from './pages/BulkActivityForm';
 import { MasterManagement } from './pages/MasterManagement';
 import { ProfileSettings } from './pages/ProfileSettings';
 import { CostManagement } from './pages/CostManagement';
+// 🚀 操作履歴画面をインポート
+import { AuditLogs } from './pages/AuditLogs';
 
 function App() {
   return (
@@ -17,7 +19,6 @@ function App() {
         <Route path="/" element={<Login />} />
         <Route path="/dashboard" element={<Dashboard />} />
         
-        {/* 🚀 IDなし(新規登録) と IDあり(個別リンク表示) の両方を共存させます */}
         <Route path="/activity-form" element={<ActivityForm />} />
         <Route path="/activity-form/:id" element={<ActivityForm />} />
         
@@ -25,9 +26,14 @@ function App() {
         <Route path="/groups" element={<GroupManagement />} />
         <Route path="/users" element={<UserManagement />} />
         <Route path="/masters" element={<MasterManagement />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
         <Route path="/profile" element={<ProfileSettings />} />
         <Route path="/costs" element={<CostManagement />} />
+        
+        // 🚀 操作履歴画面のURL（/audit-logs）を登録
+        <Route path="/audit-logs" element={<AuditLogs />} />
+
+        {/* ⚠️ 未定義のURLにアクセスした場合はログイン画面に戻す（※必ず一番下に配置する） */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
   );

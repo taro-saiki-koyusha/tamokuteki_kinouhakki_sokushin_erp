@@ -1,7 +1,10 @@
+
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, doc, updateDoc, onSnapshot, setDoc } from 'firebase/firestore'; 
-import { ArrowLeft, UserCog, Edit, Trash2, X, ShieldCheck, Mail, Wallet, Plus, CheckCircle, UserPlus, Phone, Hash, Users, Loader2, ChevronUp, ChevronDown, Copy, Sprout } from 'lucide-react'; // 🚀 Sproutを追加
+// 🚀 ログ記録用に addDoc, serverTimestamp を追加
+import { collection, doc, updateDoc, onSnapshot, setDoc, addDoc, serverTimestamp } from 'firebase/firestore'; 
+import { ArrowLeft, UserCog, Edit, Trash2, X, ShieldCheck, Mail, Wallet, Plus, CheckCircle, UserPlus, Phone, Hash, Users, Loader2, ChevronUp, ChevronDown, Copy, Sprout } from 'lucide-react'; 
 import { db, auth } from '../firebase'; 
 import { initializeApp, deleteApp } from 'firebase/app'; 
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
@@ -30,8 +33,15 @@ export const UserManagement = () => {
     groupIds: [],
     canEditOwn: false,
     canEditGroup: false,
-    isAgri: true // 🚀 新規: 農業者区分の初期値
+    isAgri: true
   });
+
+  // 🚀 現在操作している管理者自身の名前を取得するヘルパー関数
+  const getCurrentUserName = () => {
+    if (!auth.currentUser) return '不明なユーザー';
+    const currentUserDoc = usersList.find(u => u.id === auth.currentUser.uid);
+    return currentUserDoc ? (currentUserDoc.displayName || currentUserDoc.name) : (auth.currentUser.displayName || '管理者');
+  };
 
   useEffect(() => {
     const fetchRole = async () => {
@@ -106,6 +116,17 @@ export const UserManagement = () => {
         const cloudFunctions = getFunctions(auth.app, 'asia-northeast1');
         const deleteUserFn = httpsCallable(cloudFunctions, 'deleteUser');
         await deleteUserFn({ uid: id });
+
+        // 🚀 操作履歴（ログ）の書き込み: ユーザー削除
+        await addDoc(collection(db, 'audit_logs'), {
+          action: 'DELETE',
+          userName: getCurrentUserName(),
+          userId: auth.currentUser?.uid || 'unknown',
+          target: 'ユーザー管理',
+          details: `ユーザー「${name}」をシステムから削除しました`,
+          createdAt: serverTimestamp()
+        });
+
       } catch (error) {
         console.error("削除エラー:", error);
         alert('削除に失敗しました。\n' + (error.message || ''));
@@ -123,6 +144,17 @@ export const UserManagement = () => {
     try {
       const { id, ...updateData } = editingUser;
       await updateDoc(doc(db, 'users', id), updateData);
+
+      // 🚀 操作履歴（ログ）の書き込み: ユーザー情報更新
+      await addDoc(collection(db, 'audit_logs'), {
+        action: 'UPDATE',
+        userName: getCurrentUserName(),
+        userId: auth.currentUser?.uid || 'unknown',
+        target: 'ユーザー管理',
+        details: `ユーザー「${editingUser.displayName || editingUser.name}」の権限や所属グループを更新しました`,
+        createdAt: serverTimestamp()
+      });
+
       setEditingUser(null);
     } catch (error) {
       console.error(error);
@@ -182,8 +214,18 @@ export const UserManagement = () => {
         groupIds: newUser.groupIds,
         canEditOwn: newUser.canEditOwn,
         canEditGroup: newUser.canEditGroup,
-        isAgri: newUser.isAgri !== false, // 🚀 新規: 農業者区分を保存
+        isAgri: newUser.isAgri !== false, 
         createdAt: new Date()
+      });
+
+      // 🚀 操作履歴（ログ）の書き込み: 新規ユーザー作成
+      await addDoc(collection(db, 'audit_logs'), {
+        action: 'CREATE',
+        userName: getCurrentUserName(),
+        userId: auth.currentUser?.uid || 'unknown',
+        target: 'ユーザー管理',
+        details: `新規ユーザー「${newUser.displayName}」を作成しました`,
+        createdAt: serverTimestamp()
       });
 
       await secondaryAuth.signOut();
@@ -333,7 +375,6 @@ export const UserManagement = () => {
                   <p className="text-[10px] text-gray-500 mt-1">※Excel出力時にこの番号が反映されます。</p>
                 </div>
 
-                {/* 🚀 新規追加: 農業者区分（新規登録時） */}
                 <div className="pt-2 border-t border-gray-100">
                   <label className="block text-sm font-bold text-gray-700 mb-2">農業者区分</label>
                   <div className="flex space-x-6">
@@ -464,7 +505,6 @@ export const UserManagement = () => {
                 />
               </div>
 
-              {/* 🚀 新規追加: 農業者区分（編集時） */}
               <div className="mb-6">
                 <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center">
                   <Sprout size={16} className="mr-1 text-gray-500" />
@@ -647,7 +687,6 @@ export const UserManagement = () => {
                       <span className="text-sm text-gray-700 font-mono">{user.memberNo || <span className="text-gray-300 text-xs">未設定</span>}</span>
                     </td>
 
-                    {/* 🚀 権限の横に農業者バッジを追加 */}
                     <td className="px-4 py-4">
                       <div className="flex flex-col space-y-1">
                         {getRoleBadge(user.role)}
