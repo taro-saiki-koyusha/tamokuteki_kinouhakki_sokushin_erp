@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Sprout, LogIn, AlertCircle, Mail, Lock, UserPlus, Phone, Download, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'; 
+// 🚀 ログ記録用に addDoc, collection を追加
+import { doc, getDoc, setDoc, serverTimestamp, addDoc, collection } from 'firebase/firestore'; 
 import { auth, googleProvider, db } from '../firebase'; 
 
 export const Login = () => {
@@ -20,20 +21,17 @@ export const Login = () => {
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
 
-  // 安全のため、初期状態を「無効（false）」にして最初からグレーアウトさせる
   const [isSafeChrome, setIsSafeChrome] = useState(false);
 
   const isLineBrowser = /Line/i.test(navigator.userAgent);
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
   const isIOSChrome = isIOS && /CriOS/i.test(navigator.userAgent);
 
-  // 確実なPWA判定ロジック
   useEffect(() => {
     const checkBrowserEnvironment = () => {
       try {
         const ua = window.navigator.userAgent.toLowerCase();
         
-        // 1. Chrome系ブラウザか判定 (Edge, Opera, Braveなどの派生ブラウザは弾く)
         const isChromeBrowser = (ua.includes('chrome') || ua.includes('crios')) && 
                                 !ua.includes('edg') && !ua.includes('opr') && !ua.includes('brave');
 
@@ -42,7 +40,6 @@ export const Login = () => {
           return;
         }
 
-        // 2. 標準的なPWA判定
         if (window.navigator.standalone === true) {
           setIsSafeChrome(false);
           return;
@@ -57,13 +54,11 @@ export const Login = () => {
           return;
         }
 
-        // 3. Android WebAPK判定
         if (document.referrer.includes('android-app://')) {
           setIsSafeChrome(false);
           return;
         }
 
-        // 4. iPhone(iOS)の特殊なPWA判定（画面サイズによる強制的検知）
         const isIOSDevice = /iphone|ipad|ipod/.test(ua);
         if (isIOSDevice) {
           const browserUIHeight = window.screen.height - window.innerHeight;
@@ -82,7 +77,6 @@ export const Login = () => {
     checkBrowserEnvironment();
     window.addEventListener('resize', checkBrowserEnvironment);
 
-    // JSのフォールバッククラス付与
     if (window.navigator.standalone === true || document.referrer.includes('android-app://')) {
       document.body.classList.add('is-pwa');
     }
@@ -97,28 +91,22 @@ export const Login = () => {
     };
   }, []);
 
-  // 完全に新しい最新ソースコードを強制的にロードさせる処理
   const handleForceUpdate = async () => {
     setLoading(true);
     setError("システムを最新状態に更新中...");
     try {
-      // ① Service Workerを強制アップデート
       if ('serviceWorker' in navigator) {
         const registrations = await navigator.serviceWorker.getRegistrations();
         for (let registration of registrations) {
           await registration.update();
         }
       }
-      
-      // ② 古い画像やアセットのキャッシュストレージを完全削除
       if ('caches' in window) {
         const keys = await caches.keys();
         for (let key of keys) {
           await caches.delete(key);
         }
       }
-
-      // ③ キャッシュを無視させるためURLにタイムスタンプを付与して強制リロード
       const cleanUrl = window.location.origin + window.location.pathname;
       window.location.href = `${cleanUrl}?u=${Date.now()}`;
     } catch (err) {
@@ -174,6 +162,17 @@ export const Login = () => {
     try {
       const result = await signInWithPopup(auth, googleProvider);
       await createUserData(result.user, result.user.displayName);
+      
+      // 🚀 操作履歴（ログ）の書き込み
+      await addDoc(collection(db, 'audit_logs'), {
+        action: 'LOGIN',
+        userName: result.user.displayName || '名称未設定',
+        userId: result.user.uid,
+        target: 'システムログイン',
+        details: 'Googleアカウントを使用してログインしました',
+        createdAt: serverTimestamp()
+      });
+
       navigate('/dashboard');
     } catch (err) {
       console.error("Google Login Error:", err);
@@ -213,9 +212,30 @@ export const Login = () => {
         const result = await createUserWithEmailAndPassword(auth, finalLoginId, password);
         await updateProfile(result.user, { displayName: displayName.trim() });
         await createUserData(result.user, displayName.trim());
+
+        // 🚀 操作履歴（ログ）の書き込み
+        await addDoc(collection(db, 'audit_logs'), {
+          action: 'CREATE',
+          userName: displayName.trim(),
+          userId: result.user.uid,
+          target: 'システムログイン',
+          details: '新規アカウント作成（メール・電話番号）を行いました',
+          createdAt: serverTimestamp()
+        });
+
         alert("アカウントを作成しました。管理者の承認をお待ちください。");
       } else {
-        await signInWithEmailAndPassword(auth, finalLoginId, password);
+        const result = await signInWithEmailAndPassword(auth, finalLoginId, password);
+        
+        // 🚀 操作履歴（ログ）の書き込み
+        await addDoc(collection(db, 'audit_logs'), {
+          action: 'LOGIN',
+          userName: result.user.displayName || '名称未設定',
+          userId: result.user.uid,
+          target: 'システムログイン',
+          details: 'IDとパスワードを使用してログインしました',
+          createdAt: serverTimestamp()
+        });
       }
 
       if (saveId) localStorage.setItem('kamata_saved_login_id', loginIdInput);
@@ -385,6 +405,7 @@ export const Login = () => {
               </div>
             </div>
 
+            {/* 🚀 タイポ修正完了部分 */}
             <div>
               <label className="block text-xs font-bold text-gray-700 mb-1">パスワード <span className="text-red-500">*</span></label>
               <div className="relative">
@@ -447,7 +468,6 @@ export const Login = () => {
 
         </div>
 
-        {/* 🚀 アプリ追加ボタンと並べて、強制更新ボタンを配置 */}
         <div className="mt-6 w-full space-y-3">
           <button 
             type="button"
@@ -474,3 +494,5 @@ export const Login = () => {
     </div>
   );
 };
+
+export default Login;

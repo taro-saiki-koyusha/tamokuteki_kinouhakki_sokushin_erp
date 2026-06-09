@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Save, User, Lock, MapPin, Phone, CheckCircle, AlertTriangle, Loader2, Plus, CreditCard, Trash2, Mail } from 'lucide-react';
-import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+// 🚀 ログ記録用に addDoc, collection を追加
+import { doc, getDoc, updateDoc, serverTimestamp, addDoc, collection } from 'firebase/firestore';
 import { updatePassword, onAuthStateChanged } from 'firebase/auth';
 import { db, auth } from '../firebase';
 
@@ -15,11 +16,11 @@ export const ProfileSettings = () => {
 
   // ログインプロバイダとID種別の判定状態
   const [isGoogleUser, setIsGoogleUser] = useState(false);
-  const [isPhoneLogin, setIsPhoneLogin] = useState(false); // 🚀 電話番号ログイン判定用
+  const [isPhoneLogin, setIsPhoneLogin] = useState(false); 
 
   // 基本プロフィール情報
   const [profileData, setProfileData] = useState({
-    name: '', // 🚀 表示名用に追加
+    name: '', 
     email: '',
     address: '',
     phone1: '',
@@ -59,7 +60,6 @@ export const ProfileSettings = () => {
         const hasPasswordProvider = user.providerData.some(provider => provider.providerId === 'password');
         setIsGoogleUser(hasGoogleProvider && !hasPasswordProvider);
 
-        // 🚀 電話番号ログインかどうかの判定（メールアドレスの＠より前が10〜15桁の数字のみか）
         const userEmail = user.email || '';
         const emailPrefix = userEmail.split('@')[0];
         const isPhoneLoginUser = /^[0-9]{10,15}$/.test(emailPrefix);
@@ -72,10 +72,9 @@ export const ProfileSettings = () => {
           if (userSnap.exists()) {
             const data = userSnap.data();
             setProfileData({
-              name: data.name || user.displayName || '未設定', // 🚀 Firestoreの表示名を取得
+              name: data.name || user.displayName || '未設定', 
               email: userEmail,
               address: data.address || '',
-              // 🚀 電話番号IDの場合は、電話番号1にIDの数字を強制セットする
               phone1: isPhoneLoginUser ? emailPrefix : (data.phone1 || ''),
               phone2: data.phone2 || ''
             });
@@ -101,7 +100,7 @@ export const ProfileSettings = () => {
           } else {
             setProfileData(prev => ({ 
               ...prev, 
-              name: user.displayName || '未設定', // 🚀 ユーザーデータがない場合
+              name: user.displayName || '未設定', 
               email: userEmail,
               phone1: isPhoneLoginUser ? emailPrefix : '' 
             }));
@@ -125,7 +124,6 @@ export const ProfileSettings = () => {
 
   const handlePhoneChange = (e) => {
     const { name, value } = e.target;
-    // 全角数字を半角数字に変換し、数字（0-9）以外の文字を全て削除
     const numericValue = value
       .replace(/[０-９]/g, (s) => String.fromCharCode(s.charCodeAt(0) - 0xFEE0))
       .replace(/[^0-9]/g, '');
@@ -190,8 +188,18 @@ export const ProfileSettings = () => {
         bankAccounts: bankAccounts,
         updatedAt: serverTimestamp()
       });
+
+      // 🚀 操作履歴（ログ）の書き込み
+      await addDoc(collection(db, 'audit_logs'), {
+        action: 'UPDATE',
+        userName: profileData.name || currentUser.displayName || '名称未設定',
+        userId: currentUser.uid,
+        target: 'アカウント設定',
+        details: '基本情報・口座情報を更新しました',
+        createdAt: serverTimestamp()
+      });
+
       setMessage({ type: 'success', text: '基本情報・口座情報を更新しました。' });
-      
       setTimeout(() => setMessage({ type: '', text: '' }), 4000);
     } catch (error) {
       console.error("更新エラー:", error);
@@ -218,6 +226,17 @@ export const ProfileSettings = () => {
     setSavingPassword(true);
     try {
       await updatePassword(currentUser, passwordData.newPassword);
+
+      // 🚀 操作履歴（ログ）の書き込み
+      await addDoc(collection(db, 'audit_logs'), {
+        action: 'UPDATE',
+        userName: profileData.name || currentUser.displayName || '名称未設定',
+        userId: currentUser.uid,
+        target: 'アカウント設定',
+        details: 'パスワードを変更しました',
+        createdAt: serverTimestamp()
+      });
+
       setMessage({ type: 'success', text: 'パスワードを変更しました。次回から新しいパスワードでログインしてください。' });
       setPasswordData({ newPassword: '', confirmPassword: '' }); 
       
@@ -281,7 +300,6 @@ export const ProfileSettings = () => {
               </div>
 
               <div className="space-y-4">
-                {/* 🚀 追加：アカウントの表示名（読み取り専用） */}
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1 flex items-center">
                     <User size={16} className="mr-1 text-gray-400" /> 表示名（お名前）
@@ -330,7 +348,7 @@ export const ProfileSettings = () => {
                       placeholder="09012345678" 
                       maxLength={15}
                       inputMode="numeric"
-                      disabled={isPhoneLogin} // 🚀 電話番号ログインの場合はロックする
+                      disabled={isPhoneLogin} 
                     />
                     {isPhoneLogin ? (
                       <p className="text-[10px] text-gray-400 mt-1 font-bold">※ログインIDのため変更できません。</p>
