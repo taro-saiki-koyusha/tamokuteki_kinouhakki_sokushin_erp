@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2, Calculator, Package, Plus, CheckCircle, Copy, MessageSquare, Download, Link as LinkIcon, FileSpreadsheet, Printer, Hash, Lock, Unlock, CreditCard } from 'lucide-react';
-// 🚀 ログ用に addDoc, serverTimestamp を確実に取得
 import { collection, addDoc, doc, updateDoc, serverTimestamp, deleteDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -29,11 +28,15 @@ export const ActivityForm = () => {
   
   useEffect(() => { window.scrollTo(0, 0); }, [location.pathname]);
 
-  const [editData, setEditData] = useState(location.state?.editData || null);
-  const [isViewMode, setIsViewMode] = useState(location.state?.isViewMode || false);
+  const [editData, setEditData] = useState(null);
+  
+  // 🚀 修正: location.state から正しく isViewMode を取得し、デフォルトは false にする
+  const [isViewMode, setIsViewMode] = useState(location.state?.isViewMode ?? false);
+  
   const [isLoadingDirect, setIsLoadingDirect] = useState(false); 
   const [isExporting, setIsExporting] = useState(false); 
-  
+  const [isPreparingPrint, setIsPreparingPrint] = useState(false);
+
   const [membersList, setMembersList] = useState([]);
   const [machinesList, setMachinesList] = useState([]);
   const [materialsList, setMaterialsList] = useState([]);
@@ -67,8 +70,9 @@ export const ActivityForm = () => {
 
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
+  // 🚀 修正: editDataが送られてこなくなったため、常にFirestoreから取得する（キャッシュから一瞬で返ってきます）
   useEffect(() => {
-    if (id && !location.state?.editData) {
+    if (id) {
       setIsLoadingDirect(true);
       const fetchActivityDirect = async () => {
         try {
@@ -77,7 +81,10 @@ export const ActivityForm = () => {
           if (docSnap.exists()) {
             const data = docSnap.data();
             setEditData({ id: docSnap.id, ...data });
-            setIsViewMode(true);
+            
+            // ルーターから渡された isViewMode の指定があればそれを優先、なければ true(閲覧モード) にする
+            setIsViewMode(location.state?.isViewMode !== undefined ? location.state.isViewMode : true);
+            
             setFormData({
               status: data.status || '実績入力済', planType: data.planType || '当初計画',
               isEssential: data.isEssential || false, groupId: data.groupId || '',
@@ -95,21 +102,13 @@ export const ActivityForm = () => {
             alert('指定された活動実績が見つかりません。');
             navigate('/dashboard');
           }
-        } catch (error) { console.error(error); } finally { setIsLoadingDirect(false); }
+        } catch (error) { 
+          console.error(error); 
+        } finally { 
+          setIsLoadingDirect(false); 
+        }
       };
       fetchActivityDirect();
-    } else if (location.state?.editData) {
-      const d = location.state.editData;
-      setFormData({
-        status: d.status || '実績入力済', planType: d.planType || '当初計画', isEssential: d.isEssential || false, groupId: d.groupId || '',
-        paymentCategory: d.paymentCategory || '',
-        paymentDateId: d.paymentDateId || '',
-        date: d.date, startTime: d.startTime, endTime: d.endTime, location: d.location, activityType: d.activityType,
-        activityNumbers: d.activityNumbers || [], memo: d.memo || '', reportNo: d.reportNo || '', budget: d.budget || '' 
-      });
-      setParticipantDetails(d.participantDetails || []);
-      setMaterialDetails(d.materialDetails || []); 
-      setExistingUrls(d.imageUrls || (d.imageUrl ? [d.imageUrl] : []));
     }
   }, [id, location.state, navigate]);
 
@@ -137,7 +136,7 @@ export const ActivityForm = () => {
           setCanEditOwn(data.canEditOwn || false);
           setCanEditGroup(data.canEditGroup || false); 
 
-          if (!id && !location.state?.editData && (data.groupIds || []).length > 0) {
+          if (!id && (data.groupIds || []).length > 0) {
             setFormData(prev => ({ ...prev, groupId: data.groupIds[0] }));
           }
         } else {
@@ -146,7 +145,7 @@ export const ActivityForm = () => {
       }
     });
     return () => { unsubAuth(); unsubGroups(); unsubMembers(); unsubMachines(); unsubMaterials(); unsubUsers(); unsubSettings(); };
-  }, [id, location.state]);
+  }, [id]);
 
   const [successModal, setSuccessModal] = useState({ show: false, message: '' });
   const [showRosterModal, setShowRosterModal] = useState(false);
@@ -334,7 +333,6 @@ export const ActivityForm = () => {
       try { 
         await deleteDoc(doc(db, 'activities', editData.id)); 
 
-        // 🚀 操作履歴（ログ）の書き込み
         const currentUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || currentUser?.displayName || '名称未設定';
         await addDoc(collection(db, 'audit_logs'), {
           action: 'DELETE',
@@ -443,7 +441,11 @@ export const ActivityForm = () => {
   };
 
   const handleDirectPrint = () => {
-    setTimeout(() => { window.print(); }, 150);
+    setIsPreparingPrint(true);
+    setTimeout(() => { 
+      window.print(); 
+      setTimeout(() => setIsPreparingPrint(false), 3000); 
+    }, 500); 
   };
 
   const handleLockSubmit = async () => {
@@ -454,7 +456,6 @@ export const ActivityForm = () => {
           updatedAt: serverTimestamp()
         });
 
-        // 🚀 操作履歴（ログ）の書き込み
         const currentUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || currentUser?.displayName || '名称未設定';
         await addDoc(collection(db, 'audit_logs'), {
           action: 'UPDATE',
@@ -484,7 +485,6 @@ export const ActivityForm = () => {
           updatedAt: serverTimestamp()
         });
 
-        // 🚀 操作履歴（ログ）の書き込み
         const currentUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || currentUser?.displayName || '名称未設定';
         await addDoc(collection(db, 'audit_logs'), {
           action: 'UPDATE',
@@ -561,7 +561,6 @@ export const ActivityForm = () => {
         submitData.updatedBy = currentUser?.uid; 
         await updateDoc(doc(db, 'activities', editData.id), submitData); 
 
-        // 🚀 操作履歴（ログ）の書き込み: 更新
         await addDoc(collection(db, 'audit_logs'), {
           action: 'UPDATE',
           userName: currentUserName,
@@ -579,7 +578,6 @@ export const ActivityForm = () => {
         submitData.isLocked = false;
         await addDoc(collection(db, 'activities'), submitData); 
 
-        // 🚀 操作履歴（ログ）の書き込み: 新規作成
         await addDoc(collection(db, 'audit_logs'), {
           action: 'CREATE',
           userName: currentUserName,
@@ -754,8 +752,9 @@ export const ActivityForm = () => {
               <button type="button" onClick={handleExportSingleReport} disabled={isExporting} className={`flex items-center px-3 py-1.5 md:px-4 md:py-2 rounded-lg font-bold transition-colors text-sm md:text-base ${isExporting ? 'bg-blue-400 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
                 <FileSpreadsheet size={18} className="md:mr-1.5" /> <span className="hidden md:inline">{isExporting ? '生成中...' : 'Excel出力'}</span>
               </button>
-              <button type="button" onClick={handleDirectPrint} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-gray-100 text-gray-700 border border-gray-200 rounded-lg font-bold hover:bg-gray-200 transition-colors text-sm md:text-base">
-                <Printer size={18} className="md:mr-1.5" /> <span className="hidden md:inline">PDF出力</span>
+              <button type="button" onClick={handleDirectPrint} disabled={isPreparingPrint} className="flex items-center px-3 py-1.5 md:px-4 md:py-2 bg-gray-100 text-gray-700 border border-gray-200 rounded-lg font-bold hover:bg-gray-200 transition-colors text-sm md:text-base disabled:opacity-50">
+                {isPreparingPrint ? <Loader2 size={18} className="md:mr-1.5 animate-spin" /> : <Printer size={18} className="md:mr-1.5" />}
+                <span className="hidden md:inline">{isPreparingPrint ? '準備中...' : 'PDF出力'}</span>
               </button>
             </>
           )}
@@ -986,10 +985,10 @@ export const ActivityForm = () => {
               {existingUrls.map((url, i) => (
                 <div 
                   key={`ex-${i}`} 
-                  className="relative aspect-square rounded-xl overflow-hidden border border-gray-200 cursor-pointer group"
+                  className="relative aspect-square rounded-xl overflow-hidden border border-gray-200 cursor-pointer group bg-gray-100"
                   onClick={() => setEnlargedImage(url)}
                 >
-                  <img src={url} alt="" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                  <img src={url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
                   {!isViewMode && (
                     <button type="button" onClick={(e) => { e.stopPropagation(); removeExistingUrl(i); }} className="absolute top-1 right-1 bg-black/50 text-white p-1 rounded-full z-10 hover:bg-red-500 transition-colors"><X size={12} /></button>
                   )}
@@ -998,10 +997,10 @@ export const ActivityForm = () => {
               {newPreviewUrls.map((url, i) => (
                 <div 
                   key={`new-${i}`} 
-                  className="relative aspect-square rounded-xl overflow-hidden border-2 border-green-400 cursor-pointer group"
+                  className="relative aspect-square rounded-xl overflow-hidden border-2 border-green-400 cursor-pointer group bg-gray-100"
                   onClick={() => setEnlargedImage(url)}
                 >
-                  <img src={url} alt="" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                  <img src={url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
                   {!isViewMode && (
                     <button type="button" onClick={(e) => { e.stopPropagation(); removeNewImage(i); }} className="absolute top-1 right-1 bg-black/50 text-white p-1 rounded-full z-10 hover:bg-red-500 transition-colors"><X size={12} /></button>
                   )}
@@ -1335,10 +1334,10 @@ export const ActivityForm = () => {
       </main>
 
       {/* 🚀 PDF出力（印刷）用の隠しレイアウト */}
-      {editData && (() => {
+      {/* 常にレンダリングせず、ボタンを押した時だけDOMに展開することで初期負荷をゼロにする */}
+      {editData && isPreparingPrint && (() => {
         const printImages = existingUrls;
         const totalImages = printImages.length;
-        const groupInfo = groupsList.find(g => g.id === editData.groupId);
 
         return (
           <div className="hidden print:block w-full text-black bg-white font-serif">
@@ -1355,7 +1354,12 @@ export const ActivityForm = () => {
             </table>
             <div className="space-y-6">
               {printImages.map((img, idx) => (
-                <div key={idx} className="break-inside-avoid"><div className="text-sm font-bold mb-1 text-left">{idx + 1}/{totalImages}枚目</div><div className="border border-gray-400 p-1"><img src={img} alt="" className="w-full h-auto max-h-[140mm] object-contain" /></div></div>
+                <div key={idx} className="break-inside-avoid">
+                  <div className="text-sm font-bold mb-1 text-left">{idx + 1}/{totalImages}枚目</div>
+                  <div className="border border-gray-400 p-1">
+                    <img src={img} alt="" decoding="async" className="w-full h-auto max-h-[140mm] object-contain" />
+                  </div>
+                </div>
               ))}
             </div>
             <div className="mt-8 flex justify-between items-end border-t border-black pt-4">

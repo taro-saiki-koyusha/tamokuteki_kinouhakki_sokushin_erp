@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Sprout, LogIn, AlertCircle, Mail, Lock, UserPlus, Phone, Download, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
-// 🚀 ログ記録用に addDoc, collection を追加
 import { doc, getDoc, setDoc, serverTimestamp, addDoc, collection } from 'firebase/firestore'; 
 import { auth, googleProvider, db } from '../firebase'; 
 
@@ -163,10 +162,13 @@ export const Login = () => {
       const result = await signInWithPopup(auth, googleProvider);
       await createUserData(result.user, result.user.displayName);
       
-      // 🚀 操作履歴（ログ）の書き込み
+      // 🚀 Firestoreから確実に本名を取得
+      const userSnap = await getDoc(doc(db, 'users', result.user.uid));
+      const realName = userSnap.exists() ? (userSnap.data().name || userSnap.data().displayName || result.user.displayName) : (result.user.displayName || '名称未設定');
+
       await addDoc(collection(db, 'audit_logs'), {
         action: 'LOGIN',
-        userName: result.user.displayName || '名称未設定',
+        userName: realName,
         userId: result.user.uid,
         target: 'システムログイン',
         details: 'Googleアカウントを使用してログインしました',
@@ -213,7 +215,6 @@ export const Login = () => {
         await updateProfile(result.user, { displayName: displayName.trim() });
         await createUserData(result.user, displayName.trim());
 
-        // 🚀 操作履歴（ログ）の書き込み
         await addDoc(collection(db, 'audit_logs'), {
           action: 'CREATE',
           userName: displayName.trim(),
@@ -227,10 +228,13 @@ export const Login = () => {
       } else {
         const result = await signInWithEmailAndPassword(auth, finalLoginId, password);
         
-        // 🚀 操作履歴（ログ）の書き込み
+        // 🚀 Firestoreから確実に本名を取得
+        const userSnap = await getDoc(doc(db, 'users', result.user.uid));
+        const realName = userSnap.exists() ? (userSnap.data().name || userSnap.data().displayName) : (result.user.displayName || '名称未設定');
+        
         await addDoc(collection(db, 'audit_logs'), {
           action: 'LOGIN',
-          userName: result.user.displayName || '名称未設定',
+          userName: realName,
           userId: result.user.uid,
           target: 'システムログイン',
           details: 'IDとパスワードを使用してログインしました',
@@ -405,7 +409,6 @@ export const Login = () => {
               </div>
             </div>
 
-            {/* 🚀 タイポ修正完了部分 */}
             <div>
               <label className="block text-xs font-bold text-gray-700 mb-1">パスワード <span className="text-red-500">*</span></label>
               <div className="relative">

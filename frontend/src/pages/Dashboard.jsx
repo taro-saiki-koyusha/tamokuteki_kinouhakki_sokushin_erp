@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock, Map, MoreVertical, Edit, Info, History } from 'lucide-react'; 
 import { useNavigate } from 'react-router-dom';
-// 🚀 ログ用に addDoc, serverTimestamp を追加インポート
 import { collection, query, onSnapshot, doc, getDoc, deleteDoc, where, addDoc, serverTimestamp } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { db, auth } from '../firebase';
@@ -26,88 +25,6 @@ const formatTimestamp = (timestamp) => {
   return '-';
 };
 
-const useLongPress = (onLongPress, onClick, ms = 500) => {
-  const timerRef = useRef(null);
-  const isLongPress = useRef(false);
-  const startPos = useRef({ x: 0, y: 0 });
-
-  const start = (e) => {
-    isLongPress.current = false;
-    
-    if (e.touches && e.touches.length > 0) {
-      startPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-    } else {
-      startPos.current = { x: e.clientX, y: e.clientY };
-    }
-
-    timerRef.current = setTimeout(() => {
-      isLongPress.current = true;
-      if (window.navigator && window.navigator.vibrate) {
-        window.navigator.vibrate(50);
-      }
-      onLongPress(e);
-    }, ms);
-  };
-
-  const move = (e) => {
-    if (!timerRef.current) return;
-    
-    let currentPos = { x: 0, y: 0 };
-    if (e.touches && e.touches.length > 0) {
-      currentPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-    } else {
-      currentPos = { x: e.clientX, y: e.clientY };
-    }
-
-    const distance = Math.sqrt(
-      Math.pow(currentPos.x - startPos.current.x, 2) + 
-      Math.pow(currentPos.y - startPos.current.y, 2)
-    );
-
-    if (distance > 15) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  };
-
-  const clear = () => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  };
-
-  const click = (e) => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    if (isLongPress.current) {
-      e.stopPropagation();
-      e.preventDefault();
-      return;
-    }
-    if (onClick) onClick(e);
-  };
-
-  const contextMenu = (e) => {
-    e.preventDefault();
-  };
-
-  return {
-    onMouseDown: start,
-    onTouchStart: start,
-    onMouseMove: move,
-    onTouchMove: move,
-    onMouseUp: clear,
-    onMouseLeave: clear,
-    onTouchEnd: clear,
-    onTouchCancel: clear,
-    onClick: click,
-    onContextMenu: contextMenu
-  };
-};
-
 export const Dashboard = () => {
   const navigate = useNavigate();
   const [activities, setActivities] = useState([]);
@@ -116,6 +33,8 @@ export const Dashboard = () => {
   const [printActivity, setPrintActivity] = useState(null);
   const [activeTab, setActiveTab] = useState('home');
   const [exportingId, setExportingId] = useState(null);
+  
+  const [printingId, setPrintingId] = useState(null);
   
   const [membersList, setMembersList] = useState([]);
   const [machinesList, setMachinesList] = useState([]);
@@ -276,11 +195,9 @@ export const Dashboard = () => {
   const executeDelete = async () => {
     if (!deletingActivityId) return;
     try {
-      // 🚀 ログ記録用に削除対象のデータを取得
       const targetAct = activities.find(a => a.id === deletingActivityId);
       await deleteDoc(doc(db, 'activities', deletingActivityId));
       
-      // 🚀 操作履歴（ログ）の書き込み
       if (targetAct) {
         const currentUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || currentUser?.displayName || '名称未設定';
         await addDoc(collection(db, 'audit_logs'), {
@@ -396,16 +313,24 @@ export const Dashboard = () => {
   };
 
   const handleDirectPrint = (activity) => {
+    setPrintingId(activity.id);
     setPrintActivity(activity);
     setActionMenuActivity(null); 
+    
     const reportNoStr = activity?.reportNo ? `${activity.reportNo}_` : '';
     const dateStr = activity?.date || '';
+    
     setTimeout(() => { 
       const originalTitle = document.title;
       document.title = `活動報告書_${reportNoStr}${dateStr}`;
       window.print(); 
       document.title = originalTitle;
-    }, 150);
+      
+      setTimeout(() => {
+        setPrintActivity(null);
+        setPrintingId(null);
+      }, 3000);
+    }, 500);
   };
 
   const calculateActivityCost = (act) => {
@@ -484,6 +409,7 @@ export const Dashboard = () => {
   const ActivityCard = ({ activity }) => {
     const images = activity.imageUrls || (activity.imageUrl ? [activity.imageUrl] : []);
     const isThisExporting = exportingId === activity.id;
+    const isThisPrinting = printingId === activity.id;
     const { canExport, canDeleteAct } = getPermissions(activity);
     const groupInfo = groupsList.find(g => g.id === activity.groupId);
     
@@ -494,7 +420,7 @@ export const Dashboard = () => {
     const actualCost = calculateActivityCost(activity);
 
     return (
-      <div onClick={() => navigate(`/activity-form/${activity.id}`, { state: { editData: activity, isViewMode: true } })} className="bg-white rounded-2xl shadow-sm border-l-4 border-green-500 p-4 cursor-pointer hover:shadow-md transition-all flex flex-col h-full relative group">
+      <div onClick={() => navigate(`/activity-form/${activity.id}`, { state: { isViewMode: true } })} className="bg-white rounded-2xl shadow-sm border-l-4 border-green-500 p-4 cursor-pointer hover:shadow-md transition-all flex flex-col h-full relative group">
         <div className="absolute top-3 right-3 flex items-center space-x-1.5 z-10">
           <span className={`text-[10px] px-2 py-1 rounded-md font-bold border whitespace-nowrap ${
             planTypeLabel === '当初計画' ? 'bg-blue-50 text-blue-600 border-blue-100' :
@@ -563,7 +489,7 @@ export const Dashboard = () => {
 
         {images.length > 0 && (
           <div className="relative rounded-lg overflow-hidden h-32 bg-gray-50 border border-gray-100 mb-3">
-            <img src={images[0]} alt="" className="w-full h-full object-cover" />
+            <img src={images[0]} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
           </div>
         )}
         {canExport && (
@@ -571,12 +497,127 @@ export const Dashboard = () => {
             <button onClick={(e) => { e.stopPropagation(); handleExportSingleReport(activity); }} disabled={isThisExporting} className={`flex-1 py-2 rounded-xl font-bold text-[10px] flex items-center justify-center transition-colors ${isThisExporting ? 'bg-blue-400 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
               <FileSpreadsheet size={14} className="mr-1" />{isThisExporting ? '生成中...' : 'Excel'}
             </button>
-            <button onClick={(e) => { e.stopPropagation(); handleDirectPrint(activity); }} className="flex-1 bg-gray-50 text-gray-700 border border-gray-200 py-2 rounded-xl font-bold text-[10px] flex items-center justify-center hover:bg-gray-100">
-              <Printer size={14} className="mr-1" /> PDF
+            <button onClick={(e) => { e.stopPropagation(); handleDirectPrint(activity); }} disabled={isThisPrinting} className={`flex-1 border py-2 rounded-xl font-bold text-[10px] flex items-center justify-center transition-colors ${isThisPrinting ? 'bg-gray-100 text-gray-400 border-gray-200' : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'}`}>
+              {isThisPrinting ? <Loader2 size={14} className="mr-1 animate-spin" /> : <Printer size={14} className="mr-1" />}
+              {isThisPrinting ? '準備中...' : 'PDF'}
             </button>
           </div>
         )}
       </div>
+    );
+  };
+
+  {/* 🚀 修正: pointer-events-none をすべて削除し、セルを直接タップしても確実に反応するように変更 */}
+  const ActivityTableRow = ({ act }) => {
+    const groupInfo = groupsList.find(g => g.id === act.groupId);
+    const isThisExporting = exportingId === act.id;
+    const { canExport, canDeleteAct } = getPermissions(act);
+    const hasImage = (act.imageUrls && act.imageUrls.length > 0) || act.imageUrl;
+    
+    const statusLabel = act.status || '実績入力済';
+    const planTypeLabel = act.planType || '当初計画';
+    const creatorName = systemUsers.find(u => u.id === act.createdBy)?.displayName || '-';
+
+    const budget = Number(act.budget) || 0;
+    const actualCost = calculateActivityCost(act);
+
+    return (
+      <tr 
+        onClick={() => navigate(`/activity-form/${act.id}`, { state: { isViewMode: true } })}
+        className={`border-b border-gray-100 cursor-pointer transition-colors group/row active:bg-gray-200 ${act.isLocked ? 'hover:bg-gray-50/80' : 'hover:bg-green-50'}`}
+      >
+        <td className="p-3 text-sm text-gray-700 whitespace-nowrap">{act.date}</td>
+        
+        <td className="p-3 text-sm font-bold text-gray-900 whitespace-nowrap overflow-hidden text-ellipsis">{act.activityType}</td>
+        
+        <td className="p-3 text-center whitespace-nowrap">
+          <div className="flex flex-col items-center gap-1">
+            <span className={`px-2 py-1 rounded-full text-[9px] font-bold border whitespace-nowrap ${statusLabel === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-600 border-green-100'}`}>
+              {statusLabel}
+            </span>
+            {act.isLocked && (
+              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-gray-600 text-white flex items-center whitespace-nowrap shadow-sm border border-gray-500 shrink-0" title="提出済みのためロックされています">
+                <Lock size={8} className="mr-1" /> 提出済
+              </span>
+            )}
+          </div>
+        </td>
+
+        <td className="p-3 text-center whitespace-nowrap">
+          <div className="flex flex-col items-center space-y-1">
+            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border whitespace-nowrap ${
+              planTypeLabel === '当初計画' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+              planTypeLabel === '期中追加' ? 'bg-orange-50 text-orange-600 border-orange-100' :
+              'bg-red-50 text-red-600 border-red-100'
+            }`}>
+              {planTypeLabel}
+            </span>
+            {act.isEssential && (
+              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold border bg-yellow-50 text-yellow-700 border-yellow-200">
+                必須作業
+              </span>
+            )}
+          </div>
+        </td>
+
+        <td className="p-3 text-[10px] text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis font-bold">
+          {act.paymentCategory || '-'}
+        </td>
+
+        <td className="p-3 text-sm font-bold text-blue-600 whitespace-nowrap">{act.reportNo || '-'}</td>
+        
+        <td className="p-3 text-sm font-bold text-gray-700 whitespace-nowrap text-right">
+          {budget > 0 ? `¥${budget.toLocaleString()}` : '-'}
+        </td>
+        <td className={`p-3 text-sm font-bold whitespace-nowrap text-right ${actualCost > budget && budget > 0 ? 'text-red-600' : 'text-blue-700'}`}>
+          {actualCost > 0 ? `¥${actualCost.toLocaleString()}` : '-'}
+        </td>
+
+        <td className="p-3 text-xs whitespace-nowrap overflow-hidden text-ellipsis">{groupInfo ? groupInfo.name : <span className="text-red-500">未登録</span>}</td>
+        <td className="p-3 text-xs text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis">{act.location}</td>
+        <td className="p-3 text-xs font-bold text-green-600 whitespace-nowrap">{act.activityNumbers?.join(', ')}</td>
+        <td className="p-3 text-xs text-center text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis">{creatorName}</td>
+        
+        <td className="p-3 text-center whitespace-nowrap">
+          {hasImage ? <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded text-[9px] font-bold">あり</span> : <span className="text-gray-300 text-[10px]">-</span>}
+        </td>
+
+        <td className={`w-0 px-2 py-2 text-center whitespace-nowrap sticky right-0 bg-white transition-colors shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-100 ${act.isLocked ? 'group-hover/row:bg-gray-50/80' : 'group-hover/row:bg-green-50'}`} onClick={(e) => e.stopPropagation()}>
+          
+          <div className="hidden md:flex gap-1.5 justify-center items-center w-max mx-auto">
+            <button onClick={(e) => handleCopyLink(act, e)} className="p-1.5 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded transition-colors" title="リンクをコピー">
+              <Link size={14} />
+            </button>
+
+            {canExport && (
+              <>
+                <button onClick={() => handleExportSingleReport(act)} disabled={isThisExporting} className={`px-2 py-1.5 rounded-lg font-bold text-[9px] flex items-center transition-colors ${isThisExporting ? 'bg-blue-400 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`} title="Excel出力">
+                  <FileSpreadsheet size={12} className="mr-1" />Excel
+                </button>
+                <button onClick={() => handleDirectPrint(act)} className="px-2 py-1.5 bg-white text-gray-700 border border-gray-300 rounded-lg font-bold text-[9px] flex items-center hover:bg-gray-50 transition-colors" title="PDF出力">
+                  <Printer size={12} className="mr-1" />PDF
+                </button>
+              </>
+            )}
+
+            {canDeleteAct && (
+              <button onClick={(e) => handleDeleteClick(act.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="削除">
+                <Trash2 size={14} />
+              </button>
+            )}
+          </div>
+
+          <div className="md:hidden flex justify-center items-center">
+            <button 
+              onClick={(e) => { e.stopPropagation(); setActionMenuActivity(act); }} 
+              className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+            >
+              <MoreVertical size={20} />
+            </button>
+          </div>
+
+        </td>
+      </tr>
     );
   };
 
@@ -590,7 +631,7 @@ export const Dashboard = () => {
         {(userRole === 'admin' || userRole === 'manager') && (
           <div className="md:hidden bg-blue-50/80 px-3 py-2 text-[10px] text-blue-600 flex items-center font-bold border-b border-blue-100">
             <Info className="w-3.5 h-3.5 mr-1.5 shrink-0" /> 
-            <span>各行を<span className="bg-blue-100 px-1 rounded mx-0.5">長押し</span>するとメニュー（Excel出力など）が表示されます</span>
+            <span>各行の右端の<span className="bg-blue-100 px-1 rounded mx-0.5 font-black">︙</span>を押すとメニューが表示されます</span>
           </div>
         )}
 
@@ -619,127 +660,15 @@ export const Dashboard = () => {
                 <th className="p-3 font-bold w-24 text-center whitespace-nowrap">登録者</th>
                 <th className="p-3 font-bold w-12 text-center whitespace-nowrap">写真</th>
                 
-                <th className="w-0 px-3 py-3 font-bold text-center whitespace-nowrap sticky right-0 bg-gray-100 shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-200 hidden md:table-cell">
+                <th className="w-0 px-3 py-3 font-bold text-center whitespace-nowrap sticky right-0 bg-gray-100 shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-200 table-cell">
                   操作
                 </th>
               </tr>
             </thead>
             <tbody>
-              {activitiesToRender.map(act => {
-                const groupInfo = groupsList.find(g => g.id === act.groupId);
-                const isThisExporting = exportingId === act.id;
-                const { canExport, canDeleteAct } = getPermissions(act);
-                const hasImage = (act.imageUrls && act.imageUrls.length > 0) || act.imageUrl;
-                
-                const statusLabel = act.status || '実績入力済';
-                const planTypeLabel = act.planType || '当初計画';
-                const creatorName = systemUsers.find(u => u.id === act.createdBy)?.displayName || '-';
-
-                const budget = Number(act.budget) || 0;
-                const actualCost = calculateActivityCost(act);
-
-                const longPressProps = useLongPress(
-                  () => {
-                    if (userRole === 'admin' || userRole === 'manager') {
-                      setActionMenuActivity(act);
-                    }
-                  }, 
-                  (e) => {
-                    navigate(`/activity-form/${act.id}`, { state: { editData: act, isViewMode: true } });
-                  },
-                  500 
-                ); 
-
-                return (
-                  <tr 
-                    key={act.id} 
-                    {...longPressProps}
-                    style={{ WebkitTouchCallout: 'none' }}
-                    className={`border-b border-gray-100 cursor-pointer transition-colors group/row active:bg-gray-200 ${act.isLocked ? 'hover:bg-gray-50/80' : 'hover:bg-green-50'}`}
-                  >
-                    <td className="p-3 text-sm text-gray-700 whitespace-nowrap pointer-events-none">{act.date}</td>
-                    
-                    <td className="p-3 text-sm font-bold text-gray-900 whitespace-nowrap overflow-hidden text-ellipsis pointer-events-none">{act.activityType}</td>
-                    
-                    <td className="p-3 text-center whitespace-nowrap pointer-events-none">
-                      <div className="flex flex-col items-center gap-1">
-                        <span className={`px-2 py-1 rounded-full text-[9px] font-bold border whitespace-nowrap ${statusLabel === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-600 border-green-100'}`}>
-                          {statusLabel}
-                        </span>
-                        {act.isLocked && (
-                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-gray-600 text-white flex items-center whitespace-nowrap shadow-sm border border-gray-500 shrink-0" title="提出済みのためロックされています">
-                            <Lock size={8} className="mr-1" /> 提出済
-                          </span>
-                        )}
-                      </div>
-                    </td>
-
-                    <td className="p-3 text-center whitespace-nowrap pointer-events-none">
-                      <div className="flex flex-col items-center space-y-1">
-                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border whitespace-nowrap ${
-                          planTypeLabel === '当初計画' ? 'bg-blue-50 text-blue-600 border-blue-100' :
-                          planTypeLabel === '期中追加' ? 'bg-orange-50 text-orange-600 border-orange-100' :
-                          'bg-red-50 text-red-600 border-red-100'
-                        }`}>
-                          {planTypeLabel}
-                        </span>
-                        {act.isEssential && (
-                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold border bg-yellow-50 text-yellow-700 border-yellow-200">
-                            必須作業
-                          </span>
-                        )}
-                      </div>
-                    </td>
-
-                    <td className="p-3 text-[10px] text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis font-bold pointer-events-none">
-                      {act.paymentCategory || '-'}
-                    </td>
-
-                    <td className="p-3 text-sm font-bold text-blue-600 whitespace-nowrap pointer-events-none">{act.reportNo || '-'}</td>
-                    
-                    <td className="p-3 text-sm font-bold text-gray-700 whitespace-nowrap text-right pointer-events-none">
-                      {budget > 0 ? `¥${budget.toLocaleString()}` : '-'}
-                    </td>
-                    <td className={`p-3 text-sm font-bold whitespace-nowrap text-right pointer-events-none ${actualCost > budget && budget > 0 ? 'text-red-600' : 'text-blue-700'}`}>
-                      {actualCost > 0 ? `¥${actualCost.toLocaleString()}` : '-'}
-                    </td>
-
-                    <td className="p-3 text-xs whitespace-nowrap overflow-hidden text-ellipsis pointer-events-none">{groupInfo ? groupInfo.name : <span className="text-red-500">未登録</span>}</td>
-                    <td className="p-3 text-xs text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis pointer-events-none">{act.location}</td>
-                    <td className="p-3 text-xs font-bold text-green-600 whitespace-nowrap pointer-events-none">{act.activityNumbers?.join(', ')}</td>
-                    <td className="p-3 text-xs text-center text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis pointer-events-none">{creatorName}</td>
-                    
-                    <td className="p-3 text-center whitespace-nowrap pointer-events-none">
-                      {hasImage ? <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded text-[9px] font-bold">あり</span> : <span className="text-gray-300 text-[10px]">-</span>}
-                    </td>
-
-                    <td className={`w-0 px-2 py-2 text-center whitespace-nowrap sticky right-0 bg-white transition-colors shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-100 hidden md:table-cell ${act.isLocked ? 'group-hover/row:bg-gray-50/80' : 'group-hover/row:bg-green-50'}`} onClick={(e) => e.stopPropagation()}>
-                      <div className="flex gap-1.5 justify-center items-center w-max mx-auto">
-                        <button onClick={(e) => handleCopyLink(act, e)} className="p-1.5 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded transition-colors" title="リンクをコピー">
-                          <Link size={14} />
-                        </button>
-
-                        {canExport && (
-                          <>
-                            <button onClick={(e) => handleExportSingleReport(act)} disabled={isThisExporting} className={`px-2 py-1.5 rounded-lg font-bold text-[9px] flex items-center transition-colors ${isThisExporting ? 'bg-blue-400 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`} title="Excel出力">
-                              <FileSpreadsheet size={12} className="mr-1" />Excel
-                            </button>
-                            <button onClick={(e) => handleDirectPrint(act)} className="px-2 py-1.5 bg-white text-gray-700 border border-gray-300 rounded-lg font-bold text-[9px] flex items-center hover:bg-gray-50 transition-colors" title="PDF出力">
-                              <Printer size={12} className="mr-1" />PDF
-                            </button>
-                          </>
-                        )}
-
-                        {canDeleteAct && (
-                          <button onClick={(e) => handleDeleteClick(act.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="削除">
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+              {activitiesToRender.map(act => (
+                <ActivityTableRow key={act.id} act={act} />
+              ))}
             </tbody>
           </table>
         </div>
@@ -1058,7 +987,7 @@ export const Dashboard = () => {
         )}
       </main>
 
-      {/* 🚀 長押し時の操作メニュー（ボトムシート） */}
+      {/* 🚀 ボトムシート（スマホでのメニュー用） */}
       {actionMenuActivity && (
         <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setActionMenuActivity(null)}>
           <div 
@@ -1078,7 +1007,7 @@ export const Dashboard = () => {
             <div className="space-y-3">
               <button 
                 onClick={() => {
-                  navigate(`/activity-form/${actionMenuActivity.id}`, { state: { editData: actionMenuActivity, isViewMode: false } });
+                  navigate(`/activity-form/${actionMenuActivity.id}`, { state: { isViewMode: false } });
                   setActionMenuActivity(null);
                 }} 
                 className="w-full flex items-center p-3 rounded-xl hover:bg-blue-50 text-blue-700 transition-colors border border-transparent hover:border-blue-100 group"
@@ -1174,7 +1103,12 @@ export const Dashboard = () => {
             </table>
             <div className="space-y-6">
               {printImages.map((img, idx) => (
-                <div key={idx} className="break-inside-avoid"><div className="text-sm font-bold mb-1 text-left">{idx + 1}/{totalImages}枚目</div><div className="border border-gray-400 p-1"><img src={img} alt="" className="w-full h-auto max-h-[140mm] object-contain" /></div></div>
+                <div key={idx} className="break-inside-avoid">
+                  <div className="text-sm font-bold mb-1 text-left">{idx + 1}/{totalImages}枚目</div>
+                  <div className="border border-gray-400 p-1">
+                    <img src={img} alt="" decoding="async" className="w-full h-auto max-h-[140mm] object-contain" />
+                  </div>
+                </div>
               ))}
             </div>
             <div className="mt-8 flex justify-between items-end border-t border-black pt-4">
