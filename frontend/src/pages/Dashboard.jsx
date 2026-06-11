@@ -355,29 +355,29 @@ export const Dashboard = () => {
     return pCost + mCost + matCost;
   };
 
+  // 🚀 予算計画値を集計するように変更（ここだけを修正）
   const paymentCategoryTotals = useMemo(() => {
     const totals = {
-      agriMaintain: { name: '１ 農地維持支払', budget: systemSettings.budgetAgriMaintain || 0, actual: 0 },
-      resourceJoint: { name: '２ 資源向上支払（共同）', budget: systemSettings.budgetResourceJoint || 0, actual: 0 },
-      resourceLongLife: { name: '３ 資源向上支払（長寿命化）', budget: systemSettings.budgetResourceLongLife || 0, actual: 0 },
-      unassigned: { name: '未設定 / その他', budget: 0, actual: 0 }
+      agriMaintain: { name: '１ 農地維持支払', budget: systemSettings.budgetAgriMaintain || 0, planned: 0, actual: 0 },
+      resourceJoint: { name: '２ 資源向上支払（共同）', budget: systemSettings.budgetResourceJoint || 0, planned: 0, actual: 0 },
+      resourceLongLife: { name: '３ 資源向上支払（長寿命化）', budget: systemSettings.budgetResourceLongLife || 0, planned: 0, actual: 0 },
+      unassigned: { name: '未設定 / その他', budget: 0, planned: 0, actual: 0 }
     };
 
     activities.forEach(act => {
       const statusLabel = act.status || '実績入力済';
-      if (statusLabel === '未実施') return; 
-
-      const actual = calculateActivityCost(act);
       const category = act.paymentCategory || '';
+      const actBudget = Number(act.budget) || 0; 
 
-      if (category.includes('1') || category.includes('１')) {
-        totals.agriMaintain.actual += actual;
-      } else if (category.includes('2') || category.includes('２')) {
-        totals.resourceJoint.actual += actual;
-      } else if (category.includes('3') || category.includes('３')) {
-        totals.resourceLongLife.actual += actual;
-      } else {
-        totals.unassigned.actual += actual;
+      let targetKey = 'unassigned';
+      if (category.includes('1') || category.includes('１')) targetKey = 'agriMaintain';
+      else if (category.includes('2') || category.includes('２')) targetKey = 'resourceJoint';
+      else if (category.includes('3') || category.includes('３')) targetKey = 'resourceLongLife';
+
+      totals[targetKey].planned += actBudget;
+
+      if (statusLabel !== '未実施') {
+        totals[targetKey].actual += calculateActivityCost(act);
       }
     });
 
@@ -507,7 +507,6 @@ export const Dashboard = () => {
     );
   };
 
-  {/* 🚀 修正: pointer-events-none をすべて削除し、セルを直接タップしても確実に反応するように変更 */}
   const ActivityTableRow = ({ act }) => {
     const groupInfo = groupsList.find(g => g.id === act.groupId);
     const isThisExporting = exportingId === act.id;
@@ -802,17 +801,18 @@ export const Dashboard = () => {
           </div>
         </div>
 
+        {/* 🚀 追加: 支払区分別の集計状況パネル */}
         {activities.length > 0 && (
           <div className="mb-8 bg-white p-5 rounded-2xl shadow-sm border border-gray-200 animate-in fade-in duration-300">
             <h3 className="font-extrabold text-gray-800 text-base flex items-center mb-4 border-b border-gray-100 pb-2">
               <BarChart2 size={18} className="text-blue-600 mr-2" />
-              支払区分別の集計状況 (作業完了実績分のみ)
+              支払区分別の集計状況
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {paymentCategoryTotals.map((cat, idx) => {
                 const isOverBudget = cat.actual > cat.budget && cat.budget > 0;
                 const remaining = cat.budget - cat.actual;
-                if (cat.budget === 0 && cat.actual === 0 && cat.name.includes('未設定')) return null;
+                if (cat.budget === 0 && cat.actual === 0 && cat.planned === 0 && cat.name.includes('未設定')) return null;
 
                 return (
                   <div key={idx} className="bg-gray-50 p-4 rounded-xl border border-gray-200 flex flex-col justify-between">
@@ -825,6 +825,11 @@ export const Dashboard = () => {
                           <span>予算枠額:</span>
                           <span className="font-bold font-mono">¥{cat.budget.toLocaleString()}</span>
                         </div>
+                        {/* 🚀 追加: 活動予算 (計画値) */}
+                        <div className="flex justify-between text-[11px] text-gray-500">
+                          <span>活動予算 (計画値):</span>
+                          <span className="font-bold font-mono text-purple-600">¥{cat.planned.toLocaleString()}</span>
+                        </div>
                         <div className="flex justify-between text-[11px] text-gray-500">
                           <span>消化実績:</span>
                           <span className={`font-black font-mono ${isOverBudget ? 'text-red-600' : 'text-blue-700'}`}>
@@ -835,7 +840,7 @@ export const Dashboard = () => {
                     </div>
                     {cat.budget > 0 && (
                       <div className={`mt-3 pt-2 border-t border-gray-200 border-dashed flex justify-between text-xs font-bold ${remaining < 0 ? 'text-red-500' : 'text-green-600'}`}>
-                        <span>予算枠残:</span>
+                        <span>予算枠残額:</span>
                         <span className="font-mono">¥{remaining.toLocaleString()}</span>
                       </div>
                     )}
