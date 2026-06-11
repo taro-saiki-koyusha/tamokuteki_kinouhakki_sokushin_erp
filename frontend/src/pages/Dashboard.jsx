@@ -689,7 +689,7 @@ export const Dashboard = () => {
       <header className="bg-white shadow-sm px-4 py-3 flex justify-between items-center sticky top-0 z-30 no-print">
         <div className="flex items-center">
           <Sprout className="w-8 h-8 mr-2 text-green-600" />
-          <h1 className="text-lg font-bold text-gray-800">多面的機能支払交付金 申請管理システム（鎌田地区）</h1>
+          <h1 className="text-lg font-bold text-gray-800">多面システム（鎌田）</h1>
         </div>
         
         <div className="hidden md:flex items-center space-x-6">
