@@ -30,7 +30,6 @@ export const ActivityForm = () => {
 
   const [editData, setEditData] = useState(null);
   
-  // 🚀 修正: location.state から正しく isViewMode を取得し、デフォルトは false にする
   const [isViewMode, setIsViewMode] = useState(location.state?.isViewMode ?? false);
   
   const [isLoadingDirect, setIsLoadingDirect] = useState(false); 
@@ -58,8 +57,9 @@ export const ActivityForm = () => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
+  // 🚀 修正: customPaymentDate を State に追加
   const [formData, setFormData] = useState({
-    status: '実績入力済', planType: '当初計画', isEssential: false, groupId: '', paymentCategory: '', paymentDateId: '',
+    status: '実績入力済', planType: '当初計画', isEssential: false, groupId: '', paymentCategory: '', paymentDateId: '', customPaymentDate: '',
     date: new Date().toISOString().split('T')[0], startTime: '08:00', endTime: '10:00',
     location: '', activityType: '', activityNumbers: [], memo: '', reportNo: '',
     budget: ''
@@ -70,7 +70,6 @@ export const ActivityForm = () => {
 
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
-  // 🚀 修正: editDataが送られてこなくなったため、常にFirestoreから取得する（キャッシュから一瞬で返ってきます）
   useEffect(() => {
     if (id) {
       setIsLoadingDirect(true);
@@ -82,14 +81,15 @@ export const ActivityForm = () => {
             const data = docSnap.data();
             setEditData({ id: docSnap.id, ...data });
             
-            // ルーターから渡された isViewMode の指定があればそれを優先、なければ true(閲覧モード) にする
             setIsViewMode(location.state?.isViewMode !== undefined ? location.state.isViewMode : true);
             
+            // 🚀 修正: customPaymentDate を読み込むように追加
             setFormData({
               status: data.status || '実績入力済', planType: data.planType || '当初計画',
               isEssential: data.isEssential || false, groupId: data.groupId || '',
               paymentCategory: data.paymentCategory || '',
               paymentDateId: data.paymentDateId || '',
+              customPaymentDate: data.customPaymentDate || '',
               date: data.date || '', startTime: data.startTime || '08:00', endTime: data.endTime || '10:00',
               location: data.location || '', activityType: data.activityType || '',
               activityNumbers: data.activityNumbers || [], memo: data.memo || '',
@@ -315,9 +315,10 @@ export const ActivityForm = () => {
 
   const handleCancelEdit = () => {
     if (!editData) return;
+    // 🚀 修正: customPaymentDate も元に戻すように追加
     setFormData({
       status: editData.status || '実績入力済', planType: editData.planType || '当初計画', isEssential: editData.isEssential || false,
-      groupId: editData.groupId || '', paymentCategory: editData.paymentCategory || '', paymentDateId: editData.paymentDateId || '',
+      groupId: editData.groupId || '', paymentCategory: editData.paymentCategory || '', paymentDateId: editData.paymentDateId || '', customPaymentDate: editData.customPaymentDate || '',
       date: editData.date || '', startTime: editData.startTime || '', endTime: editData.endTime || '',
       location: editData.location || '', activityType: editData.activityType || '', activityNumbers: editData.activityNumbers || [],
       memo: editData.memo || '', reportNo: editData.reportNo || '', budget: editData.budget || ''
@@ -865,6 +866,7 @@ export const ActivityForm = () => {
                 </select>
               </div>
 
+              {/* 🚀 追加: 振込日の任意日付指定機能 */}
               <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 mt-4">
                 <label className="block text-sm font-bold text-purple-900 mb-1 flex items-center">
                   <CreditCard size={16} className="mr-1.5" /> 振込日（申請時期）
@@ -880,7 +882,22 @@ export const ActivityForm = () => {
                   {(systemSettings.paymentDates || []).map(p => (
                     <option key={p.id} value={p.id}>{p.label} {p.date ? `(${p.date})` : ''}</option>
                   ))}
+                  <option value="custom">任意の日付を指定...</option>
                 </select>
+                
+                {formData.paymentDateId === 'custom' && (
+                  <div className="mt-3">
+                    <label className="block text-xs font-bold text-purple-800 mb-1">指定する振込日</label>
+                    <input 
+                      type="date" 
+                      name="customPaymentDate" 
+                      value={formData.customPaymentDate || ''} 
+                      onChange={handleChange} 
+                      disabled={isViewMode}
+                      className={`${inputClass} border-purple-200 focus:ring-purple-500 bg-white text-sm`}
+                    />
+                  </div>
+                )}
                 <p className="text-[10px] text-purple-700 mt-1.5 font-bold">※ この活動をどのタイミングで申請・支払いするかを選択します。</p>
               </div>
 
