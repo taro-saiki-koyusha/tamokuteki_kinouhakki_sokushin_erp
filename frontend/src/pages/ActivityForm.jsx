@@ -57,7 +57,6 @@ export const ActivityForm = () => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // 🚀 修正: customPaymentDate を State に追加
   const [formData, setFormData] = useState({
     status: '実績入力済', planType: '当初計画', isEssential: false, groupId: '', paymentCategory: '', paymentDateId: '', customPaymentDate: '',
     date: new Date().toISOString().split('T')[0], startTime: '08:00', endTime: '10:00',
@@ -83,14 +82,13 @@ export const ActivityForm = () => {
             
             setIsViewMode(location.state?.isViewMode !== undefined ? location.state.isViewMode : true);
             
-            // 🚀 修正: customPaymentDate を読み込むように追加
             setFormData({
               status: data.status || '実績入力済', planType: data.planType || '当初計画',
               isEssential: data.isEssential || false, groupId: data.groupId || '',
               paymentCategory: data.paymentCategory || '',
               paymentDateId: data.paymentDateId || '',
               customPaymentDate: data.customPaymentDate || '',
-              date: data.date || '', startTime: data.startTime || '08:00', endTime: data.endTime || '10:00',
+              date: data.date || '', startTime: data.startTime || '', endTime: data.endTime || '',
               location: data.location || '', activityType: data.activityType || '',
               activityNumbers: data.activityNumbers || [], memo: data.memo || '',
               reportNo: data.reportNo || '', budget: data.budget || '' 
@@ -315,7 +313,6 @@ export const ActivityForm = () => {
 
   const handleCancelEdit = () => {
     if (!editData) return;
-    // 🚀 修正: customPaymentDate も元に戻すように追加
     setFormData({
       status: editData.status || '実績入力済', planType: editData.planType || '当初計画', isEssential: editData.isEssential || false,
       groupId: editData.groupId || '', paymentCategory: editData.paymentCategory || '', paymentDateId: editData.paymentDateId || '', customPaymentDate: editData.customPaymentDate || '',
@@ -340,7 +337,8 @@ export const ActivityForm = () => {
           userName: currentUserName,
           userId: currentUser?.uid || 'unknown',
           target: '活動実績',
-          details: `活動日: ${editData.date} の記録（${editData.activityType || '無題'}）を削除しました`,
+          // 🚀 修正: 日付が空欄の場合は「未定」とする
+          details: `活動日: ${editData.date || '未定'} の記録（${editData.activityType || '無題'}）を削除しました`,
           createdAt: serverTimestamp()
         });
 
@@ -365,18 +363,24 @@ export const ActivityForm = () => {
       const arrayBuffer = await response.arrayBuffer();
       const workbook = await XlsxPopulate.fromDataAsync(arrayBuffer);
 
-      const [startH, startM] = editData.startTime.split(':').map(Number);
-      const [endH, endM] = editData.endTime.split(':').map(Number);
-      let duration = (endH + endM / 60) - (startH + startM / 60);
-      if (duration < 0) duration += 24;
+      // 🚀 修正: startTime, endTimeが入力されている場合のみ時間を計算する
+      let duration = 0;
+      if (editData.startTime && editData.endTime) {
+        const [startH, startM] = editData.startTime.split(':').map(Number);
+        const [endH, endM] = editData.endTime.split(':').map(Number);
+        duration = (endH + endM / 60) - (startH + startM / 60);
+        if (duration < 0) duration += 24;
+      }
 
       const sheet1 = workbook.sheet('活動報告書') || workbook.sheets()[0];
       
       sheet1.cell('AH3').value(editData.reportNo || '');
-      sheet1.cell('A7').value(editData.date);
-      sheet1.cell('C7').value(editData.startTime);
-      sheet1.cell('F7').value(editData.endTime);
-      sheet1.cell('I7').value(duration);
+      // 🚀 修正: 空欄の場合は空文字を入れる
+      sheet1.cell('A7').value(editData.date || '');
+      sheet1.cell('C7').value(editData.startTime || '');
+      sheet1.cell('F7').value(editData.endTime || '');
+      sheet1.cell('I7').value(duration > 0 ? duration : '');
+      
       sheet1.cell('M7').value(Number(editData.participantsAgri || 0));
       sheet1.cell('O7').value(Number(editData.participantsNonAgri || 0));
       sheet1.cell('Q7').value(Number(editData.participants || 0));
@@ -394,7 +398,7 @@ export const ActivityForm = () => {
       sheet1.cell('A8').value(editData.memo || '');
 
       const sheet2 = workbook.sheet('日当借上支払明細') || workbook.sheets()[1];
-      sheet2.cell('AJ3').value(editData.date);
+      sheet2.cell('AJ3').value(editData.date || ''); // 🚀 修正
 
       if (editData.participantDetails && editData.participantDetails.length > 0) {
         editData.participantDetails.forEach((detail, index) => {
@@ -434,7 +438,8 @@ export const ActivityForm = () => {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `活動報告書_${editData.date}.xlsx`;
+      // 🚀 修正: ファイル名の対応
+      a.download = `活動報告書_${editData.date || '未定'}.xlsx`;
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
 
@@ -463,7 +468,8 @@ export const ActivityForm = () => {
           userName: currentUserName,
           userId: currentUser?.uid || 'unknown',
           target: '活動実績',
-          details: `活動日: ${editData.date} の記録（${editData.activityType || '無題'}）を「提出済」としてロックしました`,
+          // 🚀 修正
+          details: `活動日: ${editData.date || '未定'} の記録（${editData.activityType || '無題'}）を「提出済」としてロックしました`,
           createdAt: serverTimestamp()
         });
 
@@ -492,7 +498,8 @@ export const ActivityForm = () => {
           userName: currentUserName,
           userId: currentUser?.uid || 'unknown',
           target: '活動実績',
-          details: `活動日: ${editData.date} の記録（${editData.activityType || '無題'}）の提出済ロックを解除しました`,
+          // 🚀 修正
+          details: `活動日: ${editData.date || '未定'} の記録（${editData.activityType || '無題'}）の提出済ロックを解除しました`,
           createdAt: serverTimestamp()
         });
 
@@ -567,7 +574,8 @@ export const ActivityForm = () => {
           userName: currentUserName,
           userId: currentUser?.uid || 'unknown',
           target: '活動実績',
-          details: `活動日: ${formData.date} の記録（${formData.activityType || '無題'}）を更新しました`,
+          // 🚀 修正
+          details: `活動日: ${formData.date || '未定'} の記録（${formData.activityType || '無題'}）を更新しました`,
           createdAt: serverTimestamp()
         });
 
@@ -584,7 +592,8 @@ export const ActivityForm = () => {
           userName: currentUserName,
           userId: currentUser?.uid || 'unknown',
           target: '活動実績',
-          details: `活動日: ${formData.date} の記録（${formData.activityType || '無題'}）を新規登録しました`,
+          // 🚀 修正
+          details: `活動日: ${formData.date || '未定'} の記録（${formData.activityType || '無題'}）を新規登録しました`,
           createdAt: serverTimestamp()
         });
 
@@ -866,7 +875,6 @@ export const ActivityForm = () => {
                 </select>
               </div>
 
-              {/* 🚀 追加: 振込日の任意日付指定機能 */}
               <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 mt-4">
                 <label className="block text-sm font-bold text-purple-900 mb-1 flex items-center">
                   <CreditCard size={16} className="mr-1.5" /> 振込日（申請時期）
@@ -952,24 +960,31 @@ export const ActivityForm = () => {
             </div>
 
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4 h-full md:order-2">
-              <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><Calendar className="w-5 h-5 mr-2 text-green-600" /> 2）実施日時・場所</h2>
+              {/* 🚀 修正: 日時の省略案内を追加 */}
+              <div className="flex justify-between items-center border-b pb-2 mb-4">
+                <h2 className="font-bold text-gray-800 flex items-center"><Calendar className="w-5 h-5 mr-2 text-green-600" /> 2）実施日時・場所</h2>
+                <span className="text-[10px] text-gray-500 font-bold bg-gray-100 px-2 py-1 rounded">※外注時などは省略可</span>
+              </div>
               
               <div className="w-36 sm:w-44">
                 <label className="block text-sm font-bold text-gray-700 mb-1">日付</label>
-                <input type="date" name="date" value={formData.date} onChange={handleChange} disabled={isViewMode} className={inputClass} required />
+                {/* 🚀 修正: required属性を削除 */}
+                <input type="date" name="date" value={formData.date || ''} onChange={handleChange} disabled={isViewMode} className={inputClass} />
               </div>
               
               <div className="flex items-center gap-3 sm:gap-4">
                 <div className="w-[110px] sm:w-32 shrink-0">
                   <label className="block text-[11px] font-bold text-gray-500 mb-1 pl-1">開始</label>
-                  <input type="time" name="startTime" value={formData.startTime} onChange={handleChange} disabled={isViewMode} className="w-full box-border border border-gray-300 rounded-lg p-2 text-center text-sm md:text-base focus:ring-2 focus:ring-green-500 disabled:bg-gray-100 disabled:text-gray-600 disabled:opacity-100" required />
+                  {/* 🚀 修正: required属性を削除 */}
+                  <input type="time" name="startTime" value={formData.startTime || ''} onChange={handleChange} disabled={isViewMode} className="w-full box-border border border-gray-300 rounded-lg p-2 text-center text-sm md:text-base focus:ring-2 focus:ring-green-500 disabled:bg-gray-100 disabled:text-gray-600 disabled:opacity-100" />
                 </div>
                 
                 <div className="shrink-0 pt-4 text-gray-400 font-bold text-sm">〜</div>
                 
                 <div className="w-[110px] sm:w-32 shrink-0">
                   <label className="block text-[11px] font-bold text-gray-500 mb-1 pl-1">終了</label>
-                  <input type="time" name="endTime" value={formData.endTime} onChange={handleChange} disabled={isViewMode} className="w-full box-border border border-gray-300 rounded-lg p-2 text-center text-sm md:text-base focus:ring-2 focus:ring-green-500 disabled:bg-gray-100 disabled:text-gray-600 disabled:opacity-100" required />
+                  {/* 🚀 修正: required属性を削除 */}
+                  <input type="time" name="endTime" value={formData.endTime || ''} onChange={handleChange} disabled={isViewMode} className="w-full box-border border border-gray-300 rounded-lg p-2 text-center text-sm md:text-base focus:ring-2 focus:ring-green-500 disabled:bg-gray-100 disabled:text-gray-600 disabled:opacity-100" />
                 </div>
               </div>
 
@@ -1362,7 +1377,8 @@ export const ActivityForm = () => {
             <table className="w-full border-2 border-black border-collapse mb-6 text-sm">
               <tbody>
                 <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">報告書No.</th><td className="border border-black p-3" colSpan="3">{editData.reportNo || '（未設定）'}</td></tr>
-                <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">実施年月日</th><td className="border border-black p-3 w-1/4">{editData.date}</td><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">活動項目番号</th><td className="border border-black p-3 w-1/4">{editData.activityNumbers?.join(', ')}</td></tr>
+                {/* 🚀 修正: 日付が空の場合は（省略）と表示する */}
+                <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">実施年月日</th><td className="border border-black p-3 w-1/4">{editData.date || '（省略）'}</td><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">活動項目番号</th><td className="border border-black p-3 w-1/4">{editData.activityNumbers?.join(', ')}</td></tr>
                 <tr><th className="border border-black bg-gray-100 p-3 text-left">実施場所</th><td className="border border-black p-3" colSpan="3">{editData.location}</td></tr>
                 <tr><th className="border border-black bg-gray-100 p-3 text-left">活動内容</th><td className="border border-black p-3" colSpan="3">{editData.activityType}</td></tr>
                 <tr><th className="border border-black bg-gray-100 p-3 text-left">支払区分</th><td className="border border-black p-3" colSpan="3">{editData.paymentCategory}</td></tr>
