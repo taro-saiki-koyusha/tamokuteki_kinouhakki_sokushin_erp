@@ -25,88 +25,6 @@ const formatTimestamp = (timestamp) => {
   return '-';
 };
 
-const useLongPress = (onLongPress, onClick, ms = 500) => {
-  const timerRef = useRef(null);
-  const isLongPress = useRef(false);
-  const startPos = useRef({ x: 0, y: 0 });
-
-  const start = (e) => {
-    isLongPress.current = false;
-    
-    if (e.touches && e.touches.length > 0) {
-      startPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-    } else {
-      startPos.current = { x: e.clientX, y: e.clientY };
-    }
-
-    timerRef.current = setTimeout(() => {
-      isLongPress.current = true;
-      if (window.navigator && window.navigator.vibrate) {
-        window.navigator.vibrate(50);
-      }
-      onLongPress(e);
-    }, ms);
-  };
-
-  const move = (e) => {
-    if (!timerRef.current) return;
-    
-    let currentPos = { x: 0, y: 0 };
-    if (e.touches && e.touches.length > 0) {
-      currentPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-    } else {
-      currentPos = { x: e.clientX, y: e.clientY };
-    }
-
-    const distance = Math.sqrt(
-      Math.pow(currentPos.x - startPos.current.x, 2) + 
-      Math.pow(currentPos.y - startPos.current.y, 2)
-    );
-
-    if (distance > 15) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  };
-
-  const clear = () => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  };
-
-  const click = (e) => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    if (isLongPress.current) {
-      e.stopPropagation();
-      e.preventDefault();
-      return;
-    }
-    if (onClick) onClick(e);
-  };
-
-  const contextMenu = (e) => {
-    e.preventDefault();
-  };
-
-  return {
-    onMouseDown: start,
-    onTouchStart: start,
-    onMouseMove: move,
-    onTouchMove: move,
-    onMouseUp: clear,
-    onMouseLeave: clear,
-    onTouchEnd: clear,
-    onTouchCancel: clear,
-    onClick: click,
-    onContextMenu: contextMenu
-  };
-};
-
 export const Dashboard = () => {
   const navigate = useNavigate();
   const [activities, setActivities] = useState([]);
@@ -136,8 +54,8 @@ export const Dashboard = () => {
   const [viewStyle, setViewStyle] = useState(() => localStorage.getItem('dashboardViewStyle') || 'card');
   const [dateSortOrder, setDateSortOrder] = useState(() => localStorage.getItem('dashboardDateSortOrder') || 'desc');
 
-  // 画面表示時は常に折り畳み状態（false）にする
   const [isTotalsExpanded, setIsTotalsExpanded] = useState(false);
+  const [isMyRewardExpanded, setIsMyRewardExpanded] = useState(false);
 
   useEffect(() => localStorage.setItem('dashboardDisplayMode', displayMode), [displayMode]);
   useEffect(() => localStorage.setItem('dashboardViewStyle', viewStyle), [viewStyle]);
@@ -480,6 +398,47 @@ export const Dashboard = () => {
                           currentUser?.displayName || 
                           'ユーザー';
 
+  const myRewards = useMemo(() => {
+    let totalReward = 0;
+    let totalHours = 0;
+    const details = [];
+
+    if (!displayUserName) return { totalReward, totalHours, details };
+
+    activities.forEach(act => {
+      if (act.status === '未実施') return;
+
+      (act.participantDetails || []).forEach(p => {
+        const wId = p.wageId || p.memberId;
+        const wage = membersList.find(m => m.id === wId);
+        const pName = p.participantName || wage?.name;
+        
+        if (pName === displayUserName) {
+          const hours = p.workTime || 0;
+          const price = wage?.defaultWage || 0;
+          const reward = hours * price;
+          
+          totalHours += hours;
+          totalReward += reward;
+          
+          if (hours > 0 || reward > 0) {
+            details.push({
+              id: act.id,
+              date: act.date,
+              activityType: act.activityType,
+              hours: hours,
+              reward: reward
+            });
+          }
+        }
+      });
+    });
+    
+    details.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    return { totalReward, totalHours, details };
+  }, [activities, membersList, displayUserName]);
+
   const getPermissions = (activity) => {
     const isCreator = activity.createdBy === currentUser?.uid;
     const isInSameGroup = userGroupIds.includes(activity.groupId);
@@ -606,7 +565,8 @@ export const Dashboard = () => {
 
     return (
       <tr 
-        onClick={() => navigate(`/activity-form/${act.id}`, { state: { isViewMode: true } })}
+        key={act.id} 
+        onClick={() => navigate(`/activity-form/${act.id}`, { state: { editData: act, isViewMode: true } })}
         className={`border-b border-gray-100 cursor-pointer transition-colors group/row active:bg-gray-200 ${act.isLocked ? 'hover:bg-gray-50/80' : 'hover:bg-green-50'}`}
       >
         <td className="p-3 text-sm text-gray-700 whitespace-nowrap">{act.date}</td>
@@ -674,10 +634,10 @@ export const Dashboard = () => {
 
             {canExport && (
               <>
-                <button onClick={() => handleExportSingleReport(act)} disabled={isThisExporting} className={`px-2 py-1.5 rounded-lg font-bold text-[9px] flex items-center transition-colors ${isThisExporting ? 'bg-blue-400 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`} title="Excel出力">
+                <button onClick={(e) => handleExportSingleReport(act)} disabled={isThisExporting} className={`px-2 py-1.5 rounded-lg font-bold text-[9px] flex items-center transition-colors ${isThisExporting ? 'bg-blue-400 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`} title="Excel出力">
                   <FileSpreadsheet size={12} className="mr-1" />Excel
                 </button>
-                <button onClick={() => handleDirectPrint(act)} className="px-2 py-1.5 bg-white text-gray-700 border border-gray-300 rounded-lg font-bold text-[9px] flex items-center hover:bg-gray-50 transition-colors" title="PDF出力">
+                <button onClick={(e) => handleDirectPrint(act)} className="px-2 py-1.5 bg-white text-gray-700 border border-gray-300 rounded-lg font-bold text-[9px] flex items-center hover:bg-gray-50 transition-colors" title="PDF出力">
                   <Printer size={12} className="mr-1" />PDF
                 </button>
               </>
@@ -886,6 +846,62 @@ export const Dashboard = () => {
         </div>
 
         {activities.length > 0 && (
+          <div className="mb-4 bg-white p-5 rounded-2xl shadow-sm border border-gray-200 animate-in fade-in duration-300">
+            <button 
+              onClick={() => setIsMyRewardExpanded(!isMyRewardExpanded)}
+              className="w-full flex items-center justify-between border-b border-gray-100 pb-2 cursor-pointer hover:opacity-70 transition-opacity"
+            >
+              <h3 className="font-extrabold text-gray-800 text-base flex items-center">
+                <User size={18} className="text-purple-600 mr-2" />
+                あなたの作業実績・報酬額 (作業完了分)
+              </h3>
+              {isMyRewardExpanded ? <ChevronUp size={20} className="text-gray-500" /> : <ChevronDown size={20} className="text-gray-500" />}
+            </button>
+            
+            {isMyRewardExpanded && (
+              <div className="mt-4 animate-in slide-in-from-top-2 duration-200">
+                <div className="flex flex-col sm:flex-row gap-4 mb-4">
+                  <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 flex-1 flex justify-between items-center shadow-sm">
+                    <span className="text-sm font-bold text-purple-900">累計作業時間</span>
+                    <span className="text-2xl font-mono font-black text-purple-700">{myRewards.totalHours} h</span>
+                  </div>
+                  <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex-1 flex justify-between items-center shadow-sm">
+                    <span className="text-sm font-bold text-blue-900">累計報酬額</span>
+                    <span className="text-2xl font-mono font-black text-blue-700">¥{myRewards.totalReward.toLocaleString()}</span>
+                  </div>
+                </div>
+                {myRewards.details.length > 0 ? (
+                  <div className="max-h-60 overflow-y-auto border border-gray-200 rounded-xl bg-white shadow-inner">
+                    <table className="w-full text-left text-sm select-none">
+                      <thead className="bg-gray-50 sticky top-0 border-b border-gray-200 z-10">
+                        <tr>
+                          <th className="p-2.5 font-bold text-gray-600 whitespace-nowrap">日付</th>
+                          <th className="p-2.5 font-bold text-gray-600 w-full">活動内容</th>
+                          <th className="p-2.5 font-bold text-gray-600 text-right whitespace-nowrap">時間</th>
+                          <th className="p-2.5 font-bold text-gray-600 text-right whitespace-nowrap">報酬額</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {myRewards.details.map((item, i) => (
+                          <tr key={i} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                            <td className="p-2.5 whitespace-nowrap text-gray-600">{item.date}</td>
+                            <td className="p-2.5 font-bold text-gray-800">{item.activityType}</td>
+                            <td className="p-2.5 text-right font-mono text-gray-600">{item.hours}h</td>
+                            <td className="p-2.5 text-right font-mono font-bold text-blue-600">¥{item.reward.toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500 text-center py-4 bg-gray-50 rounded-xl border border-gray-200">作業実績はありません</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activities.length > 0 && (
           <div className="mb-8 bg-white p-5 rounded-2xl shadow-sm border border-gray-200 animate-in fade-in duration-300">
             <button 
               onClick={() => setIsTotalsExpanded(!isTotalsExpanded)}
@@ -1083,7 +1099,7 @@ export const Dashboard = () => {
         )}
       </main>
 
-      {/* 🚀 ボトムシート（スマホでのメニュー用） */}
+      {/* ボトムシート（スマホでのメニュー用） */}
       {actionMenuActivity && (
         <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setActionMenuActivity(null)}>
           <div 
@@ -1155,7 +1171,7 @@ export const Dashboard = () => {
       )}
 
       {deletingActivityId && (
-        <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setDeletingActivityId(null)}>
+        <div className="fixed inset0 z-[250] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setDeletingActivityId(null)}>
           <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
             <div className="p-5 flex flex-col items-center text-center">
               <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-4">
