@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock, Map, MoreVertical, Edit, Info, History } from 'lucide-react'; 
 import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, doc, getDoc, deleteDoc, where, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -23,6 +23,88 @@ const formatTimestamp = (timestamp) => {
     return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   }
   return '-';
+};
+
+const useLongPress = (onLongPress, onClick, ms = 500) => {
+  const timerRef = useRef(null);
+  const isLongPress = useRef(false);
+  const startPos = useRef({ x: 0, y: 0 });
+
+  const start = (e) => {
+    isLongPress.current = false;
+    
+    if (e.touches && e.touches.length > 0) {
+      startPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    } else {
+      startPos.current = { x: e.clientX, y: e.clientY };
+    }
+
+    timerRef.current = setTimeout(() => {
+      isLongPress.current = true;
+      if (window.navigator && window.navigator.vibrate) {
+        window.navigator.vibrate(50);
+      }
+      onLongPress(e);
+    }, ms);
+  };
+
+  const move = (e) => {
+    if (!timerRef.current) return;
+    
+    let currentPos = { x: 0, y: 0 };
+    if (e.touches && e.touches.length > 0) {
+      currentPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    } else {
+      currentPos = { x: e.clientX, y: e.clientY };
+    }
+
+    const distance = Math.sqrt(
+      Math.pow(currentPos.x - startPos.current.x, 2) + 
+      Math.pow(currentPos.y - startPos.current.y, 2)
+    );
+
+    if (distance > 15) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  const clear = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  const click = (e) => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    if (isLongPress.current) {
+      e.stopPropagation();
+      e.preventDefault();
+      return;
+    }
+    if (onClick) onClick(e);
+  };
+
+  const contextMenu = (e) => {
+    e.preventDefault();
+  };
+
+  return {
+    onMouseDown: start,
+    onTouchStart: start,
+    onMouseMove: move,
+    onTouchMove: move,
+    onMouseUp: clear,
+    onMouseLeave: clear,
+    onTouchEnd: clear,
+    onTouchCancel: clear,
+    onClick: click,
+    onContextMenu: contextMenu
+  };
 };
 
 export const Dashboard = () => {
@@ -687,10 +769,10 @@ export const Dashboard = () => {
         }
       `}</style>
 
-      <header className="bg-white shadow-sm px-4 py-3 flex justify-between items-center sticky top-0 z-30 no-print">
-        <div className="flex items-center">
-          <Sprout className="w-8 h-8 mr-2 text-green-600" />
-          <h1 className="text-lg font-bold text-gray-800">多面システム（鎌田）</h1>
+      <header className="bg-white shadow-sm px-4 py-3 flex flex-col md:flex-row justify-between items-start md:items-center sticky top-0 z-30 no-print">
+        <div className="flex items-center w-full md:w-auto mb-3 md:mb-0">
+          <Sprout className="w-8 h-8 mr-2 text-green-600 shrink-0" />
+          <h1 className="text-lg font-bold text-gray-800 whitespace-nowrap">多面システム（鎌田）</h1>
         </div>
         
         <div className="hidden md:flex items-center space-x-6">
@@ -733,7 +815,7 @@ export const Dashboard = () => {
           </button>
         </div>
 
-        <div className="md:hidden flex items-center space-x-3">
+        <div className="md:hidden flex items-center w-full overflow-x-auto space-x-3 pb-1">
            {(userRole === 'admin' || userRole === 'manager') && (
             <>
               <button onClick={() => navigate('/groups')} className="p-2 text-gray-500 hover:text-blue-600 transition-colors"><Users size={20} /></button>
