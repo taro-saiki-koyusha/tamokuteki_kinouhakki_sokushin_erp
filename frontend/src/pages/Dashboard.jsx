@@ -427,7 +427,8 @@ export const Dashboard = () => {
               date: act.date,
               activityType: act.activityType,
               hours: hours,
-              reward: reward
+              reward: reward,
+              originalAct: act // 遷移用に元データを保持
             });
           }
         }
@@ -625,9 +626,8 @@ export const Dashboard = () => {
           {hasImage ? <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded text-[9px] font-bold">あり</span> : <span className="text-gray-300 text-[10px]">-</span>}
         </td>
 
-        <td className={`w-0 px-2 py-2 text-center whitespace-nowrap sticky right-0 bg-white transition-colors shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-100 ${act.isLocked ? 'group-hover/row:bg-gray-50/80' : 'group-hover/row:bg-green-50'}`} onClick={(e) => e.stopPropagation()}>
-          
-          <div className="hidden md:flex gap-1.5 justify-center items-center w-max mx-auto">
+        <td className={`w-0 px-2 py-2 text-center whitespace-nowrap sticky right-0 bg-white transition-colors shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-100 hidden md:table-cell ${act.isLocked ? 'group-hover/row:bg-gray-50/80' : 'group-hover/row:bg-green-50'}`} onClick={(e) => e.stopPropagation()}>
+          <div className="flex gap-1.5 justify-center items-center w-max mx-auto">
             <button onClick={(e) => handleCopyLink(act, e)} className="p-1.5 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded transition-colors" title="リンクをコピー">
               <Link size={14} />
             </button>
@@ -649,16 +649,6 @@ export const Dashboard = () => {
               </button>
             )}
           </div>
-
-          <div className="md:hidden flex justify-center items-center">
-            <button 
-              onClick={(e) => { e.stopPropagation(); setActionMenuActivity(act); }} 
-              className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-            >
-              <MoreVertical size={20} />
-            </button>
-          </div>
-
         </td>
       </tr>
     );
@@ -703,7 +693,7 @@ export const Dashboard = () => {
                 <th className="p-3 font-bold w-24 text-center whitespace-nowrap">登録者</th>
                 <th className="p-3 font-bold w-12 text-center whitespace-nowrap">写真</th>
                 
-                <th className="w-0 px-3 py-3 font-bold text-center whitespace-nowrap sticky right-0 bg-gray-100 shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-200 table-cell">
+                <th className="w-0 px-3 py-3 font-bold text-center whitespace-nowrap sticky right-0 bg-gray-100 shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-200 hidden md:table-cell">
                   操作
                 </th>
               </tr>
@@ -883,7 +873,14 @@ export const Dashboard = () => {
                       </thead>
                       <tbody>
                         {myRewards.details.map((item, i) => (
-                          <tr key={i} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                          <tr 
+                            key={`${item.id}-${i}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/activity-form/${item.id}`, { state: { editData: item.originalAct, isViewMode: true } });
+                            }}
+                            className="border-b border-gray-100 hover:bg-green-50 active:bg-green-100 transition-colors cursor-pointer"
+                          >
                             <td className="p-2.5 whitespace-nowrap text-gray-600">{item.date}</td>
                             <td className="p-2.5 font-bold text-gray-800">{item.activityType}</td>
                             <td className="p-2.5 text-right font-mono text-gray-600">{item.hours}h</td>
@@ -1171,7 +1168,7 @@ export const Dashboard = () => {
       )}
 
       {deletingActivityId && (
-        <div className="fixed inset0 z-[250] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setDeletingActivityId(null)}>
+        <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setDeletingActivityId(null)}>
           <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
             <div className="p-5 flex flex-col items-center text-center">
               <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-4">
