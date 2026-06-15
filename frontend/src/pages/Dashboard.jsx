@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock, Map, MoreVertical, Edit, Info, History } from 'lucide-react'; 
+import React, { useState, useEffect, useMemo } from 'react';
+import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock, Map, MoreVertical, Edit, Info, History, Loader2 } from 'lucide-react'; 
 import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, doc, getDoc, deleteDoc, where, addDoc, serverTimestamp } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -315,6 +315,66 @@ export const Dashboard = () => {
     } catch (error) { console.error(error); alert('Excel作成エラー'); } finally { setExportingId(null); }
   };
 
+  // 🚀 追加: グループ毎の活動一覧をExcel出力する関数
+  const handleExportGroupReport = async (groupName, groupActs) => {
+    setExportingId(`group-${groupName}`); 
+    try {
+      const workbook = await XlsxPopulate.fromBlankAsync();
+      const sheet = workbook.sheet(0);
+      sheet.name(groupName.substring(0, 31)); // シート名は最大31文字
+
+      // ヘッダー行の設定
+      const headers = ['日付', '活動内容', '状態', '計画区分', '支払区分', '報告書NO', '予算額', '実績額', '活動場所', '項目番号', '参加人数', '登録者'];
+      headers.forEach((header, i) => {
+        sheet.cell(1, i + 1).value(header);
+        sheet.cell(1, i + 1).style("bold", true);
+        sheet.cell(1, i + 1).style("fill", "F3F4F6"); // 薄いグレー背景
+      });
+
+      // データの書き込み
+      groupActs.forEach((act, index) => {
+        const row = index + 2;
+        const budget = Number(act.budget) || 0;
+        const actualCost = calculateActivityCost(act);
+        const creatorName = systemUsers.find(u => u.id === act.createdBy)?.displayName || '-';
+        const participants = `計 ${act.participants || 0} 名 (農:${act.participantsAgri || 0} / 非:${act.participantsNonAgri || 0})`;
+
+        sheet.cell(row, 1).value(act.date || '');
+        sheet.cell(row, 2).value(act.activityType || '');
+        sheet.cell(row, 3).value(act.status || '実績入力済');
+        sheet.cell(row, 4).value(act.planType || '当初計画');
+        sheet.cell(row, 5).value(act.paymentCategory || '');
+        sheet.cell(row, 6).value(act.reportNo || '');
+        sheet.cell(row, 7).value(budget);
+        sheet.cell(row, 8).value(actualCost);
+        sheet.cell(row, 9).value(act.location || '');
+        sheet.cell(row, 10).value(act.activityNumbers?.join(', ') || '');
+        sheet.cell(row, 11).value(participants);
+        sheet.cell(row, 12).value(creatorName);
+      });
+
+      // 列幅の調整
+      sheet.column("A").width(12);
+      sheet.column("B").width(30);
+      sheet.column("E").width(25);
+      sheet.column("I").width(20);
+
+      const blob = await workbook.outputAsync();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const today = new Date().toISOString().split('T')[0];
+      a.download = `活動一覧_${groupName}_${today}.xlsx`; 
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (error) { 
+      console.error(error); 
+      alert('Excel作成エラーが発生しました。'); 
+    } finally { 
+      setExportingId(null); 
+    }
+  };
+
   const handleDirectPrint = (activity) => {
     setPrintingId(activity.id);
     setPrintActivity(activity);
@@ -566,7 +626,6 @@ export const Dashboard = () => {
 
     return (
       <tr 
-        key={act.id} 
         onClick={() => navigate(`/activity-form/${act.id}`, { state: { editData: act, isViewMode: true } })}
         className={`border-b border-gray-100 cursor-pointer transition-colors group/row active:bg-gray-200 ${act.isLocked ? 'hover:bg-gray-50/80' : 'hover:bg-green-50'}`}
       >
@@ -898,202 +957,302 @@ export const Dashboard = () => {
           </div>
         )}
 
-        {activities.length > 0 && (
-          <div className="mb-8 bg-white p-5 rounded-2xl shadow-sm border border-gray-200 animate-in fade-in duration-300">
-            <button 
-              onClick={() => setIsTotalsExpanded(!isTotalsExpanded)}
-              className="w-full flex items-center justify-between border-b border-gray-100 pb-2 cursor-pointer hover:opacity-70 transition-opacity"
-            >
-              <h3 className="font-extrabold text-gray-800 text-base flex items-center">
-                <BarChart2 size={18} className="text-blue-600 mr-2" />
-                支払区分別の集計状況
-              </h3>
-              {isTotalsExpanded ? <ChevronUp size={20} className="text-gray-500" /> : <ChevronDown size={20} className="text-gray-500" />}
-            </button>
-            
-            {isTotalsExpanded && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4 animate-in slide-in-from-top-2 duration-200">
-                {paymentCategoryTotals.map((cat, idx) => {
-                  const isOverBudget = cat.actual > cat.budget && cat.budget > 0;
-                  const remaining = cat.budget - cat.actual;
-                  if (cat.budget === 0 && cat.actual === 0 && cat.planned === 0 && cat.name.includes('未設定')) return null;
+        {/* 🚀 グループ毎のExcel出力関数 */}
+        {(() => {
+          const handleExportGroupReport = async (groupName, groupActs) => {
+            setExportingId(`group-${groupName}`); 
+            try {
+              const workbook = await XlsxPopulate.fromBlankAsync();
+              const sheet = workbook.sheet(0);
+              sheet.name(groupName.substring(0, 31)); // シート名は最大31文字
 
-                  return (
-                    <div key={idx} className="bg-gray-50 p-4 rounded-xl border border-gray-200 flex flex-col justify-between">
-                      <div>
-                        <div className="text-xs font-black text-gray-600 truncate mb-2" title={cat.name}>
-                          {cat.name}
-                        </div>
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-[11px] text-gray-500">
-                            <span>予算枠額:</span>
-                            <span className="font-bold font-mono">¥{cat.budget.toLocaleString()}</span>
-                          </div>
-                          <div className="flex justify-between text-[11px] text-gray-500">
-                            <span>活動予算 (計画値):</span>
-                            <span className="font-bold font-mono text-purple-600">¥{cat.planned.toLocaleString()}</span>
-                          </div>
-                          <div className="flex justify-between text-[11px] text-gray-500">
-                            <span>消化実績:</span>
-                            <span className={`font-black font-mono ${isOverBudget ? 'text-red-600' : 'text-blue-700'}`}>
-                              ¥{cat.actual.toLocaleString()}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      {cat.budget > 0 && (
-                        <div className={`mt-3 pt-2 border-t border-gray-200 border-dashed flex justify-between text-xs font-bold ${remaining < 0 ? 'text-red-500' : 'text-green-600'}`}>
-                          <span>予算枠残額:</span>
-                          <span className="font-mono">¥{remaining.toLocaleString()}</span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
+              // ヘッダー行の設定
+              const headers = ['日付', '活動内容', '状態', '計画区分', '支払区分', '報告書NO', '予算額', '実績額', '活動場所', '項目番号', '参加人数', '登録者'];
+              headers.forEach((header, i) => {
+                sheet.cell(1, i + 1).value(header);
+                sheet.cell(1, i + 1).style("bold", true);
+                sheet.cell(1, i + 1).style("fill", "F3F4F6"); // 薄いグレー背景
+              });
 
-        {loading ? (
-          <div className="text-center py-20 text-gray-400">読み込み中...</div>
-        ) : activities.length === 0 ? (
-          <div className="text-center py-20 bg-white rounded-3xl border-2 border-dashed border-gray-200 text-gray-400 font-bold">
-            表示できる実績がありません
-          </div>
-        ) : (
-          <>
-            {displayMode === 'list' && (
-              <div className="animate-in fade-in duration-500">
-                {viewStyle === 'card' ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                    {globalSortedActivities.map(act => <ActivityCard key={act.id} activity={act} />)}
-                  </div>
-                ) : (
-                  <ActivityTable activitiesToRender={globalSortedActivities} />
-                )}
-              </div>
-            )}
+              // データの書き込み
+              groupActs.forEach((act, index) => {
+                const row = index + 2;
+                const budget = Number(act.budget) || 0;
+                const actualCost = calculateActivityCost(act);
+                const creatorName = systemUsers.find(u => u.id === act.createdBy)?.displayName || '-';
+                const participants = `計 ${act.participants || 0} 名 (農:${act.participantsAgri || 0} / 非:${act.participantsNonAgri || 0})`;
 
-            {displayMode === 'group' && (
-              <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                {groupsList.map(group => {
-                  const acts = groupedActivities[group.id] || [];
-                  if (acts.length === 0) return null;
+                sheet.cell(row, 1).value(act.date || '');
+                sheet.cell(row, 2).value(act.activityType || '');
+                sheet.cell(row, 3).value(act.status || '実績入力済');
+                sheet.cell(row, 4).value(act.planType || '当初計画');
+                sheet.cell(row, 5).value(act.paymentCategory || '');
+                sheet.cell(row, 6).value(act.reportNo || '');
+                sheet.cell(row, 7).value(budget);
+                sheet.cell(row, 8).value(actualCost);
+                sheet.cell(row, 9).value(act.location || '');
+                sheet.cell(row, 10).value(act.activityNumbers?.join(', ') || '');
+                sheet.cell(row, 11).value(participants);
+                sheet.cell(row, 12).value(creatorName);
+              });
 
-                  const groupTotalBudget = acts.reduce((sum, act) => sum + (Number(act.budget) || 0), 0);
-                  const groupTotalActual = acts.reduce((sum, act) => sum + calculateActivityCost(act), 0);
-                  const balance = groupTotalBudget - groupTotalActual;
+              // 列幅の調整
+              sheet.column("A").width(12);
+              sheet.column("B").width(30);
+              sheet.column("E").width(25);
+              sheet.column("I").width(20);
 
-                  return (
-                    <div key={group.id} className="space-y-4">
-                      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 border-b border-gray-300 pb-3">
-                        <div className="flex items-center">
-                          <div className="h-6 w-1.5 bg-blue-600 rounded-full mr-3"></div>
-                          <h3 className="text-xl font-extrabold text-gray-800">{group.name}</h3>
-                          <span className="ml-3 bg-blue-50 text-blue-600 text-xs px-2.5 py-0.5 rounded-full font-bold border border-blue-100">
-                            {acts.length} 件の記録
-                          </span>
-                        </div>
-                        
-                        {(groupTotalBudget > 0 || groupTotalActual > 0) && (
-                          <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-xl border border-gray-200 shadow-sm w-max self-start sm:self-auto">
-                            <div className="text-right">
-                              <div className="text-[9px] text-gray-500 font-bold">予算合計</div>
-                              <div className="text-sm font-bold text-gray-800">¥{groupTotalBudget.toLocaleString()}</div>
-                            </div>
-                            <div className="text-gray-300 font-light">|</div>
-                            <div className="text-right">
-                              <div className="text-[9px] text-gray-500 font-bold">実績合計</div>
-                              <div className="text-sm font-bold text-blue-600">¥{groupTotalActual.toLocaleString()}</div>
-                            </div>
-                            <div className="text-gray-300 font-light">|</div>
-                            <div className="text-right">
-                              <div className="text-[9px] text-gray-500 font-bold">予算残額</div>
-                              <div className={`text-base font-extrabold ${balance < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                ¥{balance.toLocaleString()}
+              const blob = await workbook.outputAsync();
+              const url = window.URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              const today = new Date().toISOString().split('T')[0];
+              a.download = `活動一覧_${groupName}_${today}.xlsx`; 
+              document.body.appendChild(a); a.click(); document.body.removeChild(a);
+              window.URL.revokeObjectURL(url);
+            } catch (error) { 
+              console.error(error); 
+              alert('Excel作成エラーが発生しました。'); 
+            } finally { 
+              setExportingId(null); 
+            }
+          };
+
+          return (
+            <>
+              {activities.length > 0 && (
+                <div className="mb-8 bg-white p-5 rounded-2xl shadow-sm border border-gray-200 animate-in fade-in duration-300">
+                  <button 
+                    onClick={() => setIsTotalsExpanded(!isTotalsExpanded)}
+                    className="w-full flex items-center justify-between border-b border-gray-100 pb-2 cursor-pointer hover:opacity-70 transition-opacity"
+                  >
+                    <h3 className="font-extrabold text-gray-800 text-base flex items-center">
+                      <BarChart2 size={18} className="text-blue-600 mr-2" />
+                      支払区分別の集計状況
+                    </h3>
+                    {isTotalsExpanded ? <ChevronUp size={20} className="text-gray-500" /> : <ChevronDown size={20} className="text-gray-500" />}
+                  </button>
+                  
+                  {isTotalsExpanded && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4 animate-in slide-in-from-top-2 duration-200">
+                      {paymentCategoryTotals.map((cat, idx) => {
+                        const isOverBudget = cat.actual > cat.budget && cat.budget > 0;
+                        const remaining = cat.budget - cat.actual;
+                        if (cat.budget === 0 && cat.actual === 0 && cat.planned === 0 && cat.name.includes('未設定')) return null;
+
+                        return (
+                          <div key={idx} className="bg-gray-50 p-4 rounded-xl border border-gray-200 flex flex-col justify-between">
+                            <div>
+                              <div className="text-xs font-black text-gray-600 truncate mb-2" title={cat.name}>
+                                {cat.name}
+                              </div>
+                              <div className="space-y-1">
+                                <div className="flex justify-between text-[11px] text-gray-500">
+                                  <span>予算枠額:</span>
+                                  <span className="font-bold font-mono">¥{cat.budget.toLocaleString()}</span>
+                                </div>
+                                <div className="flex justify-between text-[11px] text-gray-500">
+                                  <span>活動予算 (計画値):</span>
+                                  <span className="font-bold font-mono text-purple-600">¥{cat.planned.toLocaleString()}</span>
+                                </div>
+                                <div className="flex justify-between text-[11px] text-gray-500">
+                                  <span>消化実績:</span>
+                                  <span className={`font-black font-mono ${isOverBudget ? 'text-red-600' : 'text-blue-700'}`}>
+                                    ¥{cat.actual.toLocaleString()}
+                                  </span>
+                                </div>
                               </div>
                             </div>
+                            {cat.budget > 0 && (
+                              <div className={`mt-3 pt-2 border-t border-gray-200 border-dashed flex justify-between text-xs font-bold ${remaining < 0 ? 'text-red-500' : 'text-green-600'}`}>
+                                <span>予算枠残額:</span>
+                                <span className="font-mono">¥{remaining.toLocaleString()}</span>
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
-                      
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {loading ? (
+                <div className="text-center py-20 text-gray-400">読み込み中...</div>
+              ) : activities.length === 0 ? (
+                <div className="text-center py-20 bg-white rounded-3xl border-2 border-dashed border-gray-200 text-gray-400 font-bold">
+                  表示できる実績がありません
+                </div>
+              ) : (
+                <>
+                  {displayMode === 'list' && (
+                    <div className="animate-in fade-in duration-500">
                       {viewStyle === 'card' ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                          {acts.map(act => <ActivityCard key={act.id} activity={act} />)}
+                          {globalSortedActivities.map(act => <ActivityCard key={act.id} activity={act} />)}
                         </div>
                       ) : (
-                        <ActivityTable activitiesToRender={acts} />
+                        <ActivityTable activitiesToRender={globalSortedActivities} />
                       )}
                     </div>
-                  );
-                })}
+                  )}
 
-                {(() => {
-                  const unregisteredActs = Object.keys(groupedActivities)
-                    .filter(gid => !groupsList.some(g => g.id === gid))
-                    .flatMap(gid => groupedActivities[gid])
-                    .sort((a, b) => {
-                      const dateA = new Date(a.date);
-                      const dateB = new Date(b.date);
-                      return dateSortOrder === 'desc' ? dateB - dateA : dateA - dateB;
-                    });
+                  {displayMode === 'group' && (
+                    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                      {groupsList.map(group => {
+                        const acts = groupedActivities[group.id] || [];
+                        if (acts.length === 0) return null;
 
-                  if (unregisteredActs.length === 0) return null;
+                        const groupTotalBudget = acts.reduce((sum, act) => sum + (Number(act.budget) || 0), 0);
+                        const groupTotalActual = acts.reduce((sum, act) => sum + calculateActivityCost(act), 0);
+                        const balance = groupTotalBudget - groupTotalActual;
 
-                  const groupTotalBudget = unregisteredActs.reduce((sum, act) => sum + (Number(act.budget) || 0), 0);
-                  const groupTotalActual = unregisteredActs.reduce((sum, act) => sum + calculateActivityCost(act), 0);
-                  const balance = groupTotalBudget - groupTotalActual;
-
-                  return (
-                    <div key="unregistered" className="space-y-4">
-                      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 border-b border-gray-300 pb-3">
-                        <div className="flex items-center">
-                          <div className="h-6 w-1.5 bg-gray-400 rounded-full mr-3"></div>
-                          <h3 className="text-xl font-extrabold text-gray-500">グループ未登録・不明</h3>
-                          <span className="ml-3 bg-gray-100 text-gray-600 text-xs px-2.5 py-0.5 rounded-full font-bold border border-gray-200">
-                            {unregisteredActs.length} 件の記録
-                          </span>
-                        </div>
-                        
-                        {(groupTotalBudget > 0 || groupTotalActual > 0) && (
-                          <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-xl border border-gray-200 shadow-sm w-max self-start sm:self-auto opacity-80">
-                            <div className="text-right">
-                              <div className="text-[9px] text-gray-500 font-bold">予算合計</div>
-                              <div className="text-sm font-bold text-gray-800">¥{groupTotalBudget.toLocaleString()}</div>
-                            </div>
-                            <div className="text-gray-300 font-light">|</div>
-                            <div className="text-right">
-                              <div className="text-[9px] text-gray-500 font-bold">実績合計</div>
-                              <div className="text-sm font-bold text-blue-600">¥{groupTotalActual.toLocaleString()}</div>
-                            </div>
-                            <div className="text-gray-300 font-light">|</div>
-                            <div className="text-right">
-                              <div className="text-[9px] text-gray-500 font-bold">予算残額</div>
-                              <div className={`text-base font-extrabold ${balance < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                ¥{balance.toLocaleString()}
+                        return (
+                          <div key={group.id} className="space-y-4">
+                            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 border-b border-gray-300 pb-3">
+                              <div className="flex items-center flex-wrap gap-y-2">
+                                <div className="flex items-center">
+                                  <div className="h-6 w-1.5 bg-blue-600 rounded-full mr-3"></div>
+                                  <h3 className="text-xl font-extrabold text-gray-800">{group.name}</h3>
+                                  <span className="ml-3 bg-blue-50 text-blue-600 text-xs px-2.5 py-0.5 rounded-full font-bold border border-blue-100">
+                                    {acts.length} 件の記録
+                                  </span>
+                                </div>
+                                {/* 🚀 追加: グループ毎のExcel出力ボタン */}
+                                {(userRole === 'admin' || userRole === 'manager') && acts.length > 0 && (
+                                  <button 
+                                    onClick={() => handleExportGroupReport(group.name, acts)}
+                                    disabled={exportingId === `group-${group.name}`}
+                                    className="ml-3 flex items-center px-3 py-1.5 bg-white border border-gray-300 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-50 transition-colors shadow-sm disabled:opacity-50"
+                                  >
+                                    {exportingId === `group-${group.name}` ? (
+                                      <Loader2 size={14} className="mr-1.5 text-blue-600 animate-spin" />
+                                    ) : (
+                                      <FileSpreadsheet size={14} className="mr-1.5 text-green-600" />
+                                    )}
+                                    一覧をExcel出力
+                                  </button>
+                                )}
                               </div>
+                              
+                              {(groupTotalBudget > 0 || groupTotalActual > 0) && (
+                                <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-xl border border-gray-200 shadow-sm w-max self-start sm:self-auto">
+                                  <div className="text-right">
+                                    <div className="text-[9px] text-gray-500 font-bold">予算合計</div>
+                                    <div className="text-sm font-bold text-gray-800">¥{groupTotalBudget.toLocaleString()}</div>
+                                  </div>
+                                  <div className="text-gray-300 font-light">|</div>
+                                  <div className="text-right">
+                                    <div className="text-[9px] text-gray-500 font-bold">実績合計</div>
+                                    <div className="text-sm font-bold text-blue-600">¥{groupTotalActual.toLocaleString()}</div>
+                                  </div>
+                                  <div className="text-gray-300 font-light">|</div>
+                                  <div className="text-right">
+                                    <div className="text-[9px] text-gray-500 font-bold">予算残額</div>
+                                    <div className={`text-base font-extrabold ${balance < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                      ¥{balance.toLocaleString()}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            
+                            {viewStyle === 'card' ? (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                {acts.map(act => <ActivityCard key={act.id} activity={act} />)}
+                              </div>
+                            ) : (
+                              <ActivityTable activitiesToRender={acts} />
+                            )}
+                          </div>
+                        );
+                      })}
+
+                      {(() => {
+                        const unregisteredActs = Object.keys(groupedActivities)
+                          .filter(gid => !groupsList.some(g => g.id === gid))
+                          .flatMap(gid => groupedActivities[gid])
+                          .sort((a, b) => {
+                            const dateA = new Date(a.date);
+                            const dateB = new Date(b.date);
+                            return dateSortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+                          });
+
+                        if (unregisteredActs.length === 0) return null;
+
+                        const groupTotalBudget = unregisteredActs.reduce((sum, act) => sum + (Number(act.budget) || 0), 0);
+                        const groupTotalActual = unregisteredActs.reduce((sum, act) => sum + calculateActivityCost(act), 0);
+                        const balance = groupTotalBudget - groupTotalActual;
+
+                        return (
+                          <div key="unregistered" className="space-y-4">
+                            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 border-b border-gray-300 pb-3">
+                              <div className="flex items-center flex-wrap gap-y-2">
+                                <div className="flex items-center">
+                                  <div className="h-6 w-1.5 bg-gray-400 rounded-full mr-3"></div>
+                                  <h3 className="text-xl font-extrabold text-gray-500">グループ未登録・不明</h3>
+                                  <span className="ml-3 bg-gray-100 text-gray-600 text-xs px-2.5 py-0.5 rounded-full font-bold border border-gray-200">
+                                    {unregisteredActs.length} 件の記録
+                                  </span>
+                                </div>
+                                {/* 🚀 追加: グループ毎のExcel出力ボタン */}
+                                {(userRole === 'admin' || userRole === 'manager') && unregisteredActs.length > 0 && (
+                                  <button 
+                                    onClick={() => handleExportGroupReport('グループ未登録', unregisteredActs)}
+                                    disabled={exportingId === `group-グループ未登録`}
+                                    className="ml-3 flex items-center px-3 py-1.5 bg-white border border-gray-300 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-50 transition-colors shadow-sm disabled:opacity-50 opacity-80"
+                                  >
+                                    {exportingId === `group-グループ未登録` ? (
+                                      <Loader2 size={14} className="mr-1.5 text-blue-600 animate-spin" />
+                                    ) : (
+                                      <FileSpreadsheet size={14} className="mr-1.5 text-green-600" />
+                                    )}
+                                    一覧をExcel出力
+                                  </button>
+                                )}
+                              </div>
+                              
+                              {(groupTotalBudget > 0 || groupTotalActual > 0) && (
+                                <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-xl border border-gray-200 shadow-sm w-max self-start sm:self-auto opacity-80">
+                                  <div className="text-right">
+                                    <div className="text-[9px] text-gray-500 font-bold">予算合計</div>
+                                    <div className="text-sm font-bold text-gray-800">¥{groupTotalBudget.toLocaleString()}</div>
+                                  </div>
+                                  <div className="text-gray-300 font-light">|</div>
+                                  <div className="text-right">
+                                    <div className="text-[9px] text-gray-500 font-bold">実績合計</div>
+                                    <div className="text-sm font-bold text-blue-600">¥{groupTotalActual.toLocaleString()}</div>
+                                  </div>
+                                  <div className="text-gray-300 font-light">|</div>
+                                  <div className="text-right">
+                                    <div className="text-[9px] text-gray-500 font-bold">予算残額</div>
+                                    <div className={`text-base font-extrabold ${balance < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                      ¥{balance.toLocaleString()}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            
+                            <div className="opacity-80">
+                              {viewStyle === 'card' ? (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                  {unregisteredActs.map(act => <ActivityCard key={act.id} activity={act} />)}
+                                </div>
+                              ) : (
+                                <ActivityTable activitiesToRender={unregisteredActs} />
+                              )}
                             </div>
                           </div>
-                        )}
-                      </div>
-                      
-                      <div className="opacity-80">
-                        {viewStyle === 'card' ? (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                            {unregisteredActs.map(act => <ActivityCard key={act.id} activity={act} />)}
-                          </div>
-                        ) : (
-                          <ActivityTable activitiesToRender={unregisteredActs} />
-                        )}
-                      </div>
+                        );
+                      })()}
                     </div>
-                  );
-                })()}
-              </div>
-            )}
-          </>
-        )}
+                  )}
+                </>
+              )}
+            </>
+          );
+        })()}
       </main>
 
       {/* ボトムシート（スマホでのメニュー用） */}
