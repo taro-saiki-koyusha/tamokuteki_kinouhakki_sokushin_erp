@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock, Map, MoreVertical, Edit, Info, History, Loader2 } from 'lucide-react'; 
+import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock, Map, MoreVertical, Edit, Info, History, Loader2, Ticket } from 'lucide-react'; 
 import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, doc, getDoc, deleteDoc, where, addDoc, serverTimestamp } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -610,6 +610,7 @@ export const Dashboard = () => {
   const ActivityTableRow = ({ act }) => {
     const groupInfo = groupsList.find(g => g.id === act.groupId);
     const isThisExporting = exportingId === act.id;
+    const isThisPrinting = printingId === act.id; 
     const { canExport, canDeleteAct } = getPermissions(act);
     const hasImage = (act.imageUrls && act.imageUrls.length > 0) || act.imageUrl;
     
@@ -681,8 +682,8 @@ export const Dashboard = () => {
           {hasImage ? <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded text-[9px] font-bold">あり</span> : <span className="text-gray-300 text-[10px]">-</span>}
         </td>
 
-        <td className={`w-0 px-2 py-2 text-center whitespace-nowrap sticky right-0 bg-white transition-colors shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-100 ${act.isLocked ? 'group-hover/row:bg-gray-50/80' : 'group-hover/row:bg-green-50'}`} onClick={(e) => e.stopPropagation()}>
-          <div className="hidden md:flex gap-1.5 justify-center items-center w-max mx-auto">
+        <td className={`w-0 px-2 py-2 text-center whitespace-nowrap sticky right-0 bg-white transition-colors shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-100 hidden md:table-cell ${act.isLocked ? 'group-hover/row:bg-gray-50/80' : 'group-hover/row:bg-green-50'}`} onClick={(e) => e.stopPropagation()}>
+          <div className="flex gap-1.5 justify-center items-center w-max mx-auto">
             <button onClick={(e) => handleCopyLink(act, e)} className="p-1.5 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded transition-colors" title="リンクをコピー">
               <Link size={14} />
             </button>
@@ -692,8 +693,9 @@ export const Dashboard = () => {
                 <button onClick={(e) => handleExportSingleReport(act)} disabled={isThisExporting} className={`px-2 py-1.5 rounded-lg font-bold text-[9px] flex items-center transition-colors ${isThisExporting ? 'bg-blue-400 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`} title="Excel出力">
                   <FileSpreadsheet size={12} className="mr-1" />Excel
                 </button>
-                <button onClick={(e) => handleDirectPrint(act)} className="px-2 py-1.5 bg-white text-gray-700 border border-gray-300 rounded-lg font-bold text-[9px] flex items-center hover:bg-gray-50 transition-colors" title="PDF出力">
-                  <Printer size={12} className="mr-1" />PDF
+                <button onClick={(e) => handleDirectPrint(act)} className={`px-2 py-1.5 bg-white text-gray-700 border border-gray-300 rounded-lg font-bold text-[9px] flex items-center hover:bg-gray-50 transition-colors ${isThisPrinting ? 'opacity-50' : ''}`} title="PDF出力">
+                  {isThisPrinting && printingId === act.id ? <Loader2 size={12} className="mr-1 animate-spin" /> : <Printer size={12} className="mr-1" />}
+                  PDF
                 </button>
               </>
             )}
@@ -704,14 +706,14 @@ export const Dashboard = () => {
               </button>
             )}
           </div>
-          <div className="md:hidden flex justify-center items-center">
-            <button 
-              onClick={(e) => { e.stopPropagation(); setActionMenuActivity(act); }} 
-              className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-            >
-              <MoreVertical size={20} />
-            </button>
-          </div>
+        </td>
+        <td className="w-0 px-2 py-2 text-center whitespace-nowrap sticky right-0 bg-white md:hidden border-l border-gray-100" onClick={(e) => e.stopPropagation()}>
+          <button 
+            onClick={(e) => { e.stopPropagation(); setActionMenuActivity(act); }} 
+            className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+          >
+            <MoreVertical size={20} />
+          </button>
         </td>
       </tr>
     );
@@ -756,7 +758,10 @@ export const Dashboard = () => {
                 <th className="p-3 font-bold w-24 text-center whitespace-nowrap">登録者</th>
                 <th className="p-3 font-bold w-12 text-center whitespace-nowrap">写真</th>
                 
-                <th className="w-0 px-3 py-3 font-bold text-center whitespace-nowrap sticky right-0 bg-gray-100 shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-200">
+                <th className="w-0 px-3 py-3 font-bold text-center whitespace-nowrap sticky right-0 bg-gray-100 shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-200 hidden md:table-cell">
+                  操作
+                </th>
+                <th className="w-0 px-3 py-3 font-bold text-center whitespace-nowrap sticky right-0 bg-gray-100 shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-200 md:hidden">
                   操作
                 </th>
               </tr>
@@ -812,6 +817,9 @@ export const Dashboard = () => {
               <button onClick={() => navigate('/masters')} className="flex items-center text-sm font-bold text-gray-500 hover:text-blue-600">
                 <Settings size={18} className="mr-1"/> マスタ管理
               </button>
+              <button onClick={() => navigate('/ticket-management')} className="flex items-center text-sm font-bold text-gray-500 hover:text-indigo-600">
+                <Ticket size={18} className="mr-1"/> チケット管理
+              </button>
               <button onClick={() => navigate('/audit-logs')} className="flex items-center text-sm font-bold text-gray-500 hover:text-orange-600">
                 <History size={18} className="mr-1"/> 操作履歴
               </button>
@@ -840,6 +848,7 @@ export const Dashboard = () => {
             <>
               <button onClick={() => navigate('/users')} className="p-2 text-gray-500 hover:text-purple-600 transition-colors"><UserCog size={20} /></button>
               <button onClick={() => navigate('/masters')} className="p-2 text-gray-500 hover:text-blue-600 transition-colors"><Settings size={20} /></button>
+              <button onClick={() => navigate('/ticket-management')} className="p-2 text-gray-500 hover:text-indigo-600 transition-colors" title="チケット管理"><Ticket size={20} /></button>
               <button onClick={() => navigate('/audit-logs')} className="p-2 text-gray-500 hover:text-orange-600 transition-colors" title="操作履歴"><History size={20} /></button>
             </>
           )}

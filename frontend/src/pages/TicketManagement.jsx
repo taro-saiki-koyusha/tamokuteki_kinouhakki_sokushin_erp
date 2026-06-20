@@ -1,0 +1,322 @@
+import React, { useState, useEffect, useMemo } from 'react';
+// 🚀 修正: 'Plus' アイコンのインポートを追加しました
+import { ArrowLeft, CheckCircle, Search, Save, X, Image as ImageIcon, AlertTriangle, Loader2, Plus } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { collection, query, onSnapshot, doc, getDoc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
+import { db, auth } from '../firebase';
+
+const TicketCard = ({ title, ticket, onClear, type }) => {
+  const safeImageUrls = ticket ? (Array.isArray(ticket.imageUrls) ? ticket.imageUrls : []) : [];
+  const imgCount = ticket ? safeImageUrls.length + (ticket.imageUrl && !safeImageUrls.includes(ticket.imageUrl) ? 1 : 0) : 0;
+
+  return (
+    <div className={`p-4 rounded-xl border-2 ${type === 'base' ? 'border-blue-200 bg-blue-50' : 'border-indigo-200 bg-indigo-50'} flex-1 relative`}>
+      <div className={`text-sm font-bold mb-3 flex items-center ${type === 'base' ? 'text-blue-800' : 'text-indigo-800'}`}>
+        <span className={`w-6 h-6 rounded-full flex items-center justify-center mr-2 text-white ${type === 'base' ? 'bg-blue-600' : 'bg-indigo-600'}`}>
+          {type === 'base' ? '1' : '2'}
+        </span>
+        {title}
+      </div>
+      
+      {ticket ? (
+        <div className="bg-white p-3 rounded-lg shadow-sm">
+          <div className="flex justify-between items-start mb-2">
+            <div>
+              <div className="text-xs text-gray-500 font-bold">{ticket.date}</div>
+              <div className="font-bold text-gray-900 line-clamp-1">{ticket.activityType || '（内容未入力）'}</div>
+            </div>
+            <button onClick={onClear} className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors">
+              <X size={16} />
+            </button>
+          </div>
+          <div className="flex items-center text-xs text-gray-600 bg-gray-50 p-2 rounded border border-gray-100">
+            <ImageIcon size={14} className="mr-1.5" />
+            含まれる画像: 
+            <span className="font-bold ml-1 text-gray-900">{imgCount} 枚</span>
+          </div>
+        </div>
+      ) : (
+        <div className="h-[84px] bg-white/50 border border-dashed border-gray-300 rounded-lg flex items-center justify-center text-sm text-gray-400 font-bold">
+          下の一覧から選択してください
+        </div>
+      )}
+    </div>
+  );
+};
+
+export const TicketManagement = () => {
+  const navigate = useNavigate();
+  const [activities, setActivities] = useState([]);
+  const [loading, setLoading] = useState(true);
+  
+  const [baseTicketId, setBaseTicketId] = useState(null);
+  const [sourceTicketId, setSourceTicketId] = useState(null);
+  const [isMerging, setIsMerging] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const [currentUser, setCurrentUser] = useState(null);
+  const [systemUsers, setSystemUsers] = useState([]); 
+
+  useEffect(() => {
+    let unsubscribeData = null;
+    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+      setSystemUsers(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+      setCurrentUser(user);
+      if (user) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          const role = userDoc.exists() ? (userDoc.data().role || 'reporter') : 'reporter';
+          
+          if (role !== 'admin') {
+            navigate('/dashboard');
+            return;
+          }
+
+          const q = query(collection(db, 'activities'));
+          unsubscribeData = onSnapshot(q, (querySnapshot) => {
+            const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            data.sort((a, b) => {
+              const dateA = a.date ? new Date(a.date).getTime() : 0;
+              const dateB = b.date ? new Date(b.date).getTime() : 0;
+              return dateB - dateA;
+            });
+            setActivities(data);
+            setLoading(false);
+          });
+        } catch (error) {
+          console.error("Auth check error:", error);
+          setLoading(false);
+        }
+      } else {
+        navigate('/');
+      }
+    });
+
+    return () => {
+      unsubscribeAuth();
+      unsubUsers();
+      if (unsubscribeData) unsubscribeData();
+    };
+  }, [navigate]);
+
+  const baseTicket = useMemo(() => activities.find(a => a.id === baseTicketId), [activities, baseTicketId]);
+  const sourceTicket = useMemo(() => activities.find(a => a.id === sourceTicketId), [activities, sourceTicketId]);
+
+  const filteredActivities = useMemo(() => {
+    if (!searchTerm) return activities;
+    return activities.filter(act => 
+      (act.activityType || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (act.date || '').includes(searchTerm) ||
+      (act.location || '').toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [activities, searchTerm]);
+
+  const handleMerge = async () => {
+    if (!baseTicket || !sourceTicket) return;
+    if (baseTicket.id === sourceTicket.id) {
+      alert("ベースとコピー元に同じチケットは指定できません。");
+      return;
+    }
+
+    const confirmMsg = `「${sourceTicket.activityType || '無題'}」(${sourceTicket.date}) の画像を、\n「${baseTicket.activityType || '無題'}」(${baseTicket.date}) にコピー追加します。\n\n※画像以外のデータは変更されません。\nよろしいですか？`;
+    
+    if (!window.confirm(confirmMsg)) return;
+
+    setIsMerging(true);
+    try {
+      let baseImages = Array.isArray(baseTicket.imageUrls) ? [...baseTicket.imageUrls] : [];
+      if (baseTicket.imageUrl && !baseImages.includes(baseTicket.imageUrl)) {
+        baseImages.push(baseTicket.imageUrl);
+      }
+
+      let sourceImages = Array.isArray(sourceTicket.imageUrls) ? [...sourceTicket.imageUrls] : [];
+      if (sourceTicket.imageUrl && !sourceImages.includes(sourceTicket.imageUrl)) {
+        sourceImages.push(sourceTicket.imageUrl);
+      }
+
+      const combinedImages = [...new Set([...baseImages, ...sourceImages])];
+
+      await updateDoc(doc(db, 'activities', baseTicket.id), {
+        imageUrls: combinedImages
+      });
+
+      const currentUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || currentUser?.displayName || '管理者';
+      await addDoc(collection(db, 'audit_logs'), {
+        action: 'UPDATE',
+        userName: currentUserName,
+        userId: currentUser?.uid || 'unknown',
+        target: '活動実績(画像統合)',
+        details: `ID: ${sourceTicket.id} の画像を ID: ${baseTicket.id} へコピー統合しました。`,
+        createdAt: serverTimestamp()
+      });
+
+      alert("画像のコピーが完了しました！");
+      setBaseTicketId(null);
+      setSourceTicketId(null);
+    } catch (error) {
+      console.error("Merge error:", error);
+      alert("統合処理に失敗しました。");
+    } finally {
+      setIsMerging(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-100 pb-20">
+      <header className="bg-white shadow-sm px-4 py-3 flex items-center sticky top-0 z-30">
+        <button onClick={() => navigate('/dashboard')} className="p-2 text-gray-500 hover:text-gray-800 transition-colors mr-2">
+          <ArrowLeft size={24} />
+        </button>
+        <h1 className="text-lg font-bold text-gray-800 flex items-center">
+          チケット管理（画像合体ツール）
+        </h1>
+      </header>
+
+      <main className="p-4 max-w-5xl mx-auto space-y-6">
+        <section className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="p-4 border-b border-gray-100 bg-gray-50">
+            <h2 className="font-extrabold text-gray-800">⚙️ 合体設定</h2>
+            <p className="text-xs text-gray-500 mt-1">
+              2つ目のチケットの画像を、1つ目のチケットにコピーします。（画像以外のデータは変更されません）
+            </p>
+          </div>
+          
+          <div className="p-5 flex flex-col md:flex-row gap-4">
+            <TicketCard 
+              title="ベースチケット（残す側）" 
+              ticket={baseTicket} 
+              onClear={() => setBaseTicketId(null)} 
+              type="base" 
+            />
+            
+            <div className="hidden md:flex items-center justify-center text-gray-300">
+              <Plus size={24} />
+            </div>
+
+            <TicketCard 
+              title="コピー元（画像を提供）" 
+              ticket={sourceTicket} 
+              onClear={() => setSourceTicketId(null)} 
+              type="source" 
+            />
+          </div>
+
+          <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-end items-center">
+            {baseTicketId === sourceTicketId && baseTicketId !== null && (
+              <span className="text-red-500 text-xs font-bold mr-4 flex items-center">
+                <AlertTriangle size={14} className="mr-1" />
+                同じチケット同士は合体できません
+              </span>
+            )}
+            <button
+              onClick={handleMerge}
+              disabled={!baseTicketId || !sourceTicketId || baseTicketId === sourceTicketId || isMerging}
+              className={`flex items-center px-6 py-2.5 rounded-xl font-bold transition-all shadow-sm ${
+                !baseTicketId || !sourceTicketId || baseTicketId === sourceTicketId || isMerging
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95'
+              }`}
+            >
+              {isMerging ? <Loader2 size={18} className="mr-2 animate-spin" /> : <Save size={18} className="mr-2" />}
+              {isMerging ? '合体中...' : '画像をコピーして合体'}
+            </button>
+          </div>
+        </section>
+
+        <section className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gray-50">
+            <h2 className="font-extrabold text-gray-800">📋 活動チケット一覧</h2>
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+              <input
+                type="text"
+                placeholder="活動名や日付で検索..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[700px]">
+              <thead>
+                <tr className="bg-gray-100 border-b border-gray-200 text-xs text-gray-600">
+                  <th className="p-3 font-bold">日付</th>
+                  <th className="p-3 font-bold w-1/3">活動内容</th>
+                  <th className="p-3 font-bold text-center">画像</th>
+                  <th className="p-3 font-bold text-center">アクション</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan="4" className="text-center py-10 text-gray-400">読み込み中...</td></tr>
+                ) : filteredActivities.length === 0 ? (
+                  <tr><td colSpan="4" className="text-center py-10 text-gray-400">データがありません</td></tr>
+                ) : (
+                  filteredActivities.map(act => {
+                    const safeImageUrls = Array.isArray(act.imageUrls) ? act.imageUrls : [];
+                    const imgCount = safeImageUrls.length + (act.imageUrl && !safeImageUrls.includes(act.imageUrl) ? 1 : 0);
+                    const isBase = baseTicketId === act.id;
+                    const isSource = sourceTicketId === act.id;
+
+                    return (
+                      <tr key={act.id} className={`border-b border-gray-100 transition-colors hover:bg-gray-50 ${isBase ? 'bg-blue-50/50' : ''} ${isSource ? 'bg-indigo-50/50' : ''}`}>
+                        <td className="p-3 text-sm text-gray-700 whitespace-nowrap">{act.date}</td>
+                        <td className="p-3 text-sm font-bold text-gray-900">
+                          {act.activityType || '-'}
+                          <div className="text-[10px] text-gray-500 font-normal mt-0.5">{act.location}</div>
+                        </td>
+                        <td className="p-3 text-center">
+                          {imgCount > 0 ? (
+                            <span className="inline-flex items-center bg-gray-100 px-2 py-1 rounded text-xs font-bold text-gray-700 border border-gray-200">
+                              <ImageIcon size={12} className="mr-1" /> {imgCount}
+                            </span>
+                          ) : (
+                            <span className="text-gray-300 text-xs">-</span>
+                          )}
+                        </td>
+                        <td className="p-3 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center space-x-2">
+                            <button
+                              onClick={() => setBaseTicketId(isBase ? null : act.id)}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+                                isBase 
+                                  ? 'bg-blue-600 text-white border-blue-600' 
+                                  : 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50'
+                              }`}
+                            >
+                              {isBase ? <CheckCircle size={14} className="inline mr-1"/> : null}
+                              ベースにセット
+                            </button>
+                            <button
+                              onClick={() => setSourceTicketId(isSource ? null : act.id)}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+                                isSource 
+                                  ? 'bg-indigo-600 text-white border-indigo-600' 
+                                  : 'bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50'
+                              }`}
+                            >
+                              {isSource ? <CheckCircle size={14} className="inline mr-1"/> : null}
+                              コピー元にセット
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+};
+
+export default TicketManagement;
