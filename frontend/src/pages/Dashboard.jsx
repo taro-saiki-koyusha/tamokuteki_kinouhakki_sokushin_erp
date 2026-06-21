@@ -56,6 +56,7 @@ export const Dashboard = () => {
 
   const [isTotalsExpanded, setIsTotalsExpanded] = useState(false);
   const [isMyRewardExpanded, setIsMyRewardExpanded] = useState(false);
+  const [includeUnimplemented, setIncludeUnimplemented] = useState(false); // 🚀 追加: 未実施を含むかどうかの状態
 
   useEffect(() => localStorage.setItem('dashboardDisplayMode', displayMode), [displayMode]);
   useEffect(() => localStorage.setItem('dashboardViewStyle', viewStyle), [viewStyle]);
@@ -461,15 +462,19 @@ export const Dashboard = () => {
 
     if (!displayUserName) return { totalReward, totalHours, details };
 
+    const normalizeName = (name) => (name || '').replace(/[\s ]/g, '');
+    const normalizedDisplayUserName = normalizeName(displayUserName);
+
     activities.forEach(act => {
-      if (act.status === '未実施') return;
+      // 🚀 修正: includeUnimplemented が true の場合は「未実施」でもスキップしない
+      if (!includeUnimplemented && act.status === '未実施') return;
 
       (act.participantDetails || []).forEach(p => {
         const wId = p.wageId || p.memberId;
         const wage = membersList.find(m => m.id === wId);
         const pName = p.participantName || wage?.name;
         
-        if (pName === displayUserName) {
+        if (normalizeName(pName) === normalizedDisplayUserName && normalizedDisplayUserName !== '') {
           const hours = p.workTime || 0;
           const price = wage?.defaultWage || 0;
           const reward = hours * price;
@@ -494,7 +499,7 @@ export const Dashboard = () => {
     details.sort((a, b) => new Date(b.date) - new Date(a.date));
 
     return { totalReward, totalHours, details };
-  }, [activities, membersList, displayUserName]);
+  }, [activities, membersList, displayUserName, includeUnimplemented]); // 🚀 依存配列に追加
 
   const getPermissions = (activity) => {
     const isCreator = activity.createdBy === currentUser?.uid;
@@ -909,16 +914,35 @@ export const Dashboard = () => {
 
         {activities.length > 0 && (
           <div className="mb-4 bg-white p-5 rounded-2xl shadow-sm border border-gray-200 animate-in fade-in duration-300">
-            <button 
-              onClick={() => setIsMyRewardExpanded(!isMyRewardExpanded)}
-              className="w-full flex items-center justify-between border-b border-gray-100 pb-2 cursor-pointer hover:opacity-70 transition-opacity"
-            >
-              <h3 className="font-extrabold text-gray-800 text-base flex items-center">
-                <User size={18} className="text-purple-600 mr-2" />
-                あなたの作業実績・報酬額 (作業完了分)
-              </h3>
-              {isMyRewardExpanded ? <ChevronUp size={20} className="text-gray-500" /> : <ChevronDown size={20} className="text-gray-500" />}
-            </button>
+            {/* 🚀 修正: タイトル部分とチェックボックスのレイアウト */}
+            <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+              <button 
+                onClick={() => setIsMyRewardExpanded(!isMyRewardExpanded)}
+                className="flex-1 flex items-center cursor-pointer hover:opacity-70 transition-opacity text-left"
+              >
+                <h3 className="font-extrabold text-gray-800 text-base flex items-center">
+                  <User size={18} className="text-purple-600 mr-2" />
+                  あなたの作業実績・報酬額 <span className="hidden sm:inline ml-1">{includeUnimplemented ? '' : '(作業完了分)'}</span>
+                </h3>
+              </button>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center text-xs font-bold text-gray-600 cursor-pointer bg-gray-50 px-2 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors">
+                  <input 
+                    type="checkbox" 
+                    checked={includeUnimplemented}
+                    onChange={(e) => setIncludeUnimplemented(e.target.checked)}
+                    className="mr-1.5 rounded border-gray-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
+                  />
+                  未実施を含む
+                </label>
+                <button 
+                  onClick={() => setIsMyRewardExpanded(!isMyRewardExpanded)}
+                  className="p-1 hover:bg-gray-100 rounded-full transition-colors text-gray-500"
+                >
+                  {isMyRewardExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                </button>
+              </div>
+            </div>
             
             {isMyRewardExpanded && (
               <div className="mt-4 animate-in slide-in-from-top-2 duration-200">

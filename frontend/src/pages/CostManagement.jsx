@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, doc, getDoc, where } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
-import { ArrowLeft, Wallet, Download, Search, Users, Tractor, Package, Loader2, Calendar, X, Printer, FileText, Lock } from 'lucide-react';
+// 🚀 修正: ChevronUp, ChevronDown をインポートに追加
+import { ArrowLeft, Wallet, Download, Search, Users, Tractor, Package, Loader2, Calendar, X, Printer, FileText, Lock, ChevronUp, ChevronDown } from 'lucide-react';
 import { db, auth } from '../firebase';
 import { ORGANIZATION_NAME } from '../constants';
 
@@ -26,7 +27,6 @@ export const CostManagement = () => {
   const [groupsList, setGroupsList] = useState([]);
   const [systemUsers, setSystemUsers] = useState([]); 
   
-  // 🚀 振込日データを含むシステム設定を保持
   const [systemSettings, setSystemSettings] = useState({ fiscalYearStartMonth: 4, paymentDates: [] });
 
   const [userRole, setUserRole] = useState('reporter');
@@ -37,6 +37,11 @@ export const CostManagement = () => {
   const [selectedGroup, setSelectedGroup] = useState('all');
 
   const [selectedPerson, setSelectedPerson] = useState(null);
+
+  // 🚀 追加: 未実施を含むかどうかの状態
+  const [includeUnimplemented, setIncludeUnimplemented] = useState(false);
+  // 🚀 追加: ソート状態の管理
+  const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
 
   useEffect(() => {
     const unsubMembers = onSnapshot(collection(db, 'members'), s => setMembersList(s.docs.map(d => ({ id: d.id, ...d.data() }))));
@@ -117,7 +122,8 @@ export const CostManagement = () => {
       const matchGroup = selectedGroup === 'all' || act.groupId === selectedGroup;
       const isCompleted = act.status !== '未実施';
       
-      if (!matchYear || !matchGroup || !isCompleted) return false;
+      // 🚀 修正: includeUnimplemented が true の場合は未実施もスキップしない
+      if (!matchYear || !matchGroup || (!includeUnimplemented && !isCompleted)) return false;
 
       if (userRole === 'reporter') {
         const participated = (act.participantDetails || []).some(pd => {
@@ -131,7 +137,15 @@ export const CostManagement = () => {
       
       return true;
     }).sort((a, b) => new Date(a.date) - new Date(b.date)); 
-  }, [activities, selectedYear, selectedGroup, userRole, myName, membersList, systemSettings.fiscalYearStartMonth]);
+  }, [activities, selectedYear, selectedGroup, userRole, myName, membersList, systemSettings.fiscalYearStartMonth, includeUnimplemented]); // 🚀 依存配列に追加
+
+  // 🚀 追加: ソート処理関数
+  const handleSort = (key) => {
+    setSortConfig((prev) => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc',
+    }));
+  };
 
   const aggregatedData = useMemo(() => {
     let totalPersonnelCost = 0;
@@ -152,7 +166,6 @@ export const CostManagement = () => {
 
       const groupInfo = groupsList.find(g => g.id === act.groupId);
       
-      // 🚀 活動に紐づく振込日情報を取得
       const paymentInfo = (systemSettings.paymentDates || []).find(p => p.id === act.paymentDateId);
       const paymentLabel = paymentInfo ? `${paymentInfo.label}` : '未定';
 
@@ -209,10 +222,25 @@ export const CostManagement = () => {
       });
     });
 
+    // 🚀 修正: ソート状態に応じた並び替え処理
     const personnelArray = Object.values(personMap).sort((a, b) => {
-      if (a.memberNo === '' && b.memberNo !== '') return 1;
-      if (a.memberNo !== '' && b.memberNo === '') return -1;
-      return a.memberNo.toString().localeCompare(b.memberNo.toString(), 'ja', { numeric: true });
+      let comparison = 0;
+      
+      if (sortConfig.key === 'name') {
+        if (a.memberNo === '' && b.memberNo !== '') comparison = 1;
+        else if (a.memberNo !== '' && b.memberNo === '') comparison = -1;
+        else comparison = (a.memberNo || '').toString().localeCompare((b.memberNo || '').toString(), 'ja', { numeric: true });
+        
+        if (comparison === 0) {
+          comparison = (a.name || '').localeCompare((b.name || ''), 'ja');
+        }
+      } else if (sortConfig.key === 'total') {
+        const totalA = a.pCost + a.mCost;
+        const totalB = b.pCost + b.mCost;
+        comparison = totalA - totalB;
+      }
+
+      return sortConfig.direction === 'asc' ? comparison : -comparison;
     });
 
     return {
@@ -222,7 +250,7 @@ export const CostManagement = () => {
       grandTotal: totalPersonnelCost + totalMachineCost + totalMaterialCost,
       personnelArray
     };
-  }, [filteredActivities, membersList, machinesList, materialsList, groupsList, systemUsers, userRole, myName, systemSettings.paymentDates]);
+  }, [filteredActivities, membersList, machinesList, materialsList, groupsList, systemUsers, userRole, myName, systemSettings.paymentDates, sortConfig]); // 🚀 依存配列に追加
 
   const handleExportDummy = () => {
     alert("全員分の支払明細一括出力機能は現在準備中です。\n※個人別の明細は、表の名前をクリックして「PDF出力」から印刷可能です。");
@@ -378,9 +406,21 @@ export const CostManagement = () => {
               </select>
             </div>
 
-            <div className="text-sm font-bold text-gray-500 bg-white border border-gray-200 px-4 py-2 rounded-xl flex items-center ml-auto">
-              <Calendar size={16} className="mr-1.5" />
-              対象レコード：<span className="text-blue-600 ml-1 text-base">{filteredActivities.length}</span> 件
+            {/* 🚀 追加: 未実施を含むチェックボックス */}
+            <div className="flex items-center ml-auto gap-3">
+              <label className="flex items-center text-xs font-bold text-gray-600 cursor-pointer bg-gray-50 px-2 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors">
+                <input 
+                  type="checkbox" 
+                  checked={includeUnimplemented}
+                  onChange={(e) => setIncludeUnimplemented(e.target.checked)}
+                  className="mr-1.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                />
+                未実施を含む
+              </label>
+              <div className="text-sm font-bold text-gray-500 bg-white border border-gray-200 px-4 py-2 rounded-xl flex items-center">
+                <Calendar size={16} className="mr-1.5" />
+                対象レコード：<span className="text-blue-600 ml-1 text-base">{filteredActivities.length}</span> 件
+              </div>
             </div>
           </div>
 
@@ -433,12 +473,30 @@ export const CostManagement = () => {
                 <table className="w-full text-left border-collapse min-w-[800px]">
                   <thead>
                     <tr className="bg-gray-50 text-xs text-gray-500 border-b border-gray-200">
-                      <th className="p-4 font-bold">氏名 (構成員番号)</th>
+                      {/* 🚀 修正: 氏名をソート可能に */}
+                      <th 
+                        className="p-4 font-bold cursor-pointer hover:bg-gray-200 transition-colors select-none group"
+                        onClick={() => handleSort('name')}
+                      >
+                        <div className="flex items-center">
+                          氏名 (構成員番号)
+                          {sortConfig.key === 'name' ? (sortConfig.direction === 'asc' ? <ChevronUp size={16} className="ml-1 text-blue-600" /> : <ChevronDown size={16} className="ml-1 text-blue-600" />) : <ChevronDown size={16} className="ml-1 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />}
+                        </div>
+                      </th>
                       <th className="p-4 font-bold text-right">作業時間</th>
                       <th className="p-4 font-bold text-right">人件費小計</th>
                       <th className="p-4 font-bold text-right">機械提供時間</th>
                       <th className="p-4 font-bold text-right">機械費小計</th>
-                      <th className="p-4 font-bold text-right text-blue-700 bg-blue-50/50">支払合計額</th>
+                      {/* 🚀 修正: 支払合計額をソート可能に */}
+                      <th 
+                        className="p-4 font-bold text-right text-blue-700 bg-blue-50/50 cursor-pointer hover:bg-blue-100 transition-colors select-none group"
+                        onClick={() => handleSort('total')}
+                      >
+                        <div className="flex items-center justify-end">
+                          支払合計額
+                          {sortConfig.key === 'total' ? (sortConfig.direction === 'asc' ? <ChevronUp size={16} className="ml-1 text-blue-800" /> : <ChevronDown size={16} className="ml-1 text-blue-800" />) : <ChevronDown size={16} className="ml-1 text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity" />}
+                        </div>
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
