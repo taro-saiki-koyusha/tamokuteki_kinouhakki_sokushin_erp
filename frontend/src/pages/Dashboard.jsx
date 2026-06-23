@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock, Map, MoreVertical, Edit, Info, History, Loader2, Ticket } from 'lucide-react'; 
+import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock, Map, MoreVertical, Edit, Info, History, Loader2, Ticket, RefreshCw } from 'lucide-react'; 
 import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, doc, getDoc, deleteDoc, where, addDoc, serverTimestamp } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -56,7 +56,7 @@ export const Dashboard = () => {
 
   const [isTotalsExpanded, setIsTotalsExpanded] = useState(false);
   const [isMyRewardExpanded, setIsMyRewardExpanded] = useState(false);
-  const [includeUnimplemented, setIncludeUnimplemented] = useState(false); // 🚀 追加: 未実施を含むかどうかの状態
+  const [includeUnimplemented, setIncludeUnimplemented] = useState(false);
 
   useEffect(() => localStorage.setItem('dashboardDisplayMode', displayMode), [displayMode]);
   useEffect(() => localStorage.setItem('dashboardViewStyle', viewStyle), [viewStyle]);
@@ -466,7 +466,6 @@ export const Dashboard = () => {
     const normalizedDisplayUserName = normalizeName(displayUserName);
 
     activities.forEach(act => {
-      // 🚀 修正: includeUnimplemented が true の場合は「未実施」でもスキップしない
       if (!includeUnimplemented && act.status === '未実施') return;
 
       (act.participantDetails || []).forEach(p => {
@@ -499,7 +498,7 @@ export const Dashboard = () => {
     details.sort((a, b) => new Date(b.date) - new Date(a.date));
 
     return { totalReward, totalHours, details };
-  }, [activities, membersList, displayUserName, includeUnimplemented]); // 🚀 依存配列に追加
+  }, [activities, membersList, displayUserName, includeUnimplemented]);
 
   const getPermissions = (activity) => {
     const isCreator = activity.createdBy === currentUser?.uid;
@@ -877,6 +876,10 @@ export const Dashboard = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            {/* 🚀 画面更新ボタンを一番左に配置 */}
+            <button onClick={() => window.location.reload()} className="flex items-center bg-white border border-gray-300 text-gray-700 px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm hover:bg-gray-50 active:scale-95 transition-all" title="最新の情報に更新">
+              <RefreshCw size={16} className="mr-1.5 text-gray-500" /> 更新
+            </button>
             
             <div className="bg-white border border-gray-200 rounded-xl p-1 flex shadow-sm">
               <button onClick={() => setViewStyle('card')} className={`flex items-center px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${viewStyle === 'card' ? 'bg-purple-600 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>
@@ -914,7 +917,6 @@ export const Dashboard = () => {
 
         {activities.length > 0 && (
           <div className="mb-4 bg-white p-5 rounded-2xl shadow-sm border border-gray-200 animate-in fade-in duration-300">
-            {/* 🚀 修正: タイトル部分とチェックボックスのレイアウト */}
             <div className="flex items-center justify-between border-b border-gray-100 pb-2">
               <button 
                 onClick={() => setIsMyRewardExpanded(!isMyRewardExpanded)}
@@ -1333,7 +1335,7 @@ export const Dashboard = () => {
                 <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">報告書NO</th><td className="border border-black p-3" colSpan="3">{printActivity.reportNo || '（未設定）'}</td></tr>
                 <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">実施年月日</th><td className="border border-black p-3 w-1/4">{printActivity.date}</td><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">活動項目番号</th><td className="border border-black p-3 w-1/4">{printActivity.activityNumbers?.join(', ')}</td></tr>
                 <tr><th className="border border-black bg-gray-100 p-3 text-left">実施場所</th><td className="border border-black p-3" colSpan="3">{printActivity.location}</td></tr>
-                <tr><th className="border border-black bg-gray-100 p-3 text-left">活動内容</th><td className="border border-black p-3" colSpan="3">{printActivity.activityType}</td></tr>
+                <tr><th className="border border-black p-3 text-left">活動内容</th><td className="border border-black p-3" colSpan="3">{printActivity.activityType}</td></tr>
                 <tr><th className="border border-black bg-gray-100 p-3 text-left">支払区分</th><td className="border border-black p-3" colSpan="3">{printActivity.paymentCategory}</td></tr>
                 <tr><th className="border border-black bg-gray-100 p-3 text-left">参加人数</th><td className="border border-black p-3" colSpan="3">計 {printActivity.participants} 名 （農業者：{printActivity.participantsAgri}名 ／ 農業者以外：{printActivity.participantsNonAgri}名）</td></tr>
               </tbody>
