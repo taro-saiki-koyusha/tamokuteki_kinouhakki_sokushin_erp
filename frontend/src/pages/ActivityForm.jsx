@@ -78,7 +78,14 @@ export const ActivityForm = () => {
           const docSnap = await getDoc(docRef);
           if (docSnap.exists()) {
             const data = docSnap.data();
-            setEditData({ id: docSnap.id, ...data });
+            setEditData({
+              id: docSnap.id,
+              ...data,
+              participantDetails: (data.participantDetails || []).map(p => ({ ...p })),
+              materialDetails: (data.materialDetails || []).map(m => ({ ...m })),
+              activityNumbers: [...(data.activityNumbers || [])],
+              imageUrls: [...(data.imageUrls || (data.imageUrl ? [data.imageUrl] : []))]
+            });
             
             setIsViewMode(location.state?.isViewMode !== undefined ? location.state.isViewMode : true);
             
@@ -90,12 +97,12 @@ export const ActivityForm = () => {
               customPaymentDate: data.customPaymentDate || '',
               date: data.date || '', startTime: data.startTime || '', endTime: data.endTime || '',
               location: data.location || '', activityType: data.activityType || '',
-              activityNumbers: data.activityNumbers || [], memo: data.memo || '',
+              activityNumbers: [...(data.activityNumbers || [])], memo: data.memo || '',
               reportNo: data.reportNo || '', budget: data.budget || '' 
             });
-            setParticipantDetails(data.participantDetails || []);
-            setMaterialDetails(data.materialDetails || []); 
-            setExistingUrls(data.imageUrls || (data.imageUrl ? [data.imageUrl] : []));
+            setParticipantDetails((data.participantDetails || []).map(p => ({ ...p })));
+            setMaterialDetails((data.materialDetails || []).map(m => ({ ...m }))); 
+            setExistingUrls([...(data.imageUrls || (data.imageUrl ? [data.imageUrl] : []))]);
           } else {
             alert('指定された活動実績が見つかりません。');
             navigate('/dashboard');
@@ -168,29 +175,31 @@ export const ActivityForm = () => {
   };
 
   const updateParticipant = (index, field, value) => {
-    const newList = [...participantDetails];
-    
-    if (field === 'participantName') {
-      const selectedUser = systemUsers.find(u => (u.name || u.displayName) === value);
-      if (selectedUser) {
-        newList[index].isAgri = selectedUser.isAgri !== false;
+    setParticipantDetails(prev => prev.map((item, i) => {
+      if (i !== index) return item;
+      const updatedItem = { ...item };
+      
+      if (field === 'participantName') {
+        const selectedUser = systemUsers.find(u => (u.name || u.displayName) === value);
+        if (selectedUser) {
+          updatedItem.isAgri = selectedUser.isAgri !== false;
+        }
       }
-    }
-    
-    newList[index][field] = value;
-    
-    if (field === 'machineId' && value !== '' && newList[index].machineTime === 0) {
-      newList[index].machineTime = newList[index].workTime;
-    }
-    if (field === 'machineId' && value === '') {
-      newList[index].machineTime = 0;
-    }
+      
+      updatedItem[field] = value;
+      
+      if (field === 'machineId' && value !== '' && updatedItem.machineTime === 0) {
+        updatedItem.machineTime = updatedItem.workTime;
+      }
+      if (field === 'machineId' && value === '') {
+        updatedItem.machineTime = 0;
+      }
 
-    if (field === 'wageId' && value === 'zero') {
-      newList[index].workTime = 0;
-    }
-    
-    setParticipantDetails(newList);
+      if (field === 'wageId' && value === 'zero') {
+        updatedItem.workTime = 0;
+      }
+      return updatedItem;
+    }));
   };
   
   const removeParticipant = (index) => setParticipantDetails(participantDetails.filter((_, i) => i !== index));
@@ -219,10 +228,12 @@ export const ActivityForm = () => {
   };
 
   const addMaterial = () => setMaterialDetails([...materialDetails, { materialId: '', quantity: 1 }]);
+  
   const updateMaterial = (index, field, value) => {
-    const newList = [...materialDetails];
-    newList[index][field] = value;
-    setMaterialDetails(newList);
+    setMaterialDetails(prev => prev.map((item, i) => {
+      if (i !== index) return item;
+      return { ...item, [field]: value };
+    }));
   };
   const removeMaterial = (index) => setMaterialDetails(materialDetails.filter((_, i) => i !== index));
 
@@ -317,12 +328,12 @@ export const ActivityForm = () => {
       status: editData.status || '実績入力済', planType: editData.planType || '当初計画', isEssential: editData.isEssential || false,
       groupId: editData.groupId || '', paymentCategory: editData.paymentCategory || '', paymentDateId: editData.paymentDateId || '', customPaymentDate: editData.customPaymentDate || '',
       date: editData.date || '', startTime: editData.startTime || '', endTime: editData.endTime || '',
-      location: editData.location || '', activityType: editData.activityType || '', activityNumbers: editData.activityNumbers || [],
+      location: editData.location || '', activityType: editData.activityType || '', activityNumbers: [...(editData.activityNumbers || [])],
       memo: editData.memo || '', reportNo: editData.reportNo || '', budget: editData.budget || ''
     });
-    setParticipantDetails(editData.participantDetails || []);
-    setMaterialDetails(editData.materialDetails || []); 
-    setExistingUrls(editData.imageUrls || (editData.imageUrl ? [editData.imageUrl] : []));
+    setParticipantDetails((editData.participantDetails || []).map(p => ({ ...p })));
+    setMaterialDetails((editData.materialDetails || []).map(m => ({ ...m }))); 
+    setExistingUrls([...(editData.imageUrls || (editData.imageUrl ? [editData.imageUrl] : []))]);
     setNewImageFiles([]); setNewPreviewUrls([]); setIsViewMode(true);
   };
 
@@ -337,7 +348,6 @@ export const ActivityForm = () => {
           userName: currentUserName,
           userId: currentUser?.uid || 'unknown',
           target: '活動実績',
-          // 🚀 修正: 日付が空欄の場合は「未定」とする
           details: `活動日: ${editData.date || '未定'} の記録（${editData.activityType || '無題'}）を削除しました`,
           createdAt: serverTimestamp()
         });
@@ -363,7 +373,6 @@ export const ActivityForm = () => {
       const arrayBuffer = await response.arrayBuffer();
       const workbook = await XlsxPopulate.fromDataAsync(arrayBuffer);
 
-      // 🚀 修正: startTime, endTimeが入力されている場合のみ時間を計算する
       let duration = 0;
       if (editData.startTime && editData.endTime) {
         const [startH, startM] = editData.startTime.split(':').map(Number);
@@ -375,7 +384,6 @@ export const ActivityForm = () => {
       const sheet1 = workbook.sheet('活動報告書') || workbook.sheets()[0];
       
       sheet1.cell('AH3').value(editData.reportNo || '');
-      // 🚀 修正: 空欄の場合は空文字を入れる
       sheet1.cell('A7').value(editData.date || '');
       sheet1.cell('C7').value(editData.startTime || '');
       sheet1.cell('F7').value(editData.endTime || '');
@@ -398,7 +406,7 @@ export const ActivityForm = () => {
       sheet1.cell('A8').value(editData.memo || '');
 
       const sheet2 = workbook.sheet('日当借上支払明細') || workbook.sheets()[1];
-      sheet2.cell('AJ3').value(editData.date || ''); // 🚀 修正
+      sheet2.cell('AJ3').value(editData.date || '');
 
       if (editData.participantDetails && editData.participantDetails.length > 0) {
         editData.participantDetails.forEach((detail, index) => {
@@ -438,8 +446,11 @@ export const ActivityForm = () => {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      // 🚀 修正: ファイル名の対応
-      a.download = `活動報告書_${editData.date || '未定'}.xlsx`;
+      
+      const safeTitle = (editData.activityType || '無題').replace(/[\\/:*?"<>|]/g, '_');
+      const reportNoStr = editData.reportNo ? `${editData.reportNo}_` : '';
+      a.download = `活動報告書_${reportNoStr}${safeTitle}_${editData.date || '未定'}.xlsx`;
+      
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
 
@@ -468,7 +479,6 @@ export const ActivityForm = () => {
           userName: currentUserName,
           userId: currentUser?.uid || 'unknown',
           target: '活動実績',
-          // 🚀 修正
           details: `活動日: ${editData.date || '未定'} の記録（${editData.activityType || '無題'}）を「提出済」としてロックしました`,
           createdAt: serverTimestamp()
         });
@@ -498,7 +508,6 @@ export const ActivityForm = () => {
           userName: currentUserName,
           userId: currentUser?.uid || 'unknown',
           target: '活動実績',
-          // 🚀 修正
           details: `活動日: ${editData.date || '未定'} の記録（${editData.activityType || '無題'}）の提出済ロックを解除しました`,
           createdAt: serverTimestamp()
         });
@@ -574,9 +583,17 @@ export const ActivityForm = () => {
           userName: currentUserName,
           userId: currentUser?.uid || 'unknown',
           target: '活動実績',
-          // 🚀 修正
           details: `活動日: ${formData.date || '未定'} の記録（${formData.activityType || '無題'}）を更新しました`,
           createdAt: serverTimestamp()
+        });
+
+        setEditData({
+          id: editData.id,
+          ...submitData,
+          participantDetails: validParticipants.map(p => ({ ...p })),
+          materialDetails: validMaterials.map(m => ({ ...m })),
+          activityNumbers: [...submitData.activityNumbers],
+          imageUrls: [...finalImageUrls]
         });
 
         setSuccessModal({ show: true, message: '活動実績を修正しました。' });
@@ -592,7 +609,6 @@ export const ActivityForm = () => {
           userName: currentUserName,
           userId: currentUser?.uid || 'unknown',
           target: '活動実績',
-          // 🚀 修正
           details: `活動日: ${formData.date || '未定'} の記録（${formData.activityType || '無題'}）を新規登録しました`,
           createdAt: serverTimestamp()
         });
@@ -960,7 +976,6 @@ export const ActivityForm = () => {
             </div>
 
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4 h-full md:order-2">
-              {/* 🚀 修正: 日時の省略案内を追加 */}
               <div className="flex justify-between items-center border-b pb-2 mb-4">
                 <h2 className="font-bold text-gray-800 flex items-center"><Calendar className="w-5 h-5 mr-2 text-green-600" /> 2）実施日時・場所</h2>
                 <span className="text-[10px] text-gray-500 font-bold bg-gray-100 px-2 py-1 rounded">※外注時などは省略可</span>
@@ -968,14 +983,12 @@ export const ActivityForm = () => {
               
               <div className="w-36 sm:w-44">
                 <label className="block text-sm font-bold text-gray-700 mb-1">日付</label>
-                {/* 🚀 修正: required属性を削除 */}
                 <input type="date" name="date" value={formData.date || ''} onChange={handleChange} disabled={isViewMode} className={inputClass} />
               </div>
               
               <div className="flex items-center gap-3 sm:gap-4">
                 <div className="w-[110px] sm:w-32 shrink-0">
                   <label className="block text-[11px] font-bold text-gray-500 mb-1 pl-1">開始</label>
-                  {/* 🚀 修正: required属性を削除 */}
                   <input type="time" name="startTime" value={formData.startTime || ''} onChange={handleChange} disabled={isViewMode} className="w-full box-border border border-gray-300 rounded-lg p-2 text-center text-sm md:text-base focus:ring-2 focus:ring-green-500 disabled:bg-gray-100 disabled:text-gray-600 disabled:opacity-100" />
                 </div>
                 
@@ -983,7 +996,6 @@ export const ActivityForm = () => {
                 
                 <div className="w-[110px] sm:w-32 shrink-0">
                   <label className="block text-[11px] font-bold text-gray-500 mb-1 pl-1">終了</label>
-                  {/* 🚀 修正: required属性を削除 */}
                   <input type="time" name="endTime" value={formData.endTime || ''} onChange={handleChange} disabled={isViewMode} className="w-full box-border border border-gray-300 rounded-lg p-2 text-center text-sm md:text-base focus:ring-2 focus:ring-green-500 disabled:bg-gray-100 disabled:text-gray-600 disabled:opacity-100" />
                 </div>
               </div>
@@ -1377,12 +1389,9 @@ export const ActivityForm = () => {
             <table className="w-full border-2 border-black border-collapse mb-6 text-sm">
               <tbody>
                 <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">報告書No.</th><td className="border border-black p-3" colSpan="3">{editData.reportNo || '（未設定）'}</td></tr>
-                {/* 🚀 修正: 日付が空の場合は（省略）と表示する */}
-                <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">実施年月日</th><td className="border border-black p-3 w-1/4">{editData.date || '（省略）'}</td><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">活動項目番号</th><td className="border border-black p-3 w-1/4">{editData.activityNumbers?.join(', ')}</td></tr>
-                <tr><th className="border border-black bg-gray-100 p-3 text-left">実施場所</th><td className="border border-black p-3" colSpan="3">{editData.location}</td></tr>
+                {/* 🚀 修正: 「活動項目番号」「実施場所」「支払区分」「参加人数」を削除し、レイアウトを調整 */}
+                <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">実施年月日</th><td className="border border-black p-3" colSpan="3">{editData.date || '（省略）'}</td></tr>
                 <tr><th className="border border-black bg-gray-100 p-3 text-left">活動内容</th><td className="border border-black p-3" colSpan="3">{editData.activityType}</td></tr>
-                <tr><th className="border border-black bg-gray-100 p-3 text-left">支払区分</th><td className="border border-black p-3" colSpan="3">{editData.paymentCategory}</td></tr>
-                <tr><th className="border border-black bg-gray-100 p-3 text-left">参加人数</th><td className="border border-black p-3" colSpan="3">計 {editData.participants} 名 （農業者：{editData.participantsAgri}名 ／ 農業者以外：{editData.participantsNonAgri}名）</td></tr>
               </tbody>
             </table>
             <div className="space-y-6">

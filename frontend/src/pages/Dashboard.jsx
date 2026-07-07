@@ -58,6 +58,10 @@ export const Dashboard = () => {
   const [isMyRewardExpanded, setIsMyRewardExpanded] = useState(false);
   const [includeUnimplemented, setIncludeUnimplemented] = useState(false);
 
+  const [selectedActivityIds, setSelectedActivityIds] = useState([]);
+  const [isBulkExportingExcel, setIsBulkExportingExcel] = useState(false);
+  const [bulkPrintActivities, setBulkPrintActivities] = useState([]);
+
   useEffect(() => localStorage.setItem('dashboardDisplayMode', displayMode), [displayMode]);
   useEffect(() => localStorage.setItem('dashboardViewStyle', viewStyle), [viewStyle]);
   useEffect(() => localStorage.setItem('dashboardDateSortOrder', dateSortOrder), [dateSortOrder]);
@@ -186,6 +190,11 @@ export const Dashboard = () => {
     return groups;
   }, [globalSortedActivities]);
 
+  const toggleSelectActivity = (id, e) => {
+    e?.stopPropagation();
+    setSelectedActivityIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
   const handleLogout = async () => {
     try { await signOut(auth); navigate('/'); } catch (error) { console.error(error); }
   };
@@ -214,6 +223,7 @@ export const Dashboard = () => {
         });
       }
 
+      setSelectedActivityIds(prev => prev.filter(id => id !== deletingActivityId));
       setDeletingActivityId(null);
     } catch (error) {
       console.error("削除エラー:", error);
@@ -310,10 +320,29 @@ export const Dashboard = () => {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `活動報告書_${activity.reportNo ? activity.reportNo + '_' : ''}${activity.date}.xlsx`; 
+      const safeTitle = (activity.activityType || '無題').replace(/[\\/:*?"<>|]/g, '_');
+      const reportNoStr = activity.reportNo ? `${activity.reportNo}_` : '';
+      a.download = `活動報告書_${reportNoStr}${safeTitle}_${activity.date}.xlsx`; 
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch (error) { console.error(error); alert('Excel作成エラー'); } finally { setExportingId(null); }
+  };
+
+  const handleBulkExportExcel = async () => {
+    const selectedActs = activities.filter(a => selectedActivityIds.includes(a.id));
+    if (selectedActs.length === 0) return;
+    setIsBulkExportingExcel(true);
+    try {
+      for (let i = 0; i < selectedActs.length; i++) {
+        await handleExportSingleReport(selectedActs[i]);
+        await new Promise(resolve => setTimeout(resolve, 400));
+      }
+    } catch (error) {
+      console.error(error);
+      alert('一括Excel出力中にエラーが発生しました。');
+    } finally {
+      setIsBulkExportingExcel(false);
+    }
   };
 
   const handleExportGroupReport = async (groupName, groupActs) => {
@@ -391,6 +420,21 @@ export const Dashboard = () => {
         setPrintingId(null);
       }, 3000);
     }, 500);
+  };
+
+  const handleBulkPrint = () => {
+    const selectedActs = activities.filter(a => selectedActivityIds.includes(a.id));
+    if (selectedActs.length === 0) return;
+    setBulkPrintActivities(selectedActs);
+    setTimeout(() => {
+      const originalTitle = document.title;
+      document.title = `活動報告書_一括出力_${new Date().toISOString().split('T')[0]}`;
+      window.print();
+      document.title = originalTitle;
+      setTimeout(() => {
+        setBulkPrintActivities([]);
+      }, 3000);
+    }, 600);
   };
 
   const calculateActivityCost = (act) => {
@@ -522,9 +566,19 @@ export const Dashboard = () => {
     
     const budget = Number(activity.budget) || 0;
     const actualCost = calculateActivityCost(activity);
+    const isChecked = selectedActivityIds.includes(activity.id);
 
     return (
-      <div onClick={() => navigate(`/activity-form/${activity.id}`, { state: { editData: activity, isViewMode: true } })} className="bg-white rounded-2xl shadow-sm border-l-4 border-green-500 p-4 cursor-pointer hover:shadow-md transition-all flex flex-col h-full relative group">
+      <div onClick={() => navigate(`/activity-form/${activity.id}`, { state: { editData: activity, isViewMode: true } })} className={`bg-white rounded-2xl shadow-sm border-l-4 border-green-500 p-4 cursor-pointer hover:shadow-md transition-all flex flex-col h-full relative group ${isChecked ? 'ring-2 ring-green-600 bg-green-50/20' : ''}`}>
+        <div className="absolute top-3 left-3 z-20" onClick={e => e.stopPropagation()}>
+          <input 
+            type="checkbox" 
+            checked={isChecked} 
+            onChange={(e) => toggleSelectActivity(activity.id, e)} 
+            className="w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500 cursor-pointer shadow-sm" 
+          />
+        </div>
+
         <div className="absolute top-3 right-3 flex items-center space-x-1.5 z-10">
           <span className={`text-[10px] px-2 py-1 rounded-md font-bold border whitespace-nowrap ${
             planTypeLabel === '当初計画' ? 'bg-blue-50 text-blue-600 border-blue-100' :
@@ -554,7 +608,7 @@ export const Dashboard = () => {
           )}
         </div>
         
-        <div className="flex flex-col items-start space-y-1 mt-1">
+        <div className="flex flex-col items-start space-y-1 mt-1 pl-6">
           <h3 className="font-bold text-lg text-gray-900 leading-tight pr-40">{activity.activityType || '内容未入力'}</h3>
           {activity.isEssential && (
             <span className="text-[9px] bg-yellow-50 text-yellow-700 border border-yellow-200 px-1.5 py-0.5 rounded font-bold">必須作業</span>
@@ -624,12 +678,21 @@ export const Dashboard = () => {
 
     const budget = Number(act.budget) || 0;
     const actualCost = calculateActivityCost(act);
+    const isChecked = selectedActivityIds.includes(act.id);
 
     return (
       <tr 
         onClick={() => navigate(`/activity-form/${act.id}`, { state: { editData: act, isViewMode: true } })}
-        className={`border-b border-gray-100 cursor-pointer transition-colors group/row active:bg-gray-200 ${act.isLocked ? 'hover:bg-gray-50/80' : 'hover:bg-green-50'}`}
+        className={`border-b border-gray-100 cursor-pointer transition-colors group/row active:bg-gray-200 ${isChecked ? 'bg-green-50/60 font-medium' : (act.isLocked ? 'hover:bg-gray-50/80' : 'hover:bg-green-50')}`}
       >
+        <td className="p-3 text-center whitespace-nowrap" onClick={e => e.stopPropagation()}>
+          <input 
+            type="checkbox" 
+            checked={isChecked} 
+            onChange={(e) => toggleSelectActivity(act.id, e)} 
+            className="w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500 cursor-pointer" 
+          />
+        </td>
         <td className="p-3 text-sm text-gray-700 whitespace-nowrap">{act.date}</td>
         
         <td className="p-3 text-sm font-bold text-gray-900 whitespace-nowrap overflow-hidden text-ellipsis">{act.activityType}</td>
@@ -728,6 +791,17 @@ export const Dashboard = () => {
       setDateSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
     };
 
+    const tableActivityIds = useMemo(() => activitiesToRender.map(a => a.id), [activitiesToRender]);
+    const isAllTableSelected = tableActivityIds.length > 0 && tableActivityIds.every(id => selectedActivityIds.includes(id));
+
+    const handleSelectAll = (e) => {
+      if (e.target.checked) {
+        setSelectedActivityIds(prev => [...new Set([...prev, ...tableActivityIds])]);
+      } else {
+        setSelectedActivityIds(prev => prev.filter(id => !tableActivityIds.includes(id)));
+      }
+    };
+
     return (
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden relative">
         {(userRole === 'admin' || userRole === 'manager') && (
@@ -741,6 +815,14 @@ export const Dashboard = () => {
           <table className="w-full text-left border-collapse min-w-[1450px] table-fixed select-none">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200 text-sm text-gray-700">
+                <th className="p-3 w-12 text-center whitespace-nowrap">
+                  <input 
+                    type="checkbox" 
+                    checked={isAllTableSelected} 
+                    onChange={handleSelectAll} 
+                    className="w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500 cursor-pointer" 
+                  />
+                </th>
                 <th onClick={toggleDateSort} className="p-3 font-bold w-32 cursor-pointer hover:bg-gray-200 transition-colors group whitespace-nowrap" title="日付で並び替え">
                   <div className="flex items-center text-blue-700">
                     日付
@@ -782,12 +864,13 @@ export const Dashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 pb-20 md:pb-8 print:bg-white print:pb-0 relative">
+    <div className="min-h-screen bg-gray-100 pb-28 md:pb-16 print:bg-white print:pb-0 relative">
       <style>{`
         @media print {
           body { background: white !important; }
           @page { margin: 15mm; size: A4; }
           .no-print { display: none !important; }
+          .break-before-page { page-break-before: always; break-before: page; }
         }
       `}</style>
 
@@ -876,7 +959,6 @@ export const Dashboard = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            {/* 🚀 画面更新ボタンを一番左に配置 */}
             <button onClick={() => window.location.reload()} className="flex items-center bg-white border border-gray-300 text-gray-700 px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm hover:bg-gray-50 active:scale-95 transition-all" title="最新の情報に更新">
               <RefreshCw size={16} className="mr-1.5 text-gray-500" /> 更新
             </button>
@@ -1226,7 +1308,43 @@ export const Dashboard = () => {
         )}
       </main>
 
-      {/* ボトムシート（スマホでのメニュー用） */}
+      {selectedActivityIds.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-[150] bg-gray-900/95 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-4 backdrop-blur-md border border-gray-700 animate-in slide-in-from-bottom-6 duration-200 no-print">
+          <div className="flex items-center font-bold text-sm whitespace-nowrap">
+            <CheckCircle className="text-green-400 mr-2 w-5 h-5" />
+            <span>{selectedActivityIds.length}</span> 件を選択中
+          </div>
+          <div className="h-4 w-px bg-gray-700"></div>
+          <div className="flex items-center gap-2">
+            {(userRole === 'admin' || userRole === 'manager') && (
+              <>
+                <button 
+                  onClick={handleBulkExportExcel} 
+                  disabled={isBulkExportingExcel}
+                  className="px-3.5 py-1.5 bg-green-600 hover:bg-green-700 text-white font-bold text-xs rounded-xl flex items-center transition-all shadow active:scale-95 disabled:opacity-50"
+                >
+                  {isBulkExportingExcel ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : <FileSpreadsheet size={14} className="mr-1.5" />}
+                  {isBulkExportingExcel ? '出力中...' : '一括Excel'}
+                </button>
+                <button 
+                  onClick={handleBulkPrint}
+                  className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl flex items-center transition-all shadow active:scale-95"
+                >
+                  <Printer size={14} className="mr-1.5" />
+                  一括PDF
+                </button>
+              </>
+            )}
+            <button 
+              onClick={() => setSelectedActivityIds([])}
+              className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white font-bold text-xs rounded-xl transition-all"
+            >
+              解除
+            </button>
+          </div>
+        </div>
+      )}
+
       {actionMenuActivity && (
         <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setActionMenuActivity(null)}>
           <div 
@@ -1322,38 +1440,42 @@ export const Dashboard = () => {
         </div>
       )}
 
-      {printActivity && (() => {
-        const printImages = printActivity.imageUrls || (printActivity.imageUrl ? [printActivity.imageUrl] : []);
-        const totalImages = printImages.length;
-        const groupInfo = groupsList.find(g => g.id === printActivity.groupId);
+      {(printActivity || bulkPrintActivities.length > 0) && (() => {
+        const renderList = bulkPrintActivities.length > 0 ? bulkPrintActivities : [printActivity];
 
         return (
           <div className="hidden print:block w-full text-black bg-white font-serif">
-            <h1 className="text-2xl font-bold text-center border-b-4 border-black pb-2 mb-6">活動状況写真台帳</h1>
-            <table className="w-full border-2 border-black border-collapse mb-6 text-sm">
-              <tbody>
-                <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">報告書NO</th><td className="border border-black p-3" colSpan="3">{printActivity.reportNo || '（未設定）'}</td></tr>
-                <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">実施年月日</th><td className="border border-black p-3 w-1/4">{printActivity.date}</td><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">活動項目番号</th><td className="border border-black p-3 w-1/4">{printActivity.activityNumbers?.join(', ')}</td></tr>
-                <tr><th className="border border-black bg-gray-100 p-3 text-left">実施場所</th><td className="border border-black p-3" colSpan="3">{printActivity.location}</td></tr>
-                <tr><th className="border border-black p-3 text-left">活動内容</th><td className="border border-black p-3" colSpan="3">{printActivity.activityType}</td></tr>
-                <tr><th className="border border-black bg-gray-100 p-3 text-left">支払区分</th><td className="border border-black p-3" colSpan="3">{printActivity.paymentCategory}</td></tr>
-                <tr><th className="border border-black bg-gray-100 p-3 text-left">参加人数</th><td className="border border-black p-3" colSpan="3">計 {printActivity.participants} 名 （農業者：{printActivity.participantsAgri}名 ／ 農業者以外：{printActivity.participantsNonAgri}名）</td></tr>
-              </tbody>
-            </table>
-            <div className="space-y-6">
-              {printImages.map((img, idx) => (
-                <div key={idx} className="break-inside-avoid">
-                  <div className="text-sm font-bold mb-1 text-left">{idx + 1}/{totalImages}枚目</div>
-                  <div className="border border-gray-400 p-1">
-                    <img src={img} alt="" decoding="async" className="w-full h-auto max-h-[140mm] object-contain" />
+            {renderList.map((act, actIdx) => {
+              const printImages = act.imageUrls || (act.imageUrl ? [act.imageUrl] : []);
+              const totalImages = printImages.length;
+
+              return (
+                <div key={act.id} className={actIdx > 0 ? "break-before-page pt-8" : ""}>
+                  <h1 className="text-2xl font-bold text-center border-b-4 border-black pb-2 mb-6">活動状況写真台帳</h1>
+                  <table className="w-full border-2 border-black border-collapse mb-6 text-sm">
+                    <tbody>
+                      <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">報告書NO</th><td className="border border-black p-3" colSpan="3">{act.reportNo || '（未設定）'}</td></tr>
+                      <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">実施年月日</th><td className="border border-black p-3" colSpan="3">{act.date}</td></tr>
+                      <tr><th className="border border-black bg-gray-100 p-3 text-left">活動内容</th><td className="border border-black p-3" colSpan="3">{act.activityType}</td></tr>
+                    </tbody>
+                  </table>
+                  <div className="space-y-6">
+                    {printImages.map((img, idx) => (
+                      <div key={idx} className="break-inside-avoid">
+                        <div className="text-sm font-bold mb-1 text-left">{idx + 1}/{totalImages}枚目</div>
+                        <div className="border border-gray-400 p-1">
+                          <img src={img} alt="" decoding="async" className="w-full h-auto max-h-[140mm] object-contain" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-8 flex justify-between items-end border-t border-black pt-4">
+                    <div className="text-sm">組織名：{ORGANIZATION_NAME || '鎌田緑保護会'}</div>
+                    <div className="text-sm text-right">出力日：{new Date().toLocaleDateString('ja-JP')}</div>
                   </div>
                 </div>
-              ))}
-            </div>
-            <div className="mt-8 flex justify-between items-end border-t border-black pt-4">
-              <div className="text-sm">組織名：{ORGANIZATION_NAME || '鎌田緑保護会'}</div>
-              <div className="text-sm text-right">出力日：{new Date().toLocaleDateString('ja-JP')}</div>
-            </div>
+              );
+            })}
           </div>
         );
       })()}
