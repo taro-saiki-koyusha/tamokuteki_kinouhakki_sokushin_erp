@@ -57,6 +57,9 @@ export const ActivityForm = () => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
+  const [openParticipantIndex, setOpenParticipantIndex] = useState(null);
+  const [participantSearchTerm, setParticipantSearchTerm] = useState("");
+
   const [formData, setFormData] = useState({
     status: '実績入力済', planType: '当初計画', isEssential: false, groupId: '', paymentCategory: '', paymentDateId: '', customPaymentDate: '',
     date: new Date().toISOString().split('T')[0], startTime: '08:00', endTime: '10:00',
@@ -335,6 +338,7 @@ export const ActivityForm = () => {
     setMaterialDetails((editData.materialDetails || []).map(m => ({ ...m }))); 
     setExistingUrls([...(editData.imageUrls || (editData.imageUrl ? [editData.imageUrl] : []))]);
     setNewImageFiles([]); setNewPreviewUrls([]); setIsViewMode(true);
+    setOpenParticipantIndex(null); 
   };
 
   const handleDelete = async () => {
@@ -634,6 +638,7 @@ export const ActivityForm = () => {
     (!editData?.isLocked && userRole === 'reporter' && canEditGroup && isInSameGroup);
     
   const canExport = userRole === 'admin' || userRole === 'manager';
+  // 🚀 復元: グループ一覧絞り込み用の変数定義
   const selectableGroups = (userRole === 'admin' || userRole === 'manager') ? groupsList : groupsList.filter(g => userGroups.includes(g.id));
   const totalCost = totalPersonnelCost + totalMachineCost + totalMaterialCost;
 
@@ -1115,31 +1120,82 @@ export const ActivityForm = () => {
                             <option value="false">以外</option>
                           </select>
 
-                          <div className="flex-1 md:w-48 shrink-0">
+                          <div className="flex-1 md:w-48 shrink-0 relative">
                             {!isManual ? (
-                              <select
-                                value={detail.participantName || ''}
-                                onChange={(e) => {
-                                  if (e.target.value === 'manual') {
-                                    updateParticipant(index, 'isManualName', true);
-                                    updateParticipant(index, 'participantName', '');
-                                  } else {
-                                    updateParticipant(index, 'participantName', e.target.value);
-                                    updateParticipant(index, 'isManualName', false);
-                                  }
-                                }}
-                                disabled={isViewMode}
-                                className={`w-full box-border border border-gray-300 rounded-xl p-2 text-xs md:text-sm focus:ring-2 focus:ring-green-500 disabled:opacity-100 bg-white ${!detail.participantName ? 'text-gray-500' : 'text-gray-900 font-bold'} truncate`}
-                              >
-                                <option value="">👤 氏名を選択 (任意)</option>
-                                <optgroup label="--- システム登録ユーザー ---">
-                                  {systemUsers.map(u => {
-                                    const userName = u.name || u.displayName || '未設定';
-                                    return <option key={u.id} value={userName}>{userName}</option>;
-                                  })}
-                                </optgroup>
-                                <option value="manual">✏️ 直接手入力する...</option>
-                              </select>
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!isViewMode) {
+                                      setOpenParticipantIndex(openParticipantIndex === index ? null : index);
+                                      setParticipantSearchTerm("");
+                                    }
+                                  }}
+                                  disabled={isViewMode}
+                                  className={`w-full box-border text-left border border-gray-300 rounded-xl p-2 text-xs md:text-sm flex justify-between items-center ${isViewMode ? 'bg-white disabled:bg-white opacity-100 disabled:text-gray-900' : 'bg-white focus:ring-2 focus:ring-green-500 hover:bg-gray-50'} ${!detail.participantName ? 'text-gray-500' : 'text-gray-900 font-bold'} truncate`}
+                                >
+                                  <span className="truncate">{detail.participantName || '👤 氏名を検索・選択'}</span>
+                                  {!isViewMode && <ChevronDown size={14} className="text-gray-400 flex-shrink-0 ml-1" />}
+                                </button>
+
+                                {openParticipantIndex === index && (
+                                  <>
+                                    <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setOpenParticipantIndex(null); }}></div>
+                                    <div className="absolute z-40 mt-1 w-[240px] sm:w-full bg-white border border-gray-200 shadow-2xl rounded-xl overflow-hidden left-0">
+                                      <div className="p-2 border-b bg-gray-50 flex items-center">
+                                        <Search size={14} className="text-gray-400 mr-2 ml-1 shrink-0" />
+                                        <input 
+                                          type="text" 
+                                          placeholder="名前で検索..." 
+                                          value={participantSearchTerm} 
+                                          onChange={(e) => setParticipantSearchTerm(e.target.value)} 
+                                          className="w-full min-w-0 box-border py-1.5 bg-transparent border-none focus:ring-0 text-sm"
+                                          autoFocus
+                                        />
+                                      </div>
+                                      <div className="max-h-48 overflow-y-auto p-1.5 space-y-0.5">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            updateParticipant(index, 'isManualName', true);
+                                            updateParticipant(index, 'participantName', '');
+                                            setOpenParticipantIndex(null);
+                                          }}
+                                          className="w-full text-left p-2.5 rounded-lg hover:bg-gray-100 text-sm font-bold text-gray-700 flex items-center"
+                                        >
+                                          ✏️ 直接手入力する...
+                                        </button>
+                                        <div className="h-px bg-gray-100 my-1 mx-2"></div>
+                                        {systemUsers
+                                          .filter(u => {
+                                            const name = u.name || u.displayName || '';
+                                            return name.toLowerCase().includes(participantSearchTerm.toLowerCase());
+                                          })
+                                          .map(u => {
+                                            const userName = u.name || u.displayName || '未設定';
+                                            return (
+                                              <button
+                                                key={u.id}
+                                                type="button"
+                                                onClick={() => {
+                                                  updateParticipant(index, 'participantName', userName);
+                                                  updateParticipant(index, 'isManualName', false);
+                                                  setOpenParticipantIndex(null);
+                                                }}
+                                                className="w-full text-left p-2.5 rounded-lg hover:bg-green-50 text-sm font-bold text-gray-800 truncate"
+                                              >
+                                                {userName}
+                                              </button>
+                                            );
+                                        })}
+                                        {systemUsers.filter(u => (u.name || u.displayName || '').toLowerCase().includes(participantSearchTerm.toLowerCase())).length === 0 && (
+                                          <div className="p-3 text-center text-xs text-gray-500">一致するユーザーがいません</div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </>
+                                )}
+                              </>
                             ) : (
                               <div className="relative w-full">
                                 <input
