@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
-import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2, Calculator, Package, Plus, CheckCircle, Copy, MessageSquare, Download, Link as LinkIcon, FileSpreadsheet, Printer, Hash, Lock, Unlock, CreditCard } from 'lucide-react';
+// 🚀 修正: StickyNote アイコンを追加インポート
+import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2, Calculator, Package, Plus, CheckCircle, Copy, MessageSquare, Download, Link as LinkIcon, FileSpreadsheet, Printer, Hash, Lock, Unlock, CreditCard, StickyNote } from 'lucide-react';
 import { collection, addDoc, doc, updateDoc, serverTimestamp, deleteDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -63,7 +64,7 @@ export const ActivityForm = () => {
   const [formData, setFormData] = useState({
     status: '実績入力済', planType: '当初計画', isEssential: false, groupId: '', paymentCategory: '', paymentDateId: '', customPaymentDate: '',
     date: new Date().toISOString().split('T')[0], startTime: '08:00', endTime: '10:00',
-    location: '', activityType: '', activityNumbers: [], memo: '', reportNo: '',
+    location: '', activityType: '', activityNumbers: [], memo: '', systemMemo: '', reportNo: '',
     budget: ''
   });
 
@@ -101,6 +102,7 @@ export const ActivityForm = () => {
               date: data.date || '', startTime: data.startTime || '', endTime: data.endTime || '',
               location: data.location || '', activityType: data.activityType || '',
               activityNumbers: [...(data.activityNumbers || [])], memo: data.memo || '',
+              systemMemo: data.systemMemo || '', 
               reportNo: data.reportNo || '', budget: data.budget || '' 
             });
             setParticipantDetails((data.participantDetails || []).map(p => ({ ...p })));
@@ -332,7 +334,7 @@ export const ActivityForm = () => {
       groupId: editData.groupId || '', paymentCategory: editData.paymentCategory || '', paymentDateId: editData.paymentDateId || '', customPaymentDate: editData.customPaymentDate || '',
       date: editData.date || '', startTime: editData.startTime || '', endTime: editData.endTime || '',
       location: editData.location || '', activityType: editData.activityType || '', activityNumbers: [...(editData.activityNumbers || [])],
-      memo: editData.memo || '', reportNo: editData.reportNo || '', budget: editData.budget || ''
+      memo: editData.memo || '', systemMemo: editData.systemMemo || '', reportNo: editData.reportNo || '', budget: editData.budget || ''
     });
     setParticipantDetails((editData.participantDetails || []).map(p => ({ ...p })));
     setMaterialDetails((editData.materialDetails || []).map(m => ({ ...m }))); 
@@ -638,7 +640,6 @@ export const ActivityForm = () => {
     (!editData?.isLocked && userRole === 'reporter' && canEditGroup && isInSameGroup);
     
   const canExport = userRole === 'admin' || userRole === 'manager';
-  // 🚀 復元: グループ一覧絞り込み用の変数定義
   const selectableGroups = (userRole === 'admin' || userRole === 'manager') ? groupsList : groupsList.filter(g => userGroups.includes(g.id));
   const totalCost = totalPersonnelCost + totalMachineCost + totalMaterialCost;
 
@@ -1344,6 +1345,16 @@ export const ActivityForm = () => {
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
             <h2 className="font-bold text-gray-800 flex items-center border-b pb-2 mb-4"><MessageSquare className="w-5 h-5 mr-2 text-green-600" /> 6）備考・特記事項</h2>
             <textarea name="memo" value={formData.memo} onChange={handleChange} disabled={isViewMode} rows="4" className={inputClass} placeholder="作業の様子や特記事項を入力..."></textarea>
+          </div>
+
+          {/* 🚀 追加: システムメモ */}
+          <div className="bg-gray-50 p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
+            <h2 className="font-bold text-gray-700 flex items-center border-b pb-2 mb-4">
+              <StickyNote className="w-5 h-5 mr-2 text-gray-500" /> 
+              システムメモ
+              <span className="ml-2 bg-gray-200 text-gray-600 px-2 py-0.5 rounded text-[10px] font-normal">Excel出力対象外</span>
+            </h2>
+            <textarea name="systemMemo" value={formData.systemMemo} onChange={handleChange} disabled={isViewMode} rows="3" className={inputClass} placeholder="システム内だけで管理したい情報や、メモを入力してください..."></textarea>
           </div>
 
           <div className="bg-blue-50/50 rounded-xl p-5 border border-blue-100 flex flex-col space-y-3">
