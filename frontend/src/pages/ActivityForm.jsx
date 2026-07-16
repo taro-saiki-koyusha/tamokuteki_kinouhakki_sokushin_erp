@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
-// 🚀 修正: StickyNote アイコンを追加インポート
 import { ArrowLeft, Camera, Save, MapPin, Clock, Calendar, Users, Sprout, X, ChevronDown, Check, Search, UserPlus, Tractor, Trash2, Edit, Loader2, Calculator, Package, Plus, CheckCircle, Copy, MessageSquare, Download, Link as LinkIcon, FileSpreadsheet, Printer, Hash, Lock, Unlock, CreditCard, StickyNote } from 'lucide-react';
 import { collection, addDoc, doc, updateDoc, serverTimestamp, deleteDoc, getDoc, onSnapshot } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged } from 'firebase/auth';
 import { db, storage, auth } from '../firebase'; 
 import XlsxPopulate from 'xlsx-populate/browser/xlsx-populate';
@@ -20,6 +19,14 @@ const formatTimestamp = (timestamp) => {
     return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   }
   return '-';
+};
+
+const formatBytes = (bytes) => {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
 export const ActivityForm = () => {
@@ -60,6 +67,8 @@ export const ActivityForm = () => {
 
   const [openParticipantIndex, setOpenParticipantIndex] = useState(null);
   const [participantSearchTerm, setParticipantSearchTerm] = useState("");
+
+  const [uploadStats, setUploadStats] = useState({ transferred: 0, total: 0 });
 
   const [formData, setFormData] = useState({
     status: '実績入力済', planType: '当初計画', isEssential: false, groupId: '', paymentCategory: '', paymentDateId: '', customPaymentDate: '',
@@ -531,14 +540,36 @@ export const ActivityForm = () => {
     if (!formData.groupId) { alert('対象グループを選択してください。'); return; }
 
     setIsSubmitting(true);
+    setUploadStats({ transferred: 0, total: 0 }); 
     try {
       let finalImageUrls = [...existingUrls];
       if (newImageFiles.length > 0) {
-        const uploadPromises = newImageFiles.map(async (file) => {
-          const fileName = `photos/${Date.now()}_${file.name}`;
-          const imageRef = ref(storage, fileName);
-          await uploadBytes(imageRef, file);
-          return await getDownloadURL(imageRef);
+        const totalSize = newImageFiles.reduce((acc, file) => acc + file.size, 0);
+        setUploadStats({ transferred: 0, total: totalSize });
+        const fileProgress = new Array(newImageFiles.length).fill(0);
+
+        const uploadPromises = newImageFiles.map((file, index) => {
+          return new Promise((resolve, reject) => {
+            const fileName = `photos/${Date.now()}_${file.name}`;
+            const imageRef = ref(storage, fileName);
+            const uploadTask = uploadBytesResumable(imageRef, file);
+
+            uploadTask.on(
+              'state_changed',
+              (snapshot) => {
+                fileProgress[index] = snapshot.bytesTransferred;
+                const totalTransferred = fileProgress.reduce((acc, curr) => acc + curr, 0);
+                setUploadStats({ transferred: totalTransferred, total: totalSize });
+              },
+              (error) => {
+                reject(error);
+              },
+              async () => {
+                const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+                resolve(downloadUrl);
+              }
+            );
+          });
         });
         const newlyUploadedUrls = await Promise.all(uploadPromises);
         finalImageUrls = [...finalImageUrls, ...newlyUploadedUrls];
@@ -656,11 +687,25 @@ export const ActivityForm = () => {
       `}</style>
 
       {(isSubmitting || isLoadingDirect) && (
-        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/70 backdrop-blur-sm no-print">
+        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/80 backdrop-blur-sm no-print">
           <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
           <p className="text-blue-800 font-bold text-lg tracking-wider">
             {isLoadingDirect ? 'データを読み込んでいます...' : 'データを保存しています...'}
           </p>
+          {isSubmitting && uploadStats.total > 0 && (
+            <div className="mt-4 flex flex-col items-center w-64">
+              <div className="w-full h-2 bg-blue-100 rounded-full overflow-hidden mb-2">
+                <div 
+                  className="h-full bg-blue-600 transition-all duration-200 ease-out"
+                  style={{ width: `${Math.min(100, Math.round((uploadStats.transferred / uploadStats.total) * 100))}%` }}
+                ></div>
+              </div>
+              <p className="text-blue-700 font-bold text-sm font-mono tracking-tight">
+                {formatBytes(uploadStats.transferred)} / {formatBytes(uploadStats.total)}
+                <span className="ml-1.5 text-blue-500">({Math.round((uploadStats.transferred / uploadStats.total) * 100)}%)</span>
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -1072,7 +1117,7 @@ export const ActivityForm = () => {
               </div>
             </div>
 
-            <div className="space-y-4 max-h-[600px] overflow-y-auto overflow-x-hidden pr-1">
+            <div className="space-y-4">
               {participantDetails.map((detail, index) => {
                 const wId = detail.wageId || detail.memberId;
                 const wage = membersList.find(m => m.id === wId);
@@ -1094,7 +1139,7 @@ export const ActivityForm = () => {
                 }
 
                 return (
-                  <div key={index} className="bg-gray-50 border border-gray-200 rounded-2xl p-3 md:p-4 relative group mt-3">
+                  <div key={index} className={`bg-gray-50 border border-gray-200 rounded-2xl p-3 md:p-4 relative group mt-3 ${openParticipantIndex === index ? 'z-50' : 'z-10'}`}>
                     
                     {!isViewMode && (
                       <div className="absolute -top-3.5 right-1 md:right-3 flex space-x-1 z-10">
@@ -1142,7 +1187,7 @@ export const ActivityForm = () => {
                                 {openParticipantIndex === index && (
                                   <>
                                     <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setOpenParticipantIndex(null); }}></div>
-                                    <div className="absolute z-40 mt-1 w-[240px] sm:w-full bg-white border border-gray-200 shadow-2xl rounded-xl overflow-hidden left-0">
+                                    <div className="absolute z-50 mt-1 w-[240px] sm:w-full bg-white border border-gray-200 shadow-2xl rounded-xl overflow-hidden left-0">
                                       <div className="p-2 border-b bg-gray-50 flex items-center">
                                         <Search size={14} className="text-gray-400 mr-2 ml-1 shrink-0" />
                                         <input 
@@ -1154,7 +1199,7 @@ export const ActivityForm = () => {
                                           autoFocus
                                         />
                                       </div>
-                                      <div className="max-h-48 overflow-y-auto p-1.5 space-y-0.5">
+                                      <div className="max-h-48 overflow-y-auto p-1.5 space-y-0.5 relative z-50">
                                         <button
                                           type="button"
                                           onClick={() => {
@@ -1302,7 +1347,7 @@ export const ActivityForm = () => {
               <h2 className="font-bold text-gray-800 flex items-center"><Package className="w-5 h-5 mr-2 text-green-600" /> 5）使用資材</h2>
             </div>
 
-            <div className="space-y-4 max-h-[300px] overflow-y-auto overflow-x-hidden pr-1">
+            <div className="space-y-4">
               {materialDetails.map((detail, index) => {
                 const material = materialsList.find(m => m.id === detail.materialId);
                 const matPrice = material ? (material.defaultPrice || 0) : 0;
@@ -1347,7 +1392,6 @@ export const ActivityForm = () => {
             <textarea name="memo" value={formData.memo} onChange={handleChange} disabled={isViewMode} rows="4" className={inputClass} placeholder="作業の様子や特記事項を入力..."></textarea>
           </div>
 
-          {/* 🚀 追加: システムメモ */}
           <div className="bg-gray-50 p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
             <h2 className="font-bold text-gray-700 flex items-center border-b pb-2 mb-4">
               <StickyNote className="w-5 h-5 mr-2 text-gray-500" /> 
@@ -1456,7 +1500,6 @@ export const ActivityForm = () => {
             <table className="w-full border-2 border-black border-collapse mb-6 text-sm">
               <tbody>
                 <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">報告書No.</th><td className="border border-black p-3" colSpan="3">{editData.reportNo || '（未設定）'}</td></tr>
-                {/* 🚀 修正: 「活動項目番号」「実施場所」「支払区分」「参加人数」を削除し、レイアウトを調整 */}
                 <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">実施年月日</th><td className="border border-black p-3" colSpan="3">{editData.date || '（省略）'}</td></tr>
                 <tr><th className="border border-black bg-gray-100 p-3 text-left">活動内容</th><td className="border border-black p-3" colSpan="3">{editData.activityType}</td></tr>
               </tbody>
