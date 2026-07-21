@@ -697,6 +697,9 @@ export const Dashboard = () => {
         
         <td className="p-3 text-sm font-bold text-gray-900 whitespace-nowrap overflow-hidden text-ellipsis">{act.activityType}</td>
         
+        {/* 🚀 修正: 「登録者」列を「活動内容」の次に移動 */}
+        <td className="p-3 text-xs text-center text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis">{creatorName}</td>
+
         <td className="p-3 text-center whitespace-nowrap">
           <div className="flex flex-col items-center gap-1">
             <span className={`px-2 py-1 rounded-full text-[9px] font-bold border whitespace-nowrap ${statusLabel === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-600 border-green-100'}`}>
@@ -743,8 +746,9 @@ export const Dashboard = () => {
         <td className="p-3 text-xs whitespace-nowrap overflow-hidden text-ellipsis">{groupInfo ? groupInfo.name : <span className="text-red-500">未登録</span>}</td>
         <td className="p-3 text-xs text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis">{act.location}</td>
         <td className="p-3 text-xs font-bold text-green-600 whitespace-nowrap">{act.activityNumbers?.join(', ')}</td>
-        <td className="p-3 text-xs text-center text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis">{creatorName}</td>
         
+        {/* （元の登録者列があった場所は削除済み） */}
+
         <td className="p-3 text-center whitespace-nowrap">
           {hasImage ? <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded text-[9px] font-bold">あり</span> : <span className="text-gray-300 text-[10px]">-</span>}
         </td>
@@ -832,6 +836,9 @@ export const Dashboard = () => {
                 
                 <th className="p-3 font-bold w-full whitespace-nowrap">活動内容</th>
                 
+                {/* 🚀 修正: 「登録者」ヘッダーを「活動内容」の次に移動 */}
+                <th className="p-3 font-bold w-24 text-center whitespace-nowrap">登録者</th>
+
                 <th className="p-3 font-bold w-20 text-center whitespace-nowrap">状態</th>
                 <th className="p-3 font-bold w-24 text-center whitespace-nowrap">区分</th>
                 <th className="p-3 font-bold w-32 whitespace-nowrap">支払区分</th>
@@ -841,7 +848,9 @@ export const Dashboard = () => {
                 <th className="p-3 font-bold w-36 whitespace-nowrap">グループ</th>
                 <th className="p-3 font-bold w-40 whitespace-nowrap">活動場所</th>
                 <th className="p-3 font-bold w-20 whitespace-nowrap">項目番号</th>
-                <th className="p-3 font-bold w-24 text-center whitespace-nowrap">登録者</th>
+                
+                {/* （元の登録者ヘッダーがあった場所は削除済み） */}
+
                 <th className="p-3 font-bold w-12 text-center whitespace-nowrap">写真</th>
                 
                 <th className="w-0 px-3 py-3 font-bold text-center whitespace-nowrap sticky right-0 bg-gray-100 shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-200 hidden md:table-cell">
