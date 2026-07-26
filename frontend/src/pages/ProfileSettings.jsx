@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, User, Lock, MapPin, Phone, CheckCircle, AlertTriangle, Loader2, Plus, CreditCard, Trash2, Mail } from 'lucide-react';
+import { ArrowLeft, Save, User, Lock, MapPin, Phone, CheckCircle, AlertTriangle, Loader2, Plus, CreditCard, Trash2, Mail, Users, Building } from 'lucide-react';
 // 🚀 ログ記録用に addDoc, collection を追加
-import { doc, getDoc, updateDoc, serverTimestamp, addDoc, collection } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, serverTimestamp, addDoc, collection, onSnapshot } from 'firebase/firestore';
 import { updatePassword, onAuthStateChanged } from 'firebase/auth';
 import { db, auth } from '../firebase';
 
@@ -17,6 +17,9 @@ export const ProfileSettings = () => {
   // ログインプロバイダとID種別の判定状態
   const [isGoogleUser, setIsGoogleUser] = useState(false);
   const [isPhoneLogin, setIsPhoneLogin] = useState(false); 
+  
+  const [groupsList, setGroupsList] = useState([]);
+  const [currentUserRole, setCurrentUserRole] = useState('reporter');
 
   // 基本プロフィール情報
   const [profileData, setProfileData] = useState({
@@ -24,7 +27,9 @@ export const ProfileSettings = () => {
     email: '',
     address: '',
     phone1: '',
-    phone2: ''
+    phone2: '',
+    groupIds: [],
+    affiliation: '' // 🚀 追加: 所属先
   });
 
   // 口座情報（配列で管理）
@@ -51,6 +56,12 @@ export const ProfileSettings = () => {
   });
 
   useEffect(() => {
+    // グループ一覧の取得
+    const unsubscribeGroups = onSnapshot(collection(db, 'groups'), (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setGroupsList(data);
+    });
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setCurrentUser(user);
@@ -71,12 +82,16 @@ export const ProfileSettings = () => {
           
           if (userSnap.exists()) {
             const data = userSnap.data();
+            setCurrentUserRole(data.role || 'reporter'); // 権限を保持
+            
             setProfileData({
               name: data.name || user.displayName || '未設定', 
               email: userEmail,
               address: data.address || '',
               phone1: isPhoneLoginUser ? emailPrefix : (data.phone1 || ''),
-              phone2: data.phone2 || ''
+              phone2: data.phone2 || '',
+              groupIds: data.groupIds || [],
+              affiliation: data.affiliation || '' // 🚀 所属先を取得
             });
 
             if (data.bankAccounts && data.bankAccounts.length > 0) {
@@ -115,7 +130,10 @@ export const ProfileSettings = () => {
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      unsubscribeGroups();
+    };
   }, [navigate]);
 
   const handleProfileChange = (e) => {
@@ -129,6 +147,14 @@ export const ProfileSettings = () => {
       .replace(/[^0-9]/g, '');
 
     setProfileData({ ...profileData, [name]: numericValue });
+  };
+
+  const toggleGroup = (groupId) => {
+    const currentGroups = profileData.groupIds || [];
+    const newGroups = currentGroups.includes(groupId)
+      ? currentGroups.filter(id => id !== groupId)
+      : [...currentGroups, groupId];
+    setProfileData({ ...profileData, groupIds: newGroups });
   };
 
   const handlePasswordChange = (e) => {
@@ -181,15 +207,22 @@ export const ProfileSettings = () => {
 
     try {
       const userDocRef = doc(db, 'users', currentUser.uid);
-      await updateDoc(userDocRef, {
+      const updatePayload = {
         address: profileData.address,
         phone1: profileData.phone1,
         phone2: profileData.phone2,
         bankAccounts: bankAccounts,
         updatedAt: serverTimestamp()
-      });
+      };
 
-      // 🚀 操作履歴（ログ）の書き込み
+      // 🚀 管理者のみグループ情報と所属先を更新対象に含める
+      if (currentUserRole === 'admin') {
+        updatePayload.groupIds = profileData.groupIds;
+        updatePayload.affiliation = profileData.affiliation;
+      }
+
+      await updateDoc(userDocRef, updatePayload);
+
       await addDoc(collection(db, 'audit_logs'), {
         action: 'UPDATE',
         userName: profileData.name || currentUser.displayName || '名称未設定',
@@ -227,7 +260,6 @@ export const ProfileSettings = () => {
     try {
       await updatePassword(currentUser, passwordData.newPassword);
 
-      // 🚀 操作履歴（ログ）の書き込み
       await addDoc(collection(db, 'audit_logs'), {
         action: 'UPDATE',
         userName: profileData.name || currentUser.displayName || '名称未設定',
@@ -329,6 +361,25 @@ export const ProfileSettings = () => {
                   <p className="text-[10px] text-gray-400 mt-1 font-bold">※ログインIDとして使用しているため変更できません。</p>
                 </div>
 
+                {/* 🚀 追加: 所属先 */}
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1 flex items-center">
+                    <Building size={16} className="mr-1 text-gray-400" /> 所属先
+                  </label>
+                  <input 
+                    type="text" 
+                    name="affiliation" 
+                    value={profileData.affiliation} 
+                    onChange={handleProfileChange} 
+                    className={inputClass} 
+                    placeholder="例：〇〇農協、〇〇町内会" 
+                    disabled={currentUserRole !== 'admin'}
+                  />
+                  {currentUserRole !== 'admin' && (
+                    <p className="text-[10px] text-gray-400 mt-1 font-bold">※所属先の変更はシステム管理者にご連絡ください。</p>
+                  )}
+                </div>
+
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1 flex items-center"><MapPin size={16} className="mr-1 text-gray-400" /> 住所</label>
                   <input type="text" name="address" value={profileData.address} onChange={handleProfileChange} className={inputClass} placeholder="例：新潟県柏崎市西山町..." />
@@ -373,6 +424,53 @@ export const ProfileSettings = () => {
                     <p className="text-[10px] text-gray-400 mt-1">※ハイフンなし・半角数字</p>
                   </div>
                 </div>
+
+                <div className="pt-2">
+                  <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center">
+                    <Users size={16} className="mr-1 text-gray-400" /> 担当グループ
+                  </label>
+                  
+                  {currentUserRole === 'admin' ? (
+                    <>
+                      <div className="border border-gray-200 rounded-xl max-h-48 overflow-y-auto bg-white">
+                        {groupsList.map(g => {
+                          const isChecked = (profileData.groupIds || []).includes(g.id);
+                          return (
+                            <label key={g.id} className="flex items-center space-x-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer transition-colors">
+                              <input 
+                                type="checkbox" 
+                                checked={isChecked} 
+                                onChange={() => toggleGroup(g.id)}
+                                className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                              />
+                              <span className={`text-sm ${isChecked ? 'font-bold text-gray-900' : 'text-gray-600'}`}>{g.name}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      <p className="text-[10px] text-blue-600 mt-1.5 font-bold">※システム管理者のみ、自分の担当グループを変更できます。</p>
+                    </>
+                  ) : (
+                    <div className="flex flex-wrap gap-2 p-3 bg-gray-50 border border-gray-200 rounded-xl">
+                      {profileData.groupIds && profileData.groupIds.length > 0 ? (
+                        profileData.groupIds.map(gid => {
+                          const g = groupsList.find(x => x.id === gid);
+                          return g ? (
+                            <span key={gid} className="bg-white text-gray-700 px-3 py-1.5 rounded-lg text-sm font-bold border border-gray-300 shadow-sm">
+                              {g.name}
+                            </span>
+                          ) : null;
+                        })
+                      ) : (
+                        <span className="text-sm text-gray-500 font-bold">担当グループが登録されていません</span>
+                      )}
+                    </div>
+                  )}
+                  {currentUserRole !== 'admin' && (
+                    <p className="text-[10px] text-gray-400 mt-1 font-bold">※担当グループの追加・変更はシステム管理者にご連絡ください。</p>
+                  )}
+                </div>
+
               </div>
 
               <div className="border-t border-gray-100 pt-6 mt-6">

@@ -1,10 +1,8 @@
-
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 // 🚀 ログ記録用に addDoc, serverTimestamp を追加
 import { collection, doc, updateDoc, onSnapshot, setDoc, addDoc, serverTimestamp } from 'firebase/firestore'; 
-import { ArrowLeft, UserCog, Edit, Trash2, X, ShieldCheck, Mail, Wallet, Plus, CheckCircle, UserPlus, Phone, Hash, Users, Loader2, ChevronUp, ChevronDown, Copy, Sprout } from 'lucide-react'; 
+import { ArrowLeft, UserCog, Edit, Trash2, X, ShieldCheck, Mail, Wallet, Plus, CheckCircle, UserPlus, Phone, Hash, Users, Loader2, ChevronUp, ChevronDown, Copy, Sprout, Building } from 'lucide-react'; 
 import { db, auth } from '../firebase'; 
 import { initializeApp, deleteApp } from 'firebase/app'; 
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
@@ -30,13 +28,14 @@ export const UserManagement = () => {
     password: '',
     role: 'reporter',
     memberNo: '', 
+    affiliation: '', // 🚀 追加: 所属先
     groupIds: [],
     canEditOwn: false,
     canEditGroup: false,
     isAgri: true
   });
 
-  // 🚀 現在操作している管理者自身の名前を取得するヘルパー関数
+  // 現在操作している管理者自身の名前を取得するヘルパー関数
   const getCurrentUserName = () => {
     if (!auth.currentUser) return '不明なユーザー';
     const currentUserDoc = usersList.find(u => u.id === auth.currentUser.uid);
@@ -83,9 +82,12 @@ export const UserManagement = () => {
         } else if (sortConfig.key === 'memberNo') {
           aValue = a.memberNo || '';
           bValue = b.memberNo || '';
+        } else if (sortConfig.key === 'affiliation') {
+          aValue = a.affiliation || '';
+          bValue = b.affiliation || '';
         }
 
-        if (sortConfig.key === 'memberNo') {
+        if (sortConfig.key === 'memberNo' || sortConfig.key === 'affiliation') {
           if (aValue === '' && bValue !== '') return 1;
           if (aValue !== '' && bValue === '') return -1;
         }
@@ -117,7 +119,6 @@ export const UserManagement = () => {
         const deleteUserFn = httpsCallable(cloudFunctions, 'deleteUser');
         await deleteUserFn({ uid: id });
 
-        // 🚀 操作履歴（ログ）の書き込み: ユーザー削除
         await addDoc(collection(db, 'audit_logs'), {
           action: 'DELETE',
           userName: getCurrentUserName(),
@@ -145,13 +146,12 @@ export const UserManagement = () => {
       const { id, ...updateData } = editingUser;
       await updateDoc(doc(db, 'users', id), updateData);
 
-      // 🚀 操作履歴（ログ）の書き込み: ユーザー情報更新
       await addDoc(collection(db, 'audit_logs'), {
         action: 'UPDATE',
         userName: getCurrentUserName(),
         userId: auth.currentUser?.uid || 'unknown',
         target: 'ユーザー管理',
-        details: `ユーザー「${editingUser.displayName || editingUser.name}」の権限や所属グループを更新しました`,
+        details: `ユーザー「${editingUser.displayName || editingUser.name}」の権限や所属情報を更新しました`,
         createdAt: serverTimestamp()
       });
 
@@ -211,6 +211,7 @@ export const UserManagement = () => {
         email: loginEmail,
         role: newUser.role,
         memberNo: newUser.memberNo || '', 
+        affiliation: newUser.affiliation || '', // 🚀 所属先を保存
         groupIds: newUser.groupIds,
         canEditOwn: newUser.canEditOwn,
         canEditGroup: newUser.canEditGroup,
@@ -218,7 +219,6 @@ export const UserManagement = () => {
         createdAt: new Date()
       });
 
-      // 🚀 操作履歴（ログ）の書き込み: 新規ユーザー作成
       await addDoc(collection(db, 'audit_logs'), {
         action: 'CREATE',
         userName: getCurrentUserName(),
@@ -234,7 +234,7 @@ export const UserManagement = () => {
       setSuccessModal({ show: true, loginId: displayId, password: newUser.password });
 
       setNewUser({
-        displayName: '', phone: '', password: '', role: 'reporter', memberNo: '', groupIds: [], canEditOwn: false, canEditGroup: false, isAgri: true
+        displayName: '', phone: '', password: '', role: 'reporter', memberNo: '', affiliation: '', groupIds: [], canEditOwn: false, canEditGroup: false, isAgri: true
       });
       setIsAddingUser(false);
 
@@ -375,6 +375,15 @@ export const UserManagement = () => {
                   <p className="text-[10px] text-gray-500 mt-1">※Excel出力時にこの番号が反映されます。</p>
                 </div>
 
+                {/* 🚀 追加: 所属先 */}
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">所属先 (任意)</label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Building size={16} className="text-gray-400" /></div>
+                    <input type="text" value={newUser.affiliation} onChange={e => setNewUser({...newUser, affiliation: e.target.value})} className="w-full pl-9 border border-gray-300 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500" placeholder="例：〇〇農協、〇〇町内会" />
+                  </div>
+                </div>
+
                 <div className="pt-2 border-t border-gray-100">
                   <label className="block text-sm font-bold text-gray-700 mb-2">農業者区分</label>
                   <div className="flex space-x-6">
@@ -421,13 +430,13 @@ export const UserManagement = () => {
                     </label>
                     <label className="flex items-center space-x-2 cursor-pointer">
                       <input type="checkbox" checked={newUser.canEditGroup} onChange={e => setNewUser({...newUser, canEditGroup: e.target.checked})} className="rounded text-blue-600 focus:ring-blue-500" />
-                      <span className="text-sm text-gray-700">所属グループ全員の記録の編集・削除を許可する</span>
+                      <span className="text-sm text-gray-700">担当グループ全員の記録の編集・削除を許可する</span>
                     </label>
                   </div>
                 )}
 
                 <div className="pt-2 border-t border-gray-100">
-                  <label className="block text-sm font-bold text-gray-700 mb-2">所属グループ (複数選択可)</label>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">担当グループ (複数選択可)</label>
                   <div className="border border-gray-200 rounded-xl max-h-32 overflow-y-auto bg-white">
                     {groupsList.map(g => {
                       const isChecked = newUser.groupIds.includes(g.id);
@@ -505,6 +514,21 @@ export const UserManagement = () => {
                 />
               </div>
 
+              {/* 🚀 追加: 所属先の編集フィールド */}
+              <div className="mb-6">
+                <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center">
+                  <Building size={16} className="mr-1 text-gray-500" />
+                  所属先
+                </label>
+                <input 
+                  type="text" 
+                  value={editingUser?.affiliation || ''} 
+                  onChange={(e) => setEditingUser({ ...editingUser, affiliation: e.target.value })}
+                  className="w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-purple-500"
+                  placeholder="例：〇〇農協、〇〇町内会"
+                />
+              </div>
+
               <div className="mb-6">
                 <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center">
                   <Sprout size={16} className="mr-1 text-gray-500" />
@@ -561,8 +585,8 @@ export const UserManagement = () => {
                   <label className="flex items-start space-x-3 cursor-pointer">
                     <input type="checkbox" checked={editingUser?.canEditGroup || false} onChange={(e) => setEditingUser({ ...editingUser, canEditGroup: e.target.checked })} className="mt-1 w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500" />
                     <div className="flex flex-col">
-                      <span className="text-sm font-bold text-gray-800">所属グループ全員の記録の編集・削除</span>
-                      <span className="text-xs text-gray-500">同じグループのメンバーが登録したデータも修正可能になります。（班長向け）</span>
+                      <span className="text-sm font-bold text-gray-800">担当グループ全員の記録の編集・削除</span>
+                      <span className="text-xs text-gray-500">同じ担当グループのメンバーが登録したデータも修正可能になります。（班長向け）</span>
                     </div>
                   </label>
                 </div>
@@ -571,7 +595,7 @@ export const UserManagement = () => {
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center">
                   <Users size={16} className="mr-1 text-gray-500" />
-                  所属グループ設定
+                  担当グループ設定
                 </label>
                 <div className="border border-gray-200 rounded-xl max-h-48 overflow-y-auto bg-white">
                   {groupsList.map(g => {
@@ -622,11 +646,11 @@ export const UserManagement = () => {
       <main className="p-4 md:p-8 max-w-6xl mx-auto">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="p-4 bg-purple-50 border-b border-purple-100">
-            <p className="text-sm text-purple-800 font-bold">システムに登録されているユーザーの権限や所属グループを管理します。</p>
+            <p className="text-sm text-purple-800 font-bold">システムに登録されているユーザーの権限や所属・担当情報を管理します。</p>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[1050px]">
+            <table className="w-full text-left border-collapse min-w-[1150px]">
               <thead>
                 <tr className="text-xs text-gray-400 uppercase tracking-wider border-b">
                   <th onClick={() => requestSort('name')} className="px-4 py-3 font-bold cursor-pointer hover:bg-gray-100 transition-colors select-none group" title="ユーザー名で並び替え">
@@ -649,8 +673,18 @@ export const UserManagement = () => {
                     </div>
                   </th>
 
+                  {/* 🚀 追加: 所属先のヘッダー */}
+                  <th onClick={() => requestSort('affiliation')} className="px-4 py-3 font-bold cursor-pointer hover:bg-gray-100 transition-colors select-none group" title="所属先で並び替え">
+                    <div className="flex items-center text-gray-700">
+                      所属先
+                      {sortConfig.key === 'affiliation' ? (
+                        sortConfig.direction === 'asc' ? <ChevronUp size={16} className="ml-1 text-blue-600" /> : <ChevronDown size={16} className="ml-1 text-blue-600" />
+                      ) : <ChevronDown size={16} className="ml-1 text-transparent group-hover:text-gray-300" />}
+                    </div>
+                  </th>
+
                   <th className="px-4 py-3 font-bold">権限</th>
-                  <th className="px-4 py-3 font-bold">所属グループ</th>
+                  <th className="px-4 py-3 font-bold">担当グループ</th>
                   <th className="px-4 py-3 font-bold text-center w-24">操作</th>
                 </tr>
               </thead>
@@ -687,6 +721,11 @@ export const UserManagement = () => {
                       <span className="text-sm text-gray-700 font-mono">{user.memberNo || <span className="text-gray-300 text-xs">未設定</span>}</span>
                     </td>
 
+                    {/* 🚀 追加: 所属先のデータ列 */}
+                    <td className="px-4 py-4">
+                      <span className="text-sm text-gray-700 font-bold">{user.affiliation || <span className="text-gray-300 text-xs">未設定</span>}</span>
+                    </td>
+
                     <td className="px-4 py-4">
                       <div className="flex flex-col space-y-1">
                         {getRoleBadge(user.role)}
@@ -709,14 +748,14 @@ export const UserManagement = () => {
                             return g ? <span key={gid} className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-[10px] font-bold border border-gray-200">{g.name}</span> : null;
                           })
                         ) : (
-                          <span className="text-xs text-gray-400">所属なし</span>
+                          <span className="text-xs text-gray-400">担当なし</span>
                         )}
                       </div>
                     </td>
                     
                     <td className="px-4 py-4">
                       <div className="flex justify-center space-x-2">
-                        <button onClick={() => setEditingUser(user)} className="p-2 text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors" title="権限・グループ編集">
+                        <button onClick={() => setEditingUser(user)} className="p-2 text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors" title="権限・所属情報編集">
                           <Edit size={16}/>
                         </button>
                         <button onClick={() => handleDelete(user.id, user.displayName || user.name)} className="p-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors" disabled={user.id === auth.currentUser?.uid} title="ユーザーを完全に削除">
@@ -728,7 +767,7 @@ export const UserManagement = () => {
                 ))}
                 {sortedUsers.length === 0 && (
                   <tr>
-                    <td colSpan="6" className="px-4 py-8 text-center text-gray-400 font-bold">ユーザーが見つかりません</td>
+                    <td colSpan="7" className="px-4 py-8 text-center text-gray-400 font-bold">ユーザーが見つかりません</td>
                   </tr>
                 )}
               </tbody>
