@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock, Map, MoreVertical, Edit, Info, History, Loader2, Ticket, RefreshCw } from 'lucide-react'; 
+import { Clock, Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock, Map, MoreVertical, Edit, Info, History, Loader2, Ticket, RefreshCw } from 'lucide-react'; 
 import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, doc, getDoc, deleteDoc, where, addDoc, serverTimestamp } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -631,6 +631,10 @@ export const Dashboard = () => {
           </div>
           {activity.reportNo && <div className="flex items-center text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded-md w-max mb-1">NO: {activity.reportNo}</div>}
           <div className="flex items-center"><Calendar className="mr-2 h-4 w-4" />{activity.date}</div>
+          {/* 🚀 追加: 日付の次の行に作業時間を追加 */}
+          {(activity.startTime || activity.endTime) && (
+            <div className="flex items-center"><Clock className="mr-2 h-4 w-4" />{activity.startTime || '--:--'} 〜 {activity.endTime || '--:--'}</div>
+          )}
           <div className="flex items-center"><MapPin className="mr-2 h-4 w-4" />{activity.location}</div>
         </div>
 
@@ -697,7 +701,6 @@ export const Dashboard = () => {
         
         <td className="p-3 text-sm font-bold text-gray-900 whitespace-nowrap overflow-hidden text-ellipsis">{act.activityType}</td>
         
-        {/* 🚀 修正: 「登録者」列を「活動内容」の次に移動 */}
         <td className="p-3 text-xs text-center text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis">{creatorName}</td>
 
         <td className="p-3 text-center whitespace-nowrap">
@@ -747,8 +750,6 @@ export const Dashboard = () => {
         <td className="p-3 text-xs text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis">{act.location}</td>
         <td className="p-3 text-xs font-bold text-green-600 whitespace-nowrap">{act.activityNumbers?.join(', ')}</td>
         
-        {/* （元の登録者列があった場所は削除済み） */}
-
         <td className="p-3 text-center whitespace-nowrap">
           {hasImage ? <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded text-[9px] font-bold">あり</span> : <span className="text-gray-300 text-[10px]">-</span>}
         </td>
@@ -836,7 +837,6 @@ export const Dashboard = () => {
                 
                 <th className="p-3 font-bold w-full whitespace-nowrap">活動内容</th>
                 
-                {/* 🚀 修正: 「登録者」ヘッダーを「活動内容」の次に移動 */}
                 <th className="p-3 font-bold w-24 text-center whitespace-nowrap">登録者</th>
 
                 <th className="p-3 font-bold w-20 text-center whitespace-nowrap">状態</th>
@@ -849,8 +849,6 @@ export const Dashboard = () => {
                 <th className="p-3 font-bold w-40 whitespace-nowrap">活動場所</th>
                 <th className="p-3 font-bold w-20 whitespace-nowrap">項目番号</th>
                 
-                {/* （元の登録者ヘッダーがあった場所は削除済み） */}
-
                 <th className="p-3 font-bold w-12 text-center whitespace-nowrap">写真</th>
                 
                 <th className="w-0 px-3 py-3 font-bold text-center whitespace-nowrap sticky right-0 bg-gray-100 shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-200 hidden md:table-cell">
