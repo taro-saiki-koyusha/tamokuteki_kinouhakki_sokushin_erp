@@ -570,16 +570,33 @@ export const Dashboard = () => {
 
     return (
       <div onClick={() => navigate(`/activity-form/${activity.id}`, { state: { editData: activity, isViewMode: true } })} className={`bg-white rounded-2xl shadow-sm border-l-4 border-green-500 p-4 cursor-pointer hover:shadow-md transition-all flex flex-col h-full relative group ${isChecked ? 'ring-2 ring-green-600 bg-green-50/20' : ''}`}>
-        <div className="absolute top-3 left-3 z-20" onClick={e => e.stopPropagation()}>
-          <input 
-            type="checkbox" 
-            checked={isChecked} 
-            onChange={(e) => toggleSelectActivity(activity.id, e)} 
-            className="w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500 cursor-pointer shadow-sm" 
-          />
+        
+        {/* 🚀 修正: チェックボックスと右上のアイコン群のみを配置する最上部のヘッダー行 */}
+        <div className="flex justify-between items-start mb-2 relative z-10">
+          <div className="pt-0.5 pl-1" onClick={e => e.stopPropagation()}>
+            <input 
+              type="checkbox" 
+              checked={isChecked} 
+              onChange={(e) => toggleSelectActivity(activity.id, e)} 
+              className="w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500 cursor-pointer shadow-sm" 
+            />
+          </div>
+
+          <div className="flex items-center space-x-1.5 ml-auto">
+            <button onClick={(e) => handleCopyLink(activity, e)} className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-md transition-colors" title="リンクをコピー">
+              <Link size={15} />
+            </button>
+
+            {canDeleteAct && (
+              <button onClick={(e) => handleDeleteClick(activity.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="この実績を削除">
+                <Trash2 size={16} />
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="absolute top-3 right-3 flex items-center space-x-1.5 z-10">
+        {/* 🚀 修正: ラベルエリア。タイトルの上の行として独立 */}
+        <div className="flex flex-wrap gap-1.5 mb-2 pl-6">
           <span className={`text-[10px] px-2 py-1 rounded-md font-bold border whitespace-nowrap ${
             planTypeLabel === '当初計画' ? 'bg-blue-50 text-blue-600 border-blue-100' :
             planTypeLabel === '期中追加' ? 'bg-orange-50 text-orange-600 border-orange-100' :
@@ -596,46 +613,36 @@ export const Dashboard = () => {
               <Lock size={10} className="mr-1" /> 提出済
             </span>
           )}
-          
-          <button onClick={(e) => handleCopyLink(activity, e)} className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-md transition-colors" title="リンクをコピー">
-            <Link size={15} />
-          </button>
-
-          {canDeleteAct && (
-            <button onClick={(e) => handleDeleteClick(activity.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="この実績を削除">
-              <Trash2 size={16} />
-            </button>
-          )}
         </div>
         
-        <div className="flex flex-col items-start space-y-1 mt-1 pl-6">
-          <h3 className="font-bold text-lg text-gray-900 leading-tight pr-40">{activity.activityType || '内容未入力'}</h3>
+        {/* 🚀 修正: タイトルエリア。右側にマージンを取らない（重ならない） */}
+        <div className="flex flex-col items-start space-y-1 pl-6 mb-3">
+          <h3 className="font-bold text-lg text-gray-900 leading-tight">{activity.activityType || '内容未入力'}</h3>
           {activity.isEssential && (
             <span className="text-[9px] bg-yellow-50 text-yellow-700 border border-yellow-200 px-1.5 py-0.5 rounded font-bold">必須作業</span>
           )}
         </div>
         
-        <div className="space-y-1.5 text-xs text-gray-600 mb-3 mt-3 flex-grow">
-          <div className="flex items-center">
+        <div className="space-y-1.5 text-xs text-gray-600 mb-3 flex-grow">
+          <div className="flex flex-wrap items-center gap-1">
             {groupInfo ? (
-              <span className="bg-gray-100 text-gray-600 text-[10px] px-2 py-1 rounded-md font-bold mb-1">{groupInfo.name}</span>
+              <span className="bg-gray-100 text-gray-600 text-[10px] px-2 py-1 rounded-md font-bold">{groupInfo.name}</span>
             ) : (
-              <span className="bg-red-50 text-red-500 text-[10px] px-2 py-1 rounded-md font-bold border border-red-100 mb-1">未登録</span>
+              <span className="bg-red-50 text-red-500 text-[10px] px-2 py-1 rounded-md font-bold border border-red-100">未登録</span>
             )}
             
             {activity.paymentCategory && (
-              <span className="ml-1 bg-teal-50 text-teal-700 text-[9px] px-2 py-1 rounded-md font-bold border border-teal-100 truncate max-w-[120px]">
+              <span className="bg-teal-50 text-teal-700 text-[9px] px-2 py-1 rounded-md font-bold border border-teal-100 truncate max-w-[120px]">
                 {activity.paymentCategory}
               </span>
             )}
           </div>
-          {activity.reportNo && <div className="flex items-center text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded-md w-max mb-1">NO: {activity.reportNo}</div>}
-          <div className="flex items-center"><Calendar className="mr-2 h-4 w-4" />{activity.date}</div>
-          {/* 🚀 追加: 日付の次の行に作業時間を追加 */}
+          {activity.reportNo && <div className="flex items-center text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded-md w-max mb-1 mt-1.5">NO: {activity.reportNo}</div>}
+          <div className="flex items-center mt-1"><Calendar className="mr-2 h-4 w-4 shrink-0" />{activity.date}</div>
           {(activity.startTime || activity.endTime) && (
-            <div className="flex items-center"><Clock className="mr-2 h-4 w-4" />{activity.startTime || '--:--'} 〜 {activity.endTime || '--:--'}</div>
+            <div className="flex items-center"><Clock className="mr-2 h-4 w-4 shrink-0" />{activity.startTime || '--:--'} 〜 {activity.endTime || '--:--'}</div>
           )}
-          <div className="flex items-center"><MapPin className="mr-2 h-4 w-4" />{activity.location}</div>
+          <div className="flex items-center"><MapPin className="mr-2 h-4 w-4 shrink-0" /><span className="truncate">{activity.location}</span></div>
         </div>
 
         {(budget > 0 || actualCost > 0) && (
