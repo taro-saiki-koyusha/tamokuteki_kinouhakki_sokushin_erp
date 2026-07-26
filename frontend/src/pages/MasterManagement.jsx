@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp, query, orderBy, setDoc } from 'firebase/firestore';
-import { ArrowLeft, Plus, Trash2, Edit, X, Check, Tractor, DollarSign, Settings, Package, Calendar, CreditCard } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Edit, X, Check, Tractor, DollarSign, Settings, Package, Calendar, CreditCard, Sprout } from 'lucide-react';
 import { db } from '../firebase';
 
 export const MasterManagement = () => {
@@ -14,7 +14,10 @@ export const MasterManagement = () => {
     paymentDates: [],
     budgetAgriMaintain: 0,
     budgetResourceJoint: 0,
-    budgetResourceLongLife: 0
+    budgetResourceLongLife: 0,
+    defaultStatus: '実績入力済', 
+    defaultPlanType: '当初計画', 
+    defaultWageId: ''           
   }); 
   
   const [activeTab, setActiveTab] = useState('members'); 
@@ -42,7 +45,10 @@ export const MasterManagement = () => {
           paymentDates: data.paymentDates || [],
           budgetAgriMaintain: data.budgetAgriMaintain || 0,
           budgetResourceJoint: data.budgetResourceJoint || 0,
-          budgetResourceLongLife: data.budgetResourceLongLife || 0
+          budgetResourceLongLife: data.budgetResourceLongLife || 0,
+          defaultStatus: data.defaultStatus || '実績入力済',
+          defaultPlanType: data.defaultPlanType || '当初計画',
+          defaultWageId: data.defaultWageId || ''
         });
       }
     });
@@ -132,6 +138,9 @@ export const MasterManagement = () => {
         budgetAgriMaintain: Number(systemSettings.budgetAgriMaintain || 0),
         budgetResourceJoint: Number(systemSettings.budgetResourceJoint || 0),
         budgetResourceLongLife: Number(systemSettings.budgetResourceLongLife || 0),
+        defaultStatus: systemSettings.defaultStatus || '実績入力済',
+        defaultPlanType: systemSettings.defaultPlanType || '当初計画',
+        defaultWageId: systemSettings.defaultWageId || '',
         updatedAt: serverTimestamp()
       }, { merge: true });
       alert('システム設定を保存しました。');
@@ -214,7 +223,6 @@ export const MasterManagement = () => {
                 </div>
               </div>
 
-              {/* 🚀 新規追加：支払区分別の予算枠設定 */}
               <div className="bg-green-50 border border-green-100 rounded-xl p-5">
                 <h3 className="font-bold text-green-900 flex items-center mb-4 border-b border-green-200 pb-2">
                   <DollarSign className="w-5 h-5 mr-2" /> 本年度の支払区分別予算設定
@@ -310,6 +318,55 @@ export const MasterManagement = () => {
                   )}
                 </div>
                 <p className="text-xs text-purple-600/80 mt-4">※ ここで設定した振込日が、活動実績の入力画面で選択できるようになります。</p>
+              </div>
+
+              {/* 🚀 追加: 活動実績のデフォルト値設定 */}
+              <div className="bg-blue-50/50 p-5 rounded-xl border border-blue-100">
+                <h3 className="font-bold text-blue-900 mb-4 flex items-center border-b border-blue-200 pb-2">
+                  <Sprout className="w-5 h-5 mr-2" /> 活動実績のデフォルト値設定
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                  <div>
+                    <label className="block text-sm font-bold text-blue-800 mb-1">状態の初期値</label>
+                    <select
+                      value={systemSettings.defaultStatus || '実績入力済'}
+                      onChange={(e) => setSystemSettings({...systemSettings, defaultStatus: e.target.value})}
+                      className="w-full box-border border border-blue-200 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 bg-white font-bold"
+                    >
+                      <option value="未実施">未実施</option>
+                      <option value="実績入力済">実績入力済（作業完了）</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-blue-800 mb-1">計画区分の初期値</label>
+                    <select
+                      value={systemSettings.defaultPlanType || '当初計画'}
+                      onChange={(e) => setSystemSettings({...systemSettings, defaultPlanType: e.target.value})}
+                      className="w-full box-border border border-blue-200 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 bg-white font-bold"
+                    >
+                      <option value="当初計画">当初計画</option>
+                      <option value="期中追加">期中追加</option>
+                      <option value="突発・緊急">突発・緊急</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-blue-800 mb-1">参加者単価の初期値</label>
+                    <select
+                      value={systemSettings.defaultWageId || ''}
+                      onChange={(e) => setSystemSettings({...systemSettings, defaultWageId: e.target.value})}
+                      className="w-full box-border border border-blue-200 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 bg-white font-bold"
+                    >
+                      <option value="">（選択なし）</option>
+                      <option value="zero">単価選択なし (0円)</option>
+                      {members.map(m => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <p className="text-[10px] text-blue-700 mt-3 font-bold">
+                  ※ 新規で活動実績を入力する際、ここで設定した値が最初から選択された状態になります。
+                </p>
               </div>
 
               <div className="pt-4 border-t border-gray-100">

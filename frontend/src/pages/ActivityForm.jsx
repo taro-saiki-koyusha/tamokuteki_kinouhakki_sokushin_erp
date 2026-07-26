@@ -82,6 +82,17 @@ export const ActivityForm = () => {
 
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
+  // 🚀 追加: 新規作成時にマスタのデフォルト値を反映させる
+  useEffect(() => {
+    if (!id && !isViewMode && systemSettings) {
+      setFormData(prev => ({
+        ...prev,
+        status: systemSettings.defaultStatus || '実績入力済',
+        planType: systemSettings.defaultPlanType || '当初計画'
+      }));
+    }
+  }, [id, isViewMode, systemSettings.defaultStatus, systemSettings.defaultPlanType]);
+
   useEffect(() => {
     if (id) {
       setIsLoadingDirect(true);
@@ -180,7 +191,16 @@ export const ActivityForm = () => {
 
   const addParticipant = () => {
     const baseHours = calculateBaseHours();
-    setParticipantDetails([...participantDetails, { participantName: '', isManualName: false, isAgri: true, wageId: '', workTime: baseHours, machineId: '', machineTime: 0 }]);
+    setParticipantDetails([...participantDetails, { 
+      participantName: '', 
+      isManualName: false, 
+      isAgri: true, 
+      // 🚀 修正: マスタ設定のデフォルト単価をセット
+      wageId: systemSettings.defaultWageId || '', 
+      workTime: baseHours, 
+      machineId: '', 
+      machineTime: 0 
+    }]);
   };
   
   const duplicateParticipant = (index) => {
@@ -229,7 +249,8 @@ export const ActivityForm = () => {
       return { 
         participantName: user ? (user.name || user.displayName || '未設定') : '', 
         isManualName: false, 
-        wageId: '', 
+        // 🚀 修正: マスタ設定のデフォルト単価をセット
+        wageId: systemSettings.defaultWageId || '', 
         isAgri: user ? (user.isAgri !== false) : true, 
         workTime: baseHours, 
         machineId: '', 
@@ -1500,6 +1521,7 @@ export const ActivityForm = () => {
             <table className="w-full border-2 border-black border-collapse mb-6 text-sm">
               <tbody>
                 <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">報告書No.</th><td className="border border-black p-3" colSpan="3">{editData.reportNo || '（未設定）'}</td></tr>
+                {/* 🚀 修正: 「活動項目番号」「実施場所」「支払区分」「参加人数」を削除し、レイアウトを調整 */}
                 <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">実施年月日</th><td className="border border-black p-3" colSpan="3">{editData.date || '（省略）'}</td></tr>
                 <tr><th className="border border-black bg-gray-100 p-3 text-left">活動内容</th><td className="border border-black p-3" colSpan="3">{editData.activityType}</td></tr>
               </tbody>
