@@ -142,6 +142,27 @@ export const CostManagement = () => {
     }));
   };
 
+  const sortedGroupsList = useMemo(() => {
+    const targetGroupOrder = ['農）カマタ', '阿部正隆', '藤井守', '鎌田町内会', '鎌田緑保護会'];
+    
+    return [...groupsList].sort((a, b) => {
+      const indexA = targetGroupOrder.indexOf(a.name);
+      const indexB = targetGroupOrder.indexOf(b.name);
+
+      if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+      if (indexA !== -1) return -1;
+      if (indexB !== -1) return 1;
+
+      return a.name.localeCompare(b.name, 'ja');
+    });
+  }, [groupsList]);
+
+  // 🚀 グループ小計の対象となるグループ名と、小計を挿入する位置（最後のグループ）を特定
+  const subtotalGroupNames = ['農）カマタ', '阿部正隆', '藤井守'];
+  const lastSubtotalGroup = useMemo(() => {
+    return [...sortedGroupsList].reverse().find(g => subtotalGroupNames.includes(g.name));
+  }, [sortedGroupsList]);
+
   const aggregatedData = useMemo(() => {
     let totalPersonnelCost = 0;
     let totalPersonnelHours = 0;
@@ -150,6 +171,8 @@ export const CostManagement = () => {
     let totalMaterialCost = 0;
 
     const personMap = {};
+
+    const uniqueAffiliations = [...new Set(systemUsers.map(u => u.affiliation).filter(a => a && a.trim() !== ''))].sort();
 
     filteredActivities.forEach(act => {
       if (userRole === 'admin' || userRole === 'manager') {
@@ -187,20 +210,23 @@ export const CostManagement = () => {
 
         const matchedUser = systemUsers.find(u => (u.displayName || u.name) === participantName);
         const memberNo = matchedUser?.memberNo ? matchedUser.memberNo : '';
+        const affiliation = matchedUser?.affiliation ? matchedUser.affiliation : '';
 
-        // ★追加: クロス集計（マトリックス）用の初期化
         if (!personMap[participantName]) {
           personMap[participantName] = { 
             name: participantName, 
             memberNo: memberNo, 
+            affiliation: affiliation,
             workTime: 0, 
             pCost: 0, 
             machineTime: 0, 
             mCost: 0,
             groupTotals: { other: 0 }, 
+            affiliationTotals: { '未登録・その他': 0 },
             details: []
           };
           groupsList.forEach(g => personMap[participantName].groupTotals[g.id] = 0);
+          uniqueAffiliations.forEach(aff => personMap[participantName].affiliationTotals[aff] = 0);
         }
         
         personMap[participantName].workTime += (pd.workTime || 0);
@@ -208,9 +234,11 @@ export const CostManagement = () => {
         personMap[participantName].machineTime += (pd.machineTime || 0);
         personMap[participantName].mCost += mCost;
         
-        // ★追加: グループごとの金額を加算（属していない場合はotherへ）
         const actualGid = groupsList.some(g => g.id === act.groupId) ? act.groupId : 'other';
         personMap[participantName].groupTotals[actualGid] += totalIndividualCost;
+
+        const actualAffiliation = uniqueAffiliations.includes(affiliation) ? affiliation : '未登録・その他';
+        personMap[participantName].affiliationTotals[actualAffiliation] += totalIndividualCost;
         
         personMap[participantName].details.push({
           id: act.id,
@@ -247,12 +275,32 @@ export const CostManagement = () => {
       return sortConfig.direction === 'asc' ? comparison : -comparison;
     });
 
+    const targetOrder = ['阿部正隆', '藤井守', '農事組合法人カマタ'];
+    const actualAffiliations = [...new Set(personnelArray.map(p => {
+      const aff = p.affiliation;
+      return aff && aff.trim() !== '' ? aff : '未登録・その他';
+    }))].sort((a, b) => {
+      const indexA = targetOrder.indexOf(a);
+      const indexB = targetOrder.indexOf(b);
+
+      if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+      if (indexA !== -1) return -1;
+      if (indexB !== -1) return 1;
+
+      if (a === '未登録・その他') return 1;
+      if (b === '未登録・その他') return -1;
+
+      return a.localeCompare(b, 'ja');
+    });
+
     return {
       totalPersonnelCost, totalPersonnelHours,
       totalMachineCost, totalMachineHours,
       totalMaterialCost,
       grandTotal: totalPersonnelCost + totalMachineCost + totalMaterialCost,
-      personnelArray
+      personnelArray,
+      uniqueAffiliations,
+      actualAffiliations 
     };
   }, [filteredActivities, membersList, machinesList, materialsList, groupsList, systemUsers, userRole, myName, systemSettings.paymentDates, sortConfig]);
 
@@ -462,15 +510,16 @@ export const CostManagement = () => {
           </div>
 
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="flex border-b border-gray-200">
-              <button onClick={() => setActiveTab('personnel')} className={`flex-1 py-3.5 font-bold text-sm transition-colors ${activeTab === 'personnel' ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}>
+            <div className="flex border-b border-gray-200 overflow-x-auto whitespace-nowrap">
+              <button onClick={() => setActiveTab('personnel')} className={`px-6 py-3.5 font-bold text-sm transition-colors ${activeTab === 'personnel' ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}>
                 {userRole === 'reporter' ? 'あなたの集計結果' : '個人別 支払額集計'}
               </button>
-              {/* ★追加: 新しい「クロス集計」のタブ */}
-              <button onClick={() => setActiveTab('group')} className={`flex-1 py-3.5 font-bold text-sm transition-colors ${activeTab === 'group' ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}>
-                グループ別 費用集計
-              </button>
-              <button onClick={() => setActiveTab('activity')} className={`flex-1 py-3.5 font-bold text-sm transition-colors ${activeTab === 'activity' ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}>
+              {(userRole === 'admin' || userRole === 'manager') && (
+                <button onClick={() => setActiveTab('group')} className={`px-6 py-3.5 font-bold text-sm transition-colors ${activeTab === 'group' ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}>
+                  所属先・グループ毎の集計
+                </button>
+              )}
+              <button onClick={() => setActiveTab('activity')} className={`px-6 py-3.5 font-bold text-sm transition-colors ${activeTab === 'activity' ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}>
                 活動別 費用一覧
               </button>
             </div>
@@ -534,13 +583,12 @@ export const CostManagement = () => {
                 </table>
               )}
 
-              {/* ★追加: 個人×グループのクロス集計テーブル */}
               {activeTab === 'group' && (
-                <table className="w-full text-left border-collapse min-w-[800px]">
+                <table className="w-full text-left border-collapse min-w-[800px] table-auto">
                   <thead>
                     <tr className="bg-gray-50 text-xs text-gray-500 border-b border-gray-200">
                       <th 
-                        className="p-4 font-bold cursor-pointer hover:bg-gray-200 transition-colors select-none group sticky left-0 z-10 bg-gray-50"
+                        className="p-4 font-bold cursor-pointer hover:bg-gray-200 transition-colors select-none group sticky left-0 z-10 bg-gray-50 align-bottom min-w-[200px]"
                         onClick={() => handleSort('name')}
                       >
                         <div className="flex items-center">
@@ -548,19 +596,32 @@ export const CostManagement = () => {
                           {sortConfig.key === 'name' ? (sortConfig.direction === 'asc' ? <ChevronUp size={16} className="ml-1 text-blue-600" /> : <ChevronDown size={16} className="ml-1 text-blue-600" />) : <ChevronDown size={16} className="ml-1 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />}
                         </div>
                       </th>
-                      {/* 登録されている全グループを列として展開 */}
-                      {groupsList.map(g => (
-                        <th key={g.id} className="p-4 font-bold text-right border-l border-gray-200">
-                          <div className="text-[10px] text-gray-400 font-normal leading-tight">グループ</div>
-                          {g.name}
-                        </th>
-                      ))}
-                      <th className="p-4 font-bold text-right border-l border-gray-200">
-                        <div className="text-[10px] text-gray-400 font-normal leading-tight">未分類</div>
-                        その他
+                      
+                      {sortedGroupsList.map((g, idx) => {
+                        const isThickBorder = idx === 0 || g.name === '鎌田町内会';
+                        return (
+                          <React.Fragment key={`h-grp-${g.id}`}>
+                            <th className={`p-3 font-bold text-right border-l ${isThickBorder ? 'border-gray-400 border-l-2' : 'border-gray-200'} align-bottom min-w-[120px]`}>
+                              <div className="text-[10px] text-teal-600 font-bold leading-tight mb-1">[活動グループ]</div>
+                              {g.name}
+                            </th>
+                            {/* 🚀 追加: 個人・法人の小計列 */}
+                            {g.id === lastSubtotalGroup?.id && (
+                              <th className="p-3 font-bold text-right border-l-2 border-gray-400 bg-orange-50/50 align-bottom min-w-[120px]">
+                                <div className="text-[10px] text-orange-600 font-bold leading-tight mb-1">[グループ小計]</div>
+                                個人・法人
+                              </th>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                      <th className="p-3 font-bold text-right border-l border-gray-200 align-bottom min-w-[120px]">
+                        <div className="text-[10px] text-teal-600 font-bold leading-tight mb-1">[活動グループ]</div>
+                        未登録・その他
                       </th>
+
                       <th 
-                        className="p-4 font-bold text-right text-blue-700 bg-blue-50/50 cursor-pointer hover:bg-blue-100 transition-colors select-none group border-l border-gray-200"
+                        className="p-4 font-bold text-right text-blue-700 bg-blue-50/50 cursor-pointer hover:bg-blue-100 transition-colors select-none group border-l-2 border-gray-400 align-bottom min-w-[140px]"
                         onClick={() => handleSort('total')}
                       >
                         <div className="flex items-center justify-end">
@@ -571,70 +632,162 @@ export const CostManagement = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {aggregatedData.personnelArray.map((person, idx) => (
-                      <tr 
-                        key={idx} 
-                        className="hover:bg-blue-50 transition-colors cursor-pointer group"
-                        onClick={() => setSelectedPerson(person)}
-                        title="クリックして明細を表示"
-                      >
-                        <td className="p-4 font-bold text-gray-800 whitespace-nowrap group-hover:text-blue-700 sticky left-0 z-10 bg-white group-hover:bg-blue-50">
-                          {person.name} 
-                          <span className="text-xs text-gray-400 font-normal ml-2 font-mono">
-                            {person.memberNo ? `(${person.memberNo})` : '(-)'}
-                          </span>
-                        </td>
-                        {/* グループごとの金額 */}
-                        {groupsList.map(g => {
-                          const amount = person.groupTotals[g.id] || 0;
-                          return (
-                            <td key={g.id} className={`p-4 text-right font-mono border-l border-gray-100 ${amount > 0 ? 'text-gray-800 font-bold' : 'text-gray-300'}`}>
-                              ¥{amount.toLocaleString()}
-                            </td>
-                          );
-                        })}
-                        {/* その他の金額 */}
-                        <td className={`p-4 text-right font-mono border-l border-gray-100 ${(person.groupTotals['other'] || 0) > 0 ? 'text-gray-800 font-bold' : 'text-gray-300'}`}>
-                          ¥{(person.groupTotals['other'] || 0).toLocaleString()}
-                        </td>
-                        {/* 支払合計 */}
-                        <td className="p-4 text-right font-black text-blue-700 bg-blue-50/30 font-mono text-lg border-l border-gray-200 group-hover:bg-blue-100/50">
-                          ¥{(person.pCost + person.mCost).toLocaleString()}
-                        </td>
-                      </tr>
-                    ))}
+                    {aggregatedData.actualAffiliations.map(aff => {
+                      const membersInAff = aggregatedData.personnelArray.filter(p => {
+                        const pAff = p.affiliation && p.affiliation.trim() !== '' ? p.affiliation : '未登録・その他';
+                        return pAff === aff;
+                      });
 
-                    {/* ★追加: グループごとの縦の合計行 */}
-                    {aggregatedData.personnelArray.length > 0 && (() => {
-                      const footerTotals = { other: 0, grand: 0 };
-                      groupsList.forEach(g => footerTotals[g.id] = 0);
-                      
-                      aggregatedData.personnelArray.forEach(p => {
-                        groupsList.forEach(g => footerTotals[g.id] += (p.groupTotals[g.id] || 0));
-                        footerTotals.other += (p.groupTotals.other || 0);
-                        footerTotals.grand += (p.pCost + p.mCost);
+                      if (membersInAff.length === 0) return null;
+
+                      const subTotals = { other: 0, grand: 0 };
+                      sortedGroupsList.forEach(g => subTotals[g.id] = 0);
+                      membersInAff.forEach(p => {
+                        sortedGroupsList.forEach(g => subTotals[g.id] += (p.groupTotals[g.id] || 0));
+                        subTotals.other += (p.groupTotals.other || 0);
+                        subTotals.grand += (p.pCost + p.mCost);
                       });
 
                       return (
-                        <tr className="bg-gray-100 border-t-2 border-gray-300 text-sm">
-                          <td className="p-4 font-black text-center text-gray-700 sticky left-0 z-10 bg-gray-100">総合計</td>
-                          {groupsList.map(g => (
-                            <td key={g.id} className="p-4 text-right font-black text-gray-800 font-mono border-l border-gray-300">
-                              ¥{footerTotals[g.id].toLocaleString()}
+                        <React.Fragment key={`aff-${aff}`}>
+                          <tr className="bg-blue-50/80">
+                            {/* colSpanの計算: (氏名=1) + (グループ数) + (小計=1) + (その他=1) + (合計=1) = groupsList.length + 4 */}
+                            <td colSpan={sortedGroupsList.length + 4} className="p-3 pl-4 font-extrabold text-blue-900 text-sm border-b border-blue-200 sticky left-0 shadow-sm z-10">
+                              ■ 所属先： {aff}
                             </td>
+                          </tr>
+
+                          {membersInAff.map((person) => (
+                            <tr 
+                              key={person.name} 
+                              className="hover:bg-blue-50/50 transition-colors cursor-pointer group"
+                              onClick={() => setSelectedPerson(person)}
+                              title="クリックして明細を表示"
+                            >
+                              <td className="p-3 pl-8 font-bold text-gray-800 whitespace-nowrap group-hover:text-blue-700 sticky left-0 z-10 bg-white group-hover:bg-blue-50/50">
+                                {person.name} 
+                                <span className="text-xs text-gray-400 font-normal ml-2 font-mono">
+                                  {person.memberNo ? `(${person.memberNo})` : '(-)'}
+                                </span>
+                              </td>
+                              
+                              {sortedGroupsList.map((g, idx) => {
+                                const amount = person.groupTotals[g.id] || 0;
+                                const isThickBorder = idx === 0 || g.name === '鎌田町内会';
+                                return (
+                                  <React.Fragment key={`d-grp-${g.id}`}>
+                                    <td className={`p-3 text-right font-mono border-l ${isThickBorder ? 'border-gray-400 border-l-2' : 'border-gray-100'} ${amount > 0 ? 'text-gray-800 font-bold' : 'text-gray-300'}`}>
+                                      {amount > 0 ? `¥${amount.toLocaleString()}` : '-'}
+                                    </td>
+                                    {/* 🚀 追加: メンバー行の小計セル */}
+                                    {g.id === lastSubtotalGroup?.id && (() => {
+                                      const pSubtotal = sortedGroupsList
+                                        .filter(sg => subtotalGroupNames.includes(sg.name))
+                                        .reduce((sum, sg) => sum + (person.groupTotals[sg.id] || 0), 0);
+                                      return (
+                                        <td className={`p-3 text-right font-mono border-l-2 border-gray-400 bg-orange-50/30 ${pSubtotal > 0 ? 'text-gray-800 font-bold' : 'text-gray-300'}`}>
+                                          {pSubtotal > 0 ? `¥${pSubtotal.toLocaleString()}` : '-'}
+                                        </td>
+                                      );
+                                    })()}
+                                  </React.Fragment>
+                                );
+                              })}
+                              
+                              <td className={`p-3 text-right font-mono border-l border-gray-100 ${(person.groupTotals['other'] || 0) > 0 ? 'text-gray-800 font-bold' : 'text-gray-300'}`}>
+                                {(person.groupTotals['other'] || 0) > 0 ? `¥${(person.groupTotals['other']).toLocaleString()}` : '-'}
+                              </td>
+
+                              <td className="p-3 text-right font-black text-blue-700 bg-blue-50/30 font-mono text-base border-l-2 border-gray-400 group-hover:bg-blue-100/50">
+                                ¥{(person.pCost + person.mCost).toLocaleString()}
+                              </td>
+                            </tr>
                           ))}
-                          <td className="p-4 text-right font-black text-gray-800 font-mono border-l border-gray-300">
-                            ¥{footerTotals.other.toLocaleString()}
+
+                          <tr className="bg-gray-100/80 border-t border-gray-300 text-sm">
+                            <td className="p-3 pr-5 font-bold text-right text-gray-700 sticky left-0 z-10 bg-gray-100/80">
+                              【{aff}】 小計
+                            </td>
+                            {sortedGroupsList.map((g, idx) => {
+                              const isThickBorder = idx === 0 || g.name === '鎌田町内会';
+                              return (
+                                <React.Fragment key={`sub-grp-${g.id}`}>
+                                  <td className={`p-3 text-right font-bold text-gray-800 font-mono border-l ${isThickBorder ? 'border-gray-400 border-l-2' : 'border-gray-200'}`}>
+                                    {subTotals[g.id] > 0 ? `¥${subTotals[g.id].toLocaleString()}` : '-'}
+                                  </td>
+                                  {/* 🚀 追加: 所属先小計行の小計セル */}
+                                  {g.id === lastSubtotalGroup?.id && (() => {
+                                    const st = sortedGroupsList
+                                      .filter(sg => subtotalGroupNames.includes(sg.name))
+                                      .reduce((sum, sg) => sum + (subTotals[sg.id] || 0), 0);
+                                    return (
+                                      <td className="p-3 text-right font-bold text-gray-800 font-mono border-l-2 border-gray-400 bg-orange-100/40">
+                                        {st > 0 ? `¥${st.toLocaleString()}` : '-'}
+                                      </td>
+                                    );
+                                  })()}
+                                </React.Fragment>
+                              );
+                            })}
+                            <td className="p-3 text-right font-bold text-gray-800 font-mono border-l border-gray-200">
+                              {subTotals.other > 0 ? `¥${subTotals.other.toLocaleString()}` : '-'}
+                            </td>
+                            <td className="p-3 text-right font-black text-blue-800 bg-blue-100/30 font-mono text-lg border-l-2 border-gray-400">
+                              ¥{subTotals.grand.toLocaleString()}
+                            </td>
+                          </tr>
+                        </React.Fragment>
+                      );
+                    })}
+
+                    {aggregatedData.personnelArray.length > 0 && (() => {
+                      const grandTotals = { other: 0, grand: 0 };
+                      sortedGroupsList.forEach(g => grandTotals[g.id] = 0);
+                      
+                      aggregatedData.personnelArray.forEach(p => {
+                        sortedGroupsList.forEach(g => grandTotals[g.id] += (p.groupTotals[g.id] || 0));
+                        grandTotals.other += (p.groupTotals.other || 0);
+                        grandTotals.grand += (p.pCost + p.mCost);
+                      });
+
+                      return (
+                        <tr className="bg-gray-200 border-t-[3px] border-gray-400 text-sm">
+                          <td className="p-4 font-black text-center text-gray-900 sticky left-0 z-10 bg-gray-200">
+                            ■ 総合計
                           </td>
-                          <td className="p-4 text-right font-black text-blue-800 bg-blue-100/50 font-mono text-xl border-l border-blue-200">
-                            ¥{footerTotals.grand.toLocaleString()}
+                          {sortedGroupsList.map((g, idx) => {
+                            const isThickBorder = idx === 0 || g.name === '鎌田町内会';
+                            return (
+                              <React.Fragment key={`grand-grp-${g.id}`}>
+                                <td className={`p-4 text-right font-black text-gray-900 font-mono border-l ${isThickBorder ? 'border-gray-400 border-l-2' : 'border-gray-300'}`}>
+                                  ¥{grandTotals[g.id].toLocaleString()}
+                                </td>
+                                {/* 🚀 追加: 総合計行の小計セル */}
+                                {g.id === lastSubtotalGroup?.id && (() => {
+                                  const gt = sortedGroupsList
+                                    .filter(sg => subtotalGroupNames.includes(sg.name))
+                                    .reduce((sum, sg) => sum + (grandTotals[sg.id] || 0), 0);
+                                  return (
+                                    <td className="p-4 text-right font-black text-gray-900 font-mono border-l-2 border-gray-400 bg-orange-200/50 text-base">
+                                      ¥{gt.toLocaleString()}
+                                    </td>
+                                  );
+                                })()}
+                              </React.Fragment>
+                            );
+                          })}
+                          <td className="p-4 text-right font-black text-gray-900 font-mono border-l border-gray-300">
+                            ¥{grandTotals.other.toLocaleString()}
+                          </td>
+                          <td className="p-4 text-right font-black text-blue-900 bg-blue-200/60 font-mono text-xl border-l-2 border-gray-500">
+                            ¥{grandTotals.grand.toLocaleString()}
                           </td>
                         </tr>
                       );
                     })()}
 
                     {aggregatedData.personnelArray.length === 0 && (
-                      <tr><td colSpan={groupsList.length + 3} className="p-8 text-center text-gray-400 font-bold">対象データがありません</td></tr>
+                      <tr><td colSpan={sortedGroupsList.length + 4} className="p-8 text-center text-gray-400 font-bold">対象データがありません</td></tr>
                     )}
                   </tbody>
                 </table>
