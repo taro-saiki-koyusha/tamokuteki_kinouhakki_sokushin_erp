@@ -11,6 +11,7 @@ import { ProfileSettings } from './pages/ProfileSettings';
 import { CostManagement } from './pages/CostManagement';
 import { AuditLogs } from './pages/AuditLogs';
 import { TicketManagement } from './pages/TicketManagement';
+import { BackupManagement } from './pages/BackupManagement';
 
 function App() {
   return (
@@ -35,6 +36,7 @@ function App() {
 
         {/* ⚠️ 未定義のURLにアクセスした場合はログイン画面に戻す */}
         <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/backup" element={<BackupManagement />} />
       </Routes>
     </Router>
   );

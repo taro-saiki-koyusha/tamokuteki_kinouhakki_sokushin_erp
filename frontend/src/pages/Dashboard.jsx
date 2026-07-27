@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Clock, Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock, Map, MoreVertical, Edit, Info, History, Loader2, Ticket, RefreshCw } from 'lucide-react'; 
+import { Clock, Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock, Map, MoreVertical, Edit, Info, History, Loader2, Ticket, RefreshCw, Database } from 'lucide-react'; 
 import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, doc, getDoc, deleteDoc, where, addDoc, serverTimestamp } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -571,7 +571,6 @@ export const Dashboard = () => {
     return (
       <div onClick={() => navigate(`/activity-form/${activity.id}`, { state: { editData: activity, isViewMode: true } })} className={`bg-white rounded-2xl shadow-sm border-l-4 border-green-500 p-4 cursor-pointer hover:shadow-md transition-all flex flex-col h-full relative group ${isChecked ? 'ring-2 ring-green-600 bg-green-50/20' : ''}`}>
         
-        {/* 🚀 修正: チェックボックスと右上のアイコン群のみを配置する最上部のヘッダー行 */}
         <div className="flex justify-between items-start mb-2 relative z-10">
           <div className="pt-0.5 pl-1" onClick={e => e.stopPropagation()}>
             <input 
@@ -595,7 +594,6 @@ export const Dashboard = () => {
           </div>
         </div>
 
-        {/* 🚀 修正: ラベルエリア。タイトルの上の行として独立 */}
         <div className="flex flex-wrap gap-1.5 mb-2 pl-6">
           <span className={`text-[10px] px-2 py-1 rounded-md font-bold border whitespace-nowrap ${
             planTypeLabel === '当初計画' ? 'bg-blue-50 text-blue-600 border-blue-100' :
@@ -615,7 +613,6 @@ export const Dashboard = () => {
           )}
         </div>
         
-        {/* 🚀 修正: タイトルエリア。右側にマージンを取らない（重ならない） */}
         <div className="flex flex-col items-start space-y-1 pl-6 mb-3">
           <h3 className="font-bold text-lg text-gray-900 leading-tight">{activity.activityType || '内容未入力'}</h3>
           {activity.isEssential && (
@@ -921,6 +918,9 @@ export const Dashboard = () => {
               <button onClick={() => navigate('/ticket-management')} className="flex items-center text-sm font-bold text-gray-500 hover:text-indigo-600">
                 <Ticket size={18} className="mr-1"/> チケット管理
               </button>
+              <button onClick={() => navigate('/backup')} className="flex items-center text-sm font-bold text-gray-500 hover:text-red-600">
+                <Database size={18} className="mr-1"/> Backup
+              </button>
               <button onClick={() => navigate('/audit-logs')} className="flex items-center text-sm font-bold text-gray-500 hover:text-orange-600">
                 <History size={18} className="mr-1"/> 操作履歴
               </button>
@@ -950,6 +950,7 @@ export const Dashboard = () => {
               <button onClick={() => navigate('/users')} className="p-2 text-gray-500 hover:text-purple-600 transition-colors"><UserCog size={20} /></button>
               <button onClick={() => navigate('/masters')} className="p-2 text-gray-500 hover:text-blue-600 transition-colors"><Settings size={20} /></button>
               <button onClick={() => navigate('/ticket-management')} className="p-2 text-gray-500 hover:text-indigo-600 transition-colors" title="チケット管理"><Ticket size={20} /></button>
+              <button onClick={() => navigate('/backup')} className="p-2 text-gray-500 hover:text-red-600 transition-colors" title="Backup"><Database size={20} /></button>
               <button onClick={() => navigate('/audit-logs')} className="p-2 text-gray-500 hover:text-orange-600 transition-colors" title="操作履歴"><History size={20} /></button>
             </>
           )}
