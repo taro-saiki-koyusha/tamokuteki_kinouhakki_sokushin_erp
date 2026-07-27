@@ -157,7 +157,6 @@ export const CostManagement = () => {
     });
   }, [groupsList]);
 
-  // 🚀 グループ小計の対象となるグループ名と、小計を挿入する位置（最後のグループ）を特定
   const subtotalGroupNames = ['農）カマタ', '阿部正隆', '藤井守'];
   const lastSubtotalGroup = useMemo(() => {
     return [...sortedGroupsList].reverse().find(g => subtotalGroupNames.includes(g.name));
@@ -187,6 +186,12 @@ export const CostManagement = () => {
       const groupInfo = groupsList.find(g => g.id === act.groupId);
       const paymentInfo = (systemSettings.paymentDates || []).find(p => p.id === act.paymentDateId);
       const paymentLabel = paymentInfo ? `${paymentInfo.label}` : '未定';
+
+      let payCatKey = 'other';
+      const category = act.paymentCategory || '';
+      if (category.includes('1') || category.includes('１')) payCatKey = 'agriMaintain';
+      else if (category.includes('2') || category.includes('２')) payCatKey = 'resourceJoint';
+      else if (category.includes('3') || category.includes('３')) payCatKey = 'resourceLongLife';
 
       (act.participantDetails || []).forEach(pd => {
         const wId = pd.wageId || pd.memberId;
@@ -223,6 +228,7 @@ export const CostManagement = () => {
             mCost: 0,
             groupTotals: { other: 0 }, 
             affiliationTotals: { '未登録・その他': 0 },
+            paymentTotals: { agriMaintain: 0, resourceJoint: 0, resourceLongLife: 0, other: 0 }, 
             details: []
           };
           groupsList.forEach(g => personMap[participantName].groupTotals[g.id] = 0);
@@ -240,10 +246,13 @@ export const CostManagement = () => {
         const actualAffiliation = uniqueAffiliations.includes(affiliation) ? affiliation : '未登録・その他';
         personMap[participantName].affiliationTotals[actualAffiliation] += totalIndividualCost;
         
+        personMap[participantName].paymentTotals[payCatKey] += totalIndividualCost;
+
         personMap[participantName].details.push({
           id: act.id,
           date: act.date,
           activityType: act.activityType,
+          reportNo: act.reportNo || '-', // 🚀 追加: 報告書Noを取得
           groupName: groupInfo ? groupInfo.name : '未登録',
           paymentLabel: paymentLabel, 
           workTime: pd.workTime || 0,
@@ -316,6 +325,12 @@ export const CostManagement = () => {
     ? groupsList 
     : groupsList.filter(g => userGroupIds.includes(g.id));
 
+  const PAYMENT_CATEGORIES = [
+    { id: 'agriMaintain', label: '1 農地維持支払' },
+    { id: 'resourceJoint', label: '2 資源向上(共同)' },
+    { id: 'resourceLongLife', label: '3 資源向上(長寿命)' }
+  ];
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center">
@@ -337,7 +352,7 @@ export const CostManagement = () => {
 
       {selectedPerson && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm no-print" onClick={() => setSelectedPerson(null)}>
-          <div className="bg-white w-full max-w-5xl max-h-[90vh] rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+          <div className="bg-white w-full max-w-6xl max-h-[90vh] rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center p-4 md:p-5 border-b border-gray-100 bg-gray-50">
               <h2 className="text-lg md:text-xl font-bold text-gray-800 flex items-center">
                 <FileText className="mr-2 text-blue-600" size={24} />
@@ -372,11 +387,13 @@ export const CostManagement = () => {
               </div>
 
               <div className="border border-gray-200 rounded-xl overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-[800px]">
+                <table className="w-full text-left border-collapse min-w-[900px]">
                   <thead>
                     <tr className="bg-gray-50 text-xs text-gray-500 border-b border-gray-200">
                       <th className="p-3 font-bold">日付</th>
                       <th className="p-3 font-bold">活動内容</th>
+                      {/* 🚀 追加: 報告書No */}
+                      <th className="p-3 font-bold">報告書No.</th>
                       <th className="p-3 font-bold">グループ</th>
                       <th className="p-3 font-bold">振込時期</th> 
                       <th className="p-3 font-bold text-right">作業時間</th>
@@ -390,7 +407,9 @@ export const CostManagement = () => {
                     {selectedPerson.details.map((detail, idx) => (
                       <tr key={idx} className="hover:bg-gray-50 text-sm">
                         <td className="p-3 text-gray-600 whitespace-nowrap">{detail.date}</td>
-                        <td className="p-3 font-bold text-gray-900">{detail.activityType}</td>
+                        <td className="p-3 font-bold text-gray-900 truncate max-w-[200px]" title={detail.activityType}>{detail.activityType}</td>
+                        {/* 🚀 追加: 報告書No */}
+                        <td className="p-3 text-blue-600 font-mono text-xs whitespace-nowrap">{detail.reportNo}</td>
                         <td className="p-3 text-xs text-gray-500">{detail.groupName}</td>
                         <td className="p-3 text-xs text-purple-600 font-bold whitespace-nowrap">{detail.paymentLabel}</td>
                         <td className="p-3 text-right text-gray-600">{detail.workTime}h</td>
@@ -515,9 +534,14 @@ export const CostManagement = () => {
                 {userRole === 'reporter' ? 'あなたの集計結果' : '個人別 支払額集計'}
               </button>
               {(userRole === 'admin' || userRole === 'manager') && (
-                <button onClick={() => setActiveTab('group')} className={`px-6 py-3.5 font-bold text-sm transition-colors ${activeTab === 'group' ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}>
-                  所属先・グループ毎の集計
-                </button>
+                <>
+                  <button onClick={() => setActiveTab('group')} className={`px-6 py-3.5 font-bold text-sm transition-colors ${activeTab === 'group' ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}>
+                    所属先・グループ毎の集計
+                  </button>
+                  <button onClick={() => setActiveTab('payment')} className={`px-6 py-3.5 font-bold text-sm transition-colors ${activeTab === 'payment' ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}>
+                    支払区分別 集計
+                  </button>
+                </>
               )}
               <button onClick={() => setActiveTab('activity')} className={`px-6 py-3.5 font-bold text-sm transition-colors ${activeTab === 'activity' ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}>
                 活動別 費用一覧
@@ -605,7 +629,6 @@ export const CostManagement = () => {
                               <div className="text-[10px] text-teal-600 font-bold leading-tight mb-1">[活動グループ]</div>
                               {g.name}
                             </th>
-                            {/* 🚀 追加: 個人・法人の小計列 */}
                             {g.id === lastSubtotalGroup?.id && (
                               <th className="p-3 font-bold text-right border-l-2 border-gray-400 bg-orange-50/50 align-bottom min-w-[120px]">
                                 <div className="text-[10px] text-orange-600 font-bold leading-tight mb-1">[グループ小計]</div>
@@ -651,7 +674,6 @@ export const CostManagement = () => {
                       return (
                         <React.Fragment key={`aff-${aff}`}>
                           <tr className="bg-blue-50/80">
-                            {/* colSpanの計算: (氏名=1) + (グループ数) + (小計=1) + (その他=1) + (合計=1) = groupsList.length + 4 */}
                             <td colSpan={sortedGroupsList.length + 4} className="p-3 pl-4 font-extrabold text-blue-900 text-sm border-b border-blue-200 sticky left-0 shadow-sm z-10">
                               ■ 所属先： {aff}
                             </td>
@@ -679,7 +701,6 @@ export const CostManagement = () => {
                                     <td className={`p-3 text-right font-mono border-l ${isThickBorder ? 'border-gray-400 border-l-2' : 'border-gray-100'} ${amount > 0 ? 'text-gray-800 font-bold' : 'text-gray-300'}`}>
                                       {amount > 0 ? `¥${amount.toLocaleString()}` : '-'}
                                     </td>
-                                    {/* 🚀 追加: メンバー行の小計セル */}
                                     {g.id === lastSubtotalGroup?.id && (() => {
                                       const pSubtotal = sortedGroupsList
                                         .filter(sg => subtotalGroupNames.includes(sg.name))
@@ -715,7 +736,6 @@ export const CostManagement = () => {
                                   <td className={`p-3 text-right font-bold text-gray-800 font-mono border-l ${isThickBorder ? 'border-gray-400 border-l-2' : 'border-gray-200'}`}>
                                     {subTotals[g.id] > 0 ? `¥${subTotals[g.id].toLocaleString()}` : '-'}
                                   </td>
-                                  {/* 🚀 追加: 所属先小計行の小計セル */}
                                   {g.id === lastSubtotalGroup?.id && (() => {
                                     const st = sortedGroupsList
                                       .filter(sg => subtotalGroupNames.includes(sg.name))
@@ -762,7 +782,6 @@ export const CostManagement = () => {
                                 <td className={`p-4 text-right font-black text-gray-900 font-mono border-l ${isThickBorder ? 'border-gray-400 border-l-2' : 'border-gray-300'}`}>
                                   ¥{grandTotals[g.id].toLocaleString()}
                                 </td>
-                                {/* 🚀 追加: 総合計行の小計セル */}
                                 {g.id === lastSubtotalGroup?.id && (() => {
                                   const gt = sortedGroupsList
                                     .filter(sg => subtotalGroupNames.includes(sg.name))
@@ -788,6 +807,155 @@ export const CostManagement = () => {
 
                     {aggregatedData.personnelArray.length === 0 && (
                       <tr><td colSpan={sortedGroupsList.length + 4} className="p-8 text-center text-gray-400 font-bold">対象データがありません</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              )}
+
+              {activeTab === 'payment' && (
+                <table className="w-full text-left border-collapse min-w-[800px] table-auto">
+                  <thead>
+                    <tr className="bg-gray-50 text-xs text-gray-500 border-b border-gray-200">
+                      <th 
+                        className="p-4 font-bold cursor-pointer hover:bg-gray-200 transition-colors select-none group sticky left-0 z-10 bg-gray-50 align-bottom min-w-[200px]"
+                        onClick={() => handleSort('name')}
+                      >
+                        <div className="flex items-center">
+                          氏名 (構成員番号)
+                          {sortConfig.key === 'name' ? (sortConfig.direction === 'asc' ? <ChevronUp size={16} className="ml-1 text-blue-600" /> : <ChevronDown size={16} className="ml-1 text-blue-600" />) : <ChevronDown size={16} className="ml-1 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />}
+                        </div>
+                      </th>
+                      
+                      {PAYMENT_CATEGORIES.map(cat => (
+                        <th key={`h-pay-${cat.id}`} className="p-3 font-bold text-right border-l border-gray-200 align-bottom min-w-[120px]">
+                          <div className="text-[10px] text-orange-600 font-bold leading-tight mb-1">[支払区分]</div>
+                          {cat.label}
+                        </th>
+                      ))}
+                      <th className="p-3 font-bold text-right border-l border-gray-200 align-bottom min-w-[120px]">
+                        <div className="text-[10px] text-orange-600 font-bold leading-tight mb-1">[支払区分]</div>
+                        未登録・その他
+                      </th>
+
+                      <th 
+                        className="p-4 font-bold text-right text-blue-700 bg-blue-50/50 cursor-pointer hover:bg-blue-100 transition-colors select-none group border-l-2 border-gray-400 align-bottom min-w-[140px]"
+                        onClick={() => handleSort('total')}
+                      >
+                        <div className="flex items-center justify-end">
+                          支払合計額
+                          {sortConfig.key === 'total' ? (sortConfig.direction === 'asc' ? <ChevronUp size={16} className="ml-1 text-blue-800" /> : <ChevronDown size={16} className="ml-1 text-blue-800" />) : <ChevronDown size={16} className="ml-1 text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity" />}
+                        </div>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {aggregatedData.actualAffiliations.map(aff => {
+                      const membersInAff = aggregatedData.personnelArray.filter(p => {
+                        const pAff = p.affiliation && p.affiliation.trim() !== '' ? p.affiliation : '未登録・その他';
+                        return pAff === aff;
+                      });
+
+                      if (membersInAff.length === 0) return null;
+
+                      const subTotals = { agriMaintain: 0, resourceJoint: 0, resourceLongLife: 0, other: 0, grand: 0 };
+                      membersInAff.forEach(p => {
+                        PAYMENT_CATEGORIES.forEach(cat => subTotals[cat.id] += (p.paymentTotals[cat.id] || 0));
+                        subTotals.other += (p.paymentTotals.other || 0);
+                        subTotals.grand += (p.pCost + p.mCost);
+                      });
+
+                      return (
+                        <React.Fragment key={`aff-pay-${aff}`}>
+                          <tr className="bg-blue-50/80">
+                            <td colSpan={PAYMENT_CATEGORIES.length + 3} className="p-3 pl-4 font-extrabold text-blue-900 text-sm border-b border-blue-200 sticky left-0 shadow-sm z-10">
+                              ■ 所属先： {aff}
+                            </td>
+                          </tr>
+
+                          {membersInAff.map((person) => (
+                            <tr 
+                              key={person.name} 
+                              className="hover:bg-blue-50/50 transition-colors cursor-pointer group"
+                              onClick={() => setSelectedPerson(person)}
+                              title="クリックして明細を表示"
+                            >
+                              <td className="p-3 pl-8 font-bold text-gray-800 whitespace-nowrap group-hover:text-blue-700 sticky left-0 z-10 bg-white group-hover:bg-blue-50/50">
+                                {person.name} 
+                                <span className="text-xs text-gray-400 font-normal ml-2 font-mono">
+                                  {person.memberNo ? `(${person.memberNo})` : '(-)'}
+                                </span>
+                              </td>
+                              
+                              {PAYMENT_CATEGORIES.map(cat => {
+                                const amount = person.paymentTotals[cat.id] || 0;
+                                return (
+                                  <td key={`d-pay-${cat.id}`} className={`p-3 text-right font-mono border-l border-gray-100 ${amount > 0 ? 'text-gray-800 font-bold' : 'text-gray-300'}`}>
+                                    {amount > 0 ? `¥${amount.toLocaleString()}` : '-'}
+                                  </td>
+                                );
+                              })}
+                              
+                              <td className={`p-3 text-right font-mono border-l border-gray-100 ${(person.paymentTotals['other'] || 0) > 0 ? 'text-gray-800 font-bold' : 'text-gray-300'}`}>
+                                {(person.paymentTotals['other'] || 0) > 0 ? `¥${(person.paymentTotals['other']).toLocaleString()}` : '-'}
+                              </td>
+
+                              <td className="p-3 text-right font-black text-blue-700 bg-blue-50/30 font-mono text-base border-l-2 border-gray-400 group-hover:bg-blue-100/50">
+                                ¥{(person.pCost + person.mCost).toLocaleString()}
+                              </td>
+                            </tr>
+                          ))}
+
+                          <tr className="bg-gray-100/80 border-t border-gray-300 text-sm">
+                            <td className="p-3 pr-5 font-bold text-right text-gray-700 sticky left-0 z-10 bg-gray-100/80">
+                              【{aff}】 小計
+                            </td>
+                            {PAYMENT_CATEGORIES.map(cat => (
+                              <td key={`sub-pay-${cat.id}`} className="p-3 text-right font-bold text-gray-800 font-mono border-l border-gray-200">
+                                {subTotals[cat.id] > 0 ? `¥${subTotals[cat.id].toLocaleString()}` : '-'}
+                              </td>
+                            ))}
+                            <td className="p-3 text-right font-bold text-gray-800 font-mono border-l border-gray-200">
+                              {subTotals.other > 0 ? `¥${subTotals.other.toLocaleString()}` : '-'}
+                            </td>
+                            <td className="p-3 text-right font-black text-blue-800 bg-blue-100/30 font-mono text-lg border-l-2 border-gray-400">
+                              ¥{subTotals.grand.toLocaleString()}
+                            </td>
+                          </tr>
+                        </React.Fragment>
+                      );
+                    })}
+
+                    {aggregatedData.personnelArray.length > 0 && (() => {
+                      const grandTotals = { agriMaintain: 0, resourceJoint: 0, resourceLongLife: 0, other: 0, grand: 0 };
+                      
+                      aggregatedData.personnelArray.forEach(p => {
+                        PAYMENT_CATEGORIES.forEach(cat => grandTotals[cat.id] += (p.paymentTotals[cat.id] || 0));
+                        grandTotals.other += (p.paymentTotals.other || 0);
+                        grandTotals.grand += (p.pCost + p.mCost);
+                      });
+
+                      return (
+                        <tr className="bg-gray-200 border-t-[3px] border-gray-400 text-sm">
+                          <td className="p-4 font-black text-center text-gray-900 sticky left-0 z-10 bg-gray-200">
+                            ■ 総合計
+                          </td>
+                          {PAYMENT_CATEGORIES.map(cat => (
+                            <td key={`grand-pay-${cat.id}`} className="p-4 text-right font-black text-gray-900 font-mono border-l border-gray-300">
+                              ¥{grandTotals[cat.id].toLocaleString()}
+                            </td>
+                          ))}
+                          <td className="p-4 text-right font-black text-gray-900 font-mono border-l border-gray-300">
+                            ¥{grandTotals.other.toLocaleString()}
+                          </td>
+                          <td className="p-4 text-right font-black text-blue-900 bg-blue-200/60 font-mono text-xl border-l-2 border-gray-500">
+                            ¥{grandTotals.grand.toLocaleString()}
+                          </td>
+                        </tr>
+                      );
+                    })()}
+
+                    {aggregatedData.personnelArray.length === 0 && (
+                      <tr><td colSpan={PAYMENT_CATEGORIES.length + 3} className="p-8 text-center text-gray-400 font-bold">対象データがありません</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -914,6 +1082,8 @@ export const CostManagement = () => {
               <tr className="bg-gray-100">
                 <th className="border border-black p-2 text-center w-24">日付</th>
                 <th className="border border-black p-2 text-center">活動内容</th>
+                {/* 🚀 追加: 印刷レイアウトの報告書No */}
+                <th className="border border-black p-2 text-center w-24">報告書No.</th>
                 <th className="border border-black p-2 text-center w-24">振込時期</th> 
                 <th className="border border-black p-2 text-center w-16">作業時間</th>
                 <th className="border border-black p-2 text-center w-24">人件費</th>
@@ -927,6 +1097,8 @@ export const CostManagement = () => {
                 <tr key={idx}>
                   <td className="border border-black p-2 text-center">{detail.date}</td>
                   <td className="border border-black p-2">{detail.activityType}</td>
+                  {/* 🚀 追加: 印刷レイアウトの報告書Noデータ */}
+                  <td className="border border-black p-2 text-center">{detail.reportNo}</td>
                   <td className="border border-black p-2 text-center">{detail.paymentLabel}</td> 
                   <td className="border border-black p-2 text-right">{detail.workTime} h</td>
                   <td className="border border-black p-2 text-right">¥{detail.pCost.toLocaleString()}</td>
