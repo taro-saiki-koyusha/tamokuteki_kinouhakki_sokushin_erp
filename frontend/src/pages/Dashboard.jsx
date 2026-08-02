@@ -1,10 +1,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Clock, Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock, Map, MoreVertical, Edit, Info, History, Loader2, Ticket, RefreshCw, Database } from 'lucide-react'; 
+import { Clock, Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock, Map, MoreVertical, Edit, Info, History, Loader2, Ticket, RefreshCw, Database, Download, UploadCloud, Archive, FileX } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, onSnapshot, doc, getDoc, deleteDoc, where, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, getDoc, deleteDoc, updateDoc, where, addDoc, serverTimestamp } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, auth } from '../firebase';
 import XlsxPopulate from 'xlsx-populate/browser/xlsx-populate';
+
+// 🚀 新規追加ライブラリ
+import { jsPDF } from "jspdf";
+import html2canvas from "html2canvas";
+import JSZip from "jszip";
+import { saveAs } from "file-saver";
 
 import { ORGANIZATION_NAME } from '../constants';
 
@@ -27,6 +34,8 @@ const formatTimestamp = (timestamp) => {
 
 export const Dashboard = () => {
   const navigate = useNavigate();
+  const storage = getStorage(); // Firebase Storage インスタンス
+  
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
   
@@ -34,8 +43,25 @@ export const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('home');
   const [exportingId, setExportingId] = useState(null);
   
-  const [printingId, setPrintingId] = useState(null);
+  // 🚀 各種ローディングステータス
+  const [generatingId, setGeneratingId] = useState(null);
+  const [downloadingId, setDownloadingId] = useState(null);
+  const [deletingDocId, setDeletingDocId] = useState(null);
+  const [isBulkGenerating, setIsBulkGenerating] = useState(false);
+  const [isBulkDownloading, setIsBulkDownloading] = useState(false);
+  const [isBulkDeletingDocs, setIsBulkDeletingDocs] = useState(false);
   
+  // 🚀 進捗モーダル用のstate
+  const [progressModal, setProgressModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    current: 0,
+    total: 0,
+    isComplete: false,
+    hasError: false
+  });
+
   const [membersList, setMembersList] = useState([]);
   const [machinesList, setMachinesList] = useState([]);
   const [materialsList, setMaterialsList] = useState([]); 
@@ -59,8 +85,6 @@ export const Dashboard = () => {
   const [includeUnimplemented, setIncludeUnimplemented] = useState(false);
 
   const [selectedActivityIds, setSelectedActivityIds] = useState([]);
-  const [isBulkExportingExcel, setIsBulkExportingExcel] = useState(false);
-  const [bulkPrintActivities, setBulkPrintActivities] = useState([]);
 
   useEffect(() => localStorage.setItem('dashboardDisplayMode', displayMode), [displayMode]);
   useEffect(() => localStorage.setItem('dashboardViewStyle', viewStyle), [viewStyle]);
@@ -243,107 +267,418 @@ export const Dashboard = () => {
     setActionMenuActivity(null);
   };
 
-  const handleExportSingleReport = async (activity) => {
-    if (!activity) return;
-    setExportingId(activity.id); 
-    setActionMenuActivity(null); 
-    try {
-      const response = await fetch(`/様式1_活動報告書_農地維持支払.xlsx?t=${Date.now()}`);
-      if (!response.ok) throw new Error('テンプレートが見つかりません');
-      const arrayBuffer = await response.arrayBuffer();
-      const workbook = await XlsxPopulate.fromDataAsync(arrayBuffer);
-      const [startH, startM] = activity.startTime.split(':').map(Number);
-      const [endH, endM] = activity.endTime.split(':').map(Number);
-      let duration = (endH + endM / 60) - (startH + startM / 60);
-      if (duration < 0) duration += 24;
-      
-      const sheet1 = workbook.sheet('活動報告書') || workbook.sheets()[0];
-      sheet1.cell('AH3').value(activity.reportNo || ''); 
-      sheet1.cell('A7').value(activity.date); 
-      sheet1.cell('C7').value(activity.startTime); 
-      sheet1.cell('F7').value(activity.endTime);   
-      sheet1.cell('I7').value(duration); 
-      sheet1.cell('M7').value(Number(activity.participantsAgri || 0)); 
-      sheet1.cell('O7').value(Number(activity.participantsNonAgri || 0)); 
-      sheet1.cell('Q7').value(Number(activity.participants || 0)); 
-      sheet1.cell('S7').value(activity.activityNumbers?.join(', ')); 
+  // =======================================================================
+  // 🚀 PDF・Excel生成とStorage管理の関連機能
+  // =======================================================================
+  const generateExcelBlob = async (activity) => {
+    const response = await fetch(`/様式1_活動報告書_農地維持支払.xlsx?t=${Date.now()}`);
+    if (!response.ok) throw new Error('テンプレートが見つかりません');
+    const arrayBuffer = await response.arrayBuffer();
+    const workbook = await XlsxPopulate.fromDataAsync(arrayBuffer);
+    const [startH, startM] = activity.startTime.split(':').map(Number);
+    const [endH, endM] = activity.endTime.split(':').map(Number);
+    let duration = (endH + endM / 60) - (startH + startM / 60);
+    if (duration < 0) duration += 24;
+    
+    const sheet1 = workbook.sheet('活動報告書') || workbook.sheets()[0];
+    sheet1.cell('AH3').value(activity.reportNo || ''); 
+    sheet1.cell('A7').value(activity.date); 
+    sheet1.cell('C7').value(activity.startTime); 
+    sheet1.cell('F7').value(activity.endTime);   
+    sheet1.cell('I7').value(duration); 
+    sheet1.cell('M7').value(Number(activity.participantsAgri || 0)); 
+    sheet1.cell('O7').value(Number(activity.participantsNonAgri || 0)); 
+    sheet1.cell('Q7').value(Number(activity.participants || 0)); 
+    sheet1.cell('S7').value(activity.activityNumbers?.join(', ')); 
 
-      let paymentCategoryNum = '';
-      if (activity.paymentCategory) {
-        if (activity.paymentCategory.includes('1') || activity.paymentCategory.includes('１')) paymentCategoryNum = 1;
-        else if (activity.paymentCategory.includes('2') || activity.paymentCategory.includes('２')) paymentCategoryNum = 2;
-        else if (activity.paymentCategory.includes('3') || activity.paymentCategory.includes('３')) paymentCategoryNum = 3;
-      }
-      sheet1.cell(7, 25).value(paymentCategoryNum);
+    let paymentCategoryNum = '';
+    if (activity.paymentCategory) {
+      if (activity.paymentCategory.includes('1') || activity.paymentCategory.includes('１')) paymentCategoryNum = 1;
+      else if (activity.paymentCategory.includes('2') || activity.paymentCategory.includes('２')) paymentCategoryNum = 2;
+      else if (activity.paymentCategory.includes('3') || activity.paymentCategory.includes('３')) paymentCategoryNum = 3;
+    }
+    sheet1.cell(7, 25).value(paymentCategoryNum);
 
-      sheet1.cell(7, 31).value(activity.activityType || '');          
-      sheet1.cell('A8').value(activity.memo || '');
-      
-      const sheet2 = workbook.sheet('日当借上支払明細') || workbook.sheets()[1];
-      sheet2.cell('AJ3').value(activity.date); 
-      
-      if (activity.participantDetails && activity.participantDetails.length > 0) {
-        activity.participantDetails.forEach((detail, index) => {
-          const row = 6 + index; 
-          const wId = detail.wageId || detail.memberId;
-          const wage = membersList.find(m => m.id === wId);
-          const machine = machinesList.find(m => m.id === detail.machineId);
+    sheet1.cell(7, 31).value(activity.activityType || '');          
+    sheet1.cell('A8').value(activity.memo || '');
+    
+    const sheet2 = workbook.sheet('日当借上支払明細') || workbook.sheets()[1];
+    sheet2.cell('AJ3').value(activity.date); 
+    
+    if (activity.participantDetails && activity.participantDetails.length > 0) {
+      activity.participantDetails.forEach((detail, index) => {
+        const row = 6 + index; 
+        const wId = detail.wageId || detail.memberId;
+        const wage = membersList.find(m => m.id === wId);
+        const machine = machinesList.find(m => m.id === detail.machineId);
+        
+        let memberTotal = 0; let machineTotal = 0;
+        
+        if (detail.participantName || wage || wId === 'zero') {
+          memberTotal = detail.workTime * (wage?.defaultWage || 0);
           
-          let memberTotal = 0; let machineTotal = 0;
-          
-          if (detail.participantName || wage || wId === 'zero') {
-            memberTotal = detail.workTime * (wage?.defaultWage || 0);
-            
-            const participantName = detail.participantName || wage?.name || '名称未設定';
-            const matchedUser = systemUsers.find(u => (u.displayName || u.name) === participantName);
-            const memberNo = matchedUser?.memberNo ? matchedUser.memberNo : '-';
+          const participantName = detail.participantName || wage?.name || '名称未設定';
+          const matchedUser = systemUsers.find(u => (u.displayName || u.name) === participantName);
+          const memberNo = matchedUser?.memberNo ? matchedUser.memberNo : '-';
 
-            sheet2.cell(`A${row}`).value(participantName); 
-            sheet2.cell(`F${row}`).value(memberNo); 
-            sheet2.cell(`G${row}`).value(detail.workTime); 
-            sheet2.cell(`J${row}`).value('時間'); 
-            sheet2.cell(`L${row}`).value(wage?.defaultWage || 0); 
-            sheet2.cell(`O${row}`).value(memberTotal); 
-          }
-          if (machine) {
-            machineTotal = detail.machineTime * machine.defaultPrice;
-            sheet2.cell(`S${row}`).value(machine.name); 
-            sheet2.cell(`X${row}`).value(detail.machineTime); 
-            sheet2.cell(`AA${row}`).value('時間'); 
-            sheet2.cell(`AC${row}`).value(machine.defaultPrice); 
-            sheet2.cell(`AF${row}`).value(machineTotal); 
-          }
-          sheet2.cell(`AJ${row}`).value(memberTotal + machineTotal);
-        });
-      }
-      const blob = await workbook.outputAsync();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const safeTitle = (activity.activityType || '無題').replace(/[\\/:*?"<>|]/g, '_');
-      const reportNoStr = activity.reportNo ? `${activity.reportNo}_` : '';
-      a.download = `活動報告書_${reportNoStr}${safeTitle}_${activity.date}.xlsx`; 
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-    } catch (error) { console.error(error); alert('Excel作成エラー'); } finally { setExportingId(null); }
+          sheet2.cell(`A${row}`).value(participantName); 
+          sheet2.cell(`F${row}`).value(memberNo); 
+          sheet2.cell(`G${row}`).value(detail.workTime); 
+          sheet2.cell(`J${row}`).value('時間'); 
+          sheet2.cell(`L${row}`).value(wage?.defaultWage || 0); 
+          sheet2.cell(`O${row}`).value(memberTotal); 
+        }
+        if (machine) {
+          machineTotal = detail.machineTime * machine.defaultPrice;
+          sheet2.cell(`S${row}`).value(machine.name); 
+          sheet2.cell(`X${row}`).value(detail.machineTime); 
+          sheet2.cell(`AA${row}`).value('時間'); 
+          sheet2.cell(`AC${row}`).value(machine.defaultPrice); 
+          sheet2.cell(`AF${row}`).value(machineTotal); 
+        }
+        sheet2.cell(`AJ${row}`).value(memberTotal + machineTotal);
+      });
+    }
+    return await workbook.outputAsync();
   };
 
-  const handleBulkExportExcel = async () => {
-    const selectedActs = activities.filter(a => selectedActivityIds.includes(a.id));
-    if (selectedActs.length === 0) return;
-    setIsBulkExportingExcel(true);
+  const generatePDFBlob = async (activity) => {
+    return new Promise((resolve, reject) => {
+      setPrintActivity(activity); 
+      
+      // 🚀 画像をすべてプリロード（事前読み込み）して、レイアウト崩れを防ぐ
+      const imagesToLoad = activity.imageUrls || (activity.imageUrl ? [activity.imageUrl] : []);
+      const loadPromises = imagesToLoad.map(src => {
+        return new Promise((res) => {
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          img.onload = () => res();
+          img.onerror = () => res(); // エラーでも処理は進める
+          img.src = src;
+        });
+      });
+
+      // 最大でも3秒でタイムアウトして次へ進む
+      Promise.race([
+        Promise.all(loadPromises),
+        new Promise(res => setTimeout(res, 3000))
+      ]).then(() => {
+        // DOMの反映を少し待つ
+        setTimeout(async () => {
+          try {
+            const element = document.getElementById(`pdf-report-${activity.id}`);
+            if (!element) throw new Error("PDF描画用の要素が見つかりません");
+            
+            const canvas = await html2canvas(element, { 
+              scale: 2, 
+              useCORS: true, 
+              logging: false,
+              windowWidth: 794 // A4サイズのピクセル幅を明示的に指定して表の崩れを防止
+            });
+            const imgData = canvas.toDataURL("image/jpeg", 0.9);
+            
+            const pdfWidth = 210; 
+            const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+            
+            const pdf = new jsPDF("p", "mm", [pdfWidth, Math.max(297, pdfHeight)]);
+            pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight);
+            
+            setPrintActivity(null); 
+            resolve(pdf.output("blob"));
+          } catch (err) {
+            setPrintActivity(null);
+            reject(err);
+          }
+        }, 500); // DOMレンダリング待機
+      });
+    });
+  };
+
+  const handleGenerateDocuments = async (activity) => {
+    setGeneratingId(activity.id);
+    setProgressModal({
+      isOpen: true,
+      title: '提出書類を作成中',
+      message: '書類データを生成しています...\n（写真の枚数により数秒かかります）',
+      current: 0,
+      total: 1,
+      isComplete: false,
+      hasError: false
+    });
+
     try {
-      for (let i = 0; i < selectedActs.length; i++) {
-        await handleExportSingleReport(selectedActs[i]);
-        await new Promise(resolve => setTimeout(resolve, 400));
-      }
+      const fileBaseName = activity.reportNo ? activity.reportNo : activity.id;
+      
+      const excelBlob = await generateExcelBlob(activity);
+      const pdfBlob = await generatePDFBlob(activity);
+      
+      setProgressModal(prev => ({ ...prev, message: 'サーバへ保存しています...' }));
+      await uploadBytes(ref(storage, `reports/${fileBaseName}/${fileBaseName}.xlsx`), excelBlob);
+      await uploadBytes(ref(storage, `reports/${fileBaseName}/${fileBaseName}.pdf`), pdfBlob);
+      
+      await updateDoc(doc(db, 'activities', activity.id), {
+        isDocumentGenerated: true,
+        documentBaseName: fileBaseName
+      });
+
+      setProgressModal(prev => ({
+        ...prev,
+        message: `報告書NO：${fileBaseName}\n提出書類の作成と保存が完了しました。`,
+        current: 1,
+        isComplete: true
+      }));
     } catch (error) {
       console.error(error);
-      alert('一括Excel出力中にエラーが発生しました。');
+      setProgressModal(prev => ({ ...prev, message: '書類作成中にエラーが発生しました。', isComplete: true, hasError: true }));
     } finally {
-      setIsBulkExportingExcel(false);
+      setGeneratingId(null);
     }
   };
+
+  const handleDownloadDocuments = async (activity) => {
+    setDownloadingId(activity.id);
+    setProgressModal({
+      isOpen: true,
+      title: 'ダウンロード準備中',
+      message: 'サーバからデータを取得しています...',
+      current: 0,
+      total: 1,
+      isComplete: false,
+      hasError: false
+    });
+
+    try {
+      const fileBaseName = activity.documentBaseName || activity.reportNo || activity.id;
+      const zip = new JSZip();
+      
+      const excelUrl = await getDownloadURL(ref(storage, `reports/${fileBaseName}/${fileBaseName}.xlsx`));
+      const pdfUrl = await getDownloadURL(ref(storage, `reports/${fileBaseName}/${fileBaseName}.pdf`));
+      
+      setProgressModal(prev => ({ ...prev, message: 'ZIPファイルを作成中...' }));
+      const [excelRes, pdfRes] = await Promise.all([fetch(excelUrl), fetch(pdfUrl)]);
+      
+      zip.file(`活動報告書_${fileBaseName}.xlsx`, await excelRes.blob());
+      zip.file(`活動写真台帳_${fileBaseName}.pdf`, await pdfRes.blob());
+      
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      saveAs(zipBlob, `提出書類_${fileBaseName}.zip`);
+
+      setProgressModal(prev => ({
+        ...prev,
+        message: 'ダウンロードを開始しました。',
+        current: 1,
+        isComplete: true
+      }));
+    } catch (error) {
+      console.error(error);
+      setProgressModal(prev => ({ ...prev, message: 'ダウンロードに失敗しました。ファイルが存在しない可能性があります。', isComplete: true, hasError: true }));
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  const handleDeleteDocuments = async (activity) => {
+    if (!window.confirm('サーバに保存されているこの活動の提出書類（PDF/Excel）を削除しますか？\n※活動データ自体は削除されません。')) return;
+
+    setDeletingDocId(activity.id);
+    setProgressModal({
+      isOpen: true,
+      title: '書類データ削除中',
+      message: 'サーバからデータを削除しています...',
+      current: 0,
+      total: 1,
+      isComplete: false,
+      hasError: false
+    });
+
+    try {
+      const fileBaseName = activity.documentBaseName || activity.reportNo || activity.id;
+
+      try { await deleteObject(ref(storage, `reports/${fileBaseName}/${fileBaseName}.xlsx`)); } catch(e){}
+      try { await deleteObject(ref(storage, `reports/${fileBaseName}/${fileBaseName}.pdf`)); } catch(e){}
+
+      await updateDoc(doc(db, 'activities', activity.id), {
+        isDocumentGenerated: false,
+        documentBaseName: null
+      });
+
+      setProgressModal(prev => ({
+        ...prev,
+        message: '提出書類をサーバから削除しました。',
+        current: 1,
+        isComplete: true
+      }));
+    } catch (error) {
+      console.error(error);
+      setProgressModal(prev => ({ ...prev, message: '書類の削除中にエラーが発生しました。', isComplete: true, hasError: true }));
+    } finally {
+      setDeletingDocId(null);
+    }
+  };
+
+  const handleBulkGenerate = async () => {
+    const selectedActs = activities.filter(a => selectedActivityIds.includes(a.id));
+    if (selectedActs.length === 0) return;
+    setIsBulkGenerating(true);
+    
+    setProgressModal({
+      isOpen: true,
+      title: '一括書類作成中',
+      message: '準備中...',
+      current: 0,
+      total: selectedActs.length,
+      isComplete: false,
+      hasError: false
+    });
+
+    let successCount = 0;
+    
+    for (let i = 0; i < selectedActs.length; i++) {
+      const act = selectedActs[i];
+      try {
+        setGeneratingId(act.id);
+        const fileBaseName = act.reportNo ? act.reportNo : act.id;
+        
+        setProgressModal(prev => ({ ...prev, message: `(${i + 1}/${selectedActs.length}) 「${act.activityType}」の書類を作成中...` }));
+        const excelBlob = await generateExcelBlob(act);
+        const pdfBlob = await generatePDFBlob(act);
+        
+        setProgressModal(prev => ({ ...prev, message: `(${i + 1}/${selectedActs.length}) 「${act.activityType}」をサーバに保存中...` }));
+        await uploadBytes(ref(storage, `reports/${fileBaseName}/${fileBaseName}.xlsx`), excelBlob);
+        await uploadBytes(ref(storage, `reports/${fileBaseName}/${fileBaseName}.pdf`), pdfBlob);
+        
+        await updateDoc(doc(db, 'activities', act.id), { 
+          isDocumentGenerated: true, 
+          documentBaseName: fileBaseName 
+        });
+        successCount++;
+        setProgressModal(prev => ({ ...prev, current: successCount }));
+      } catch (e) {
+        console.error(`Error generating docs for ${act.id}`, e);
+      }
+    }
+    
+    setGeneratingId(null);
+    setIsBulkGenerating(false);
+    setProgressModal(prev => ({
+      ...prev,
+      message: `${successCount} 件の活動書類を作成・保存しました。`,
+      isComplete: true
+    }));
+    setSelectedActivityIds([]);
+  };
+
+  const handleBulkDownload = async () => {
+    const selectedActs = activities.filter(a => selectedActivityIds.includes(a.id) && a.isDocumentGenerated);
+    if (selectedActs.length === 0) {
+      alert('ダウンロード可能な（作成済みの）書類が選択されていません。');
+      return;
+    }
+    setIsBulkDownloading(true);
+
+    setProgressModal({
+      isOpen: true,
+      title: '一括ダウンロード準備中',
+      message: 'サーバからデータを取得しています...',
+      current: 0,
+      total: selectedActs.length,
+      isComplete: false,
+      hasError: false
+    });
+
+    try {
+      const zip = new JSZip();
+      let successCount = 0;
+
+      for (let i = 0; i < selectedActs.length; i++) {
+        const act = selectedActs[i];
+        const fileBaseName = act.documentBaseName || act.reportNo || act.id;
+        try {
+          setProgressModal(prev => ({ ...prev, message: `(${i + 1}/${selectedActs.length}) 「${act.activityType}」を取得中...` }));
+          const excelUrl = await getDownloadURL(ref(storage, `reports/${fileBaseName}/${fileBaseName}.xlsx`));
+          const pdfUrl = await getDownloadURL(ref(storage, `reports/${fileBaseName}/${fileBaseName}.pdf`));
+          
+          const [excelRes, pdfRes] = await Promise.all([fetch(excelUrl), fetch(pdfUrl)]);
+          
+          const folder = zip.folder(fileBaseName);
+          folder.file(`活動報告書_${fileBaseName}.xlsx`, await excelRes.blob());
+          folder.file(`活動写真台帳_${fileBaseName}.pdf`, await pdfRes.blob());
+          successCount++;
+          setProgressModal(prev => ({ ...prev, current: successCount }));
+        } catch (e) {
+          console.error(`Error fetching ${fileBaseName}`, e);
+        }
+      }
+
+      setProgressModal(prev => ({ ...prev, message: 'ZIPファイルを構築中...' }));
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      saveAs(zipBlob, `一括ダウンロード_提出書類_${new Date().toISOString().split('T')[0]}.zip`);
+
+      setProgressModal(prev => ({
+        ...prev,
+        message: `${successCount} 件の書類をダウンロードしました。`,
+        isComplete: true
+      }));
+    } catch (error) {
+      console.error(error);
+      setProgressModal(prev => ({ ...prev, message: '一括ダウンロードに失敗しました。', isComplete: true, hasError: true }));
+    } finally {
+      setIsBulkDownloading(false);
+      setSelectedActivityIds([]);
+    }
+  };
+
+  const handleBulkDeleteDocuments = async () => {
+    const selectedActs = activities.filter(a => selectedActivityIds.includes(a.id) && a.isDocumentGenerated);
+    if (selectedActs.length === 0) {
+      alert('削除可能な（作成済みの）書類が選択されていません。');
+      return;
+    }
+
+    if (!window.confirm(`選択された ${selectedActs.length} 件の活動の提出書類をサーバから一括削除しますか？\n※活動データ自体は削除されません。`)) return;
+
+    setIsBulkDeletingDocs(true);
+    setProgressModal({
+      isOpen: true,
+      title: '一括書類削除中',
+      message: 'サーバから削除しています...',
+      current: 0,
+      total: selectedActs.length,
+      isComplete: false,
+      hasError: false
+    });
+
+    let successCount = 0;
+
+    for (let i = 0; i < selectedActs.length; i++) {
+      const act = selectedActs[i];
+      try {
+        setProgressModal(prev => ({ ...prev, message: `(${i + 1}/${selectedActs.length}) 「${act.activityType}」の書類を削除中...` }));
+        const fileBaseName = act.documentBaseName || act.reportNo || act.id;
+        try { await deleteObject(ref(storage, `reports/${fileBaseName}/${fileBaseName}.xlsx`)); } catch(e){}
+        try { await deleteObject(ref(storage, `reports/${fileBaseName}/${fileBaseName}.pdf`)); } catch(e){}
+
+        await updateDoc(doc(db, 'activities', act.id), {
+          isDocumentGenerated: false,
+          documentBaseName: null
+        });
+        successCount++;
+        setProgressModal(prev => ({ ...prev, current: successCount }));
+      } catch (e) {
+        console.error(`Error deleting docs for ${act.id}`, e);
+      }
+    }
+
+    setIsBulkDeletingDocs(false);
+    setProgressModal(prev => ({
+      ...prev,
+      message: `${successCount} 件の書類をサーバから削除しました。`,
+      isComplete: true
+    }));
+    setSelectedActivityIds([]);
+  };
+
+  // =======================================================================
 
   const handleExportGroupReport = async (groupName, groupActs) => {
     setExportingId(`group-${groupName}`); 
@@ -399,42 +734,6 @@ export const Dashboard = () => {
     } finally { 
       setExportingId(null); 
     }
-  };
-
-  const handleDirectPrint = (activity) => {
-    setPrintingId(activity.id);
-    setPrintActivity(activity);
-    setActionMenuActivity(null); 
-    
-    const reportNoStr = activity?.reportNo ? `${activity.reportNo}_` : '';
-    const dateStr = activity?.date || '';
-    
-    setTimeout(() => { 
-      const originalTitle = document.title;
-      document.title = `活動報告書_${reportNoStr}${dateStr}`;
-      window.print(); 
-      document.title = originalTitle;
-      
-      setTimeout(() => {
-        setPrintActivity(null);
-        setPrintingId(null);
-      }, 3000);
-    }, 500);
-  };
-
-  const handleBulkPrint = () => {
-    const selectedActs = activities.filter(a => selectedActivityIds.includes(a.id));
-    if (selectedActs.length === 0) return;
-    setBulkPrintActivities(selectedActs);
-    setTimeout(() => {
-      const originalTitle = document.title;
-      document.title = `活動報告書_一括出力_${new Date().toISOString().split('T')[0]}`;
-      window.print();
-      document.title = originalTitle;
-      setTimeout(() => {
-        setBulkPrintActivities([]);
-      }, 3000);
-    }, 600);
   };
 
   const calculateActivityCost = (act) => {
@@ -547,18 +846,15 @@ export const Dashboard = () => {
   const getPermissions = (activity) => {
     const isCreator = activity.createdBy === currentUser?.uid;
     const isInSameGroup = userGroupIds.includes(activity.groupId);
-    const canExport = userRole === 'admin' || userRole === 'manager';
     const canDeleteAct = userRole === 'admin' || userRole === 'manager' ||
                          (!activity.isLocked && userRole === 'reporter' && canEditOwn && isCreator) ||
                          (!activity.isLocked && userRole === 'reporter' && canEditGroup && isInSameGroup);
-    return { canExport, canDeleteAct };
+    return { canDeleteAct };
   };
 
   const ActivityCard = ({ activity }) => {
     const images = activity.imageUrls || (activity.imageUrl ? [activity.imageUrl] : []);
-    const isThisExporting = exportingId === activity.id;
-    const isThisPrinting = printingId === activity.id;
-    const { canExport, canDeleteAct } = getPermissions(activity);
+    const { canDeleteAct } = getPermissions(activity);
     const groupInfo = groupsList.find(g => g.id === activity.groupId);
     
     const statusLabel = activity.status || '実績入力済';
@@ -658,26 +954,45 @@ export const Dashboard = () => {
             <img src={images[0]} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
           </div>
         )}
-        {canExport && (
-          <div className="mt-auto pt-3 border-t border-gray-100 flex gap-2">
-            <button onClick={(e) => { e.stopPropagation(); handleExportSingleReport(activity); }} disabled={isThisExporting} className={`flex-1 py-2 rounded-xl font-bold text-[10px] flex items-center justify-center transition-colors ${isThisExporting ? 'bg-blue-400 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
-              <FileSpreadsheet size={14} className="mr-1" />{isThisExporting ? '生成中...' : 'Excel'}
+
+        <div className="mt-auto pt-3 border-t border-gray-100 flex gap-2">
+          {userRole === 'admin' && (
+            <button 
+              onClick={(e) => { e.stopPropagation(); handleGenerateDocuments(activity); }} 
+              disabled={generatingId === activity.id} 
+              className={`flex-1 py-2 rounded-xl font-bold text-[10px] flex items-center justify-center transition-colors ${generatingId === activity.id ? 'bg-green-400 text-white' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}
+            >
+              {generatingId === activity.id ? <Loader2 size={14} className="mr-1 animate-spin" /> : <FileSpreadsheet size={14} className="mr-1" />}
+              {generatingId === activity.id ? '作成中...' : '書類作成'}
             </button>
-            <button onClick={(e) => { e.stopPropagation(); handleDirectPrint(activity); }} disabled={isThisPrinting} className={`flex-1 border py-2 rounded-xl font-bold text-[10px] flex items-center justify-center transition-colors ${isThisPrinting ? 'bg-gray-100 text-gray-400 border-gray-200' : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'}`}>
-              {isThisPrinting ? <Loader2 size={14} className="mr-1 animate-spin" /> : <Printer size={14} className="mr-1" />}
-              {isThisPrinting ? '準備中...' : 'PDF'}
+          )}
+          <button 
+            onClick={(e) => { e.stopPropagation(); handleDownloadDocuments(activity); }} 
+            disabled={!activity.isDocumentGenerated || downloadingId === activity.id} 
+            className={`flex-1 border py-2 rounded-xl font-bold text-[10px] flex items-center justify-center transition-colors ${!activity.isDocumentGenerated ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'}`}
+          >
+            {downloadingId === activity.id ? <Loader2 size={14} className="mr-1 animate-spin" /> : <Archive size={14} className="mr-1" />}
+            {downloadingId === activity.id ? 'DL中...' : '書類DL'}
+          </button>
+          {/* 🚀 追加：カード用の書類削除ボタン */}
+          {userRole === 'admin' && activity.isDocumentGenerated && (
+            <button 
+              onClick={(e) => { e.stopPropagation(); handleDeleteDocuments(activity); }} 
+              disabled={deletingDocId === activity.id} 
+              className={`flex-1 border py-2 rounded-xl font-bold text-[10px] flex items-center justify-center transition-colors ${deletingDocId === activity.id ? 'bg-orange-100 text-orange-400 border-orange-200 cursor-not-allowed' : 'bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100'}`}
+            >
+              {deletingDocId === activity.id ? <Loader2 size={14} className="mr-1 animate-spin" /> : <FileX size={14} className="mr-1" />}
+              {deletingDocId === activity.id ? '削除中...' : '書類削除'}
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     );
   };
 
   const ActivityTableRow = ({ act }) => {
     const groupInfo = groupsList.find(g => g.id === act.groupId);
-    const isThisExporting = exportingId === act.id;
-    const isThisPrinting = printingId === act.id; 
-    const { canExport, canDeleteAct } = getPermissions(act);
+    const { canDeleteAct } = getPermissions(act);
     const hasImage = (act.imageUrls && act.imageUrls.length > 0) || act.imageUrl;
     
     const statusLabel = act.status || '実績入力済';
@@ -764,16 +1079,38 @@ export const Dashboard = () => {
               <Link size={14} />
             </button>
 
-            {canExport && (
-              <>
-                <button onClick={(e) => handleExportSingleReport(act)} disabled={isThisExporting} className={`px-2 py-1.5 rounded-lg font-bold text-[9px] flex items-center transition-colors ${isThisExporting ? 'bg-blue-400 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`} title="Excel出力">
-                  <FileSpreadsheet size={12} className="mr-1" />Excel
-                </button>
-                <button onClick={(e) => handleDirectPrint(act)} className={`px-2 py-1.5 bg-white text-gray-700 border border-gray-300 rounded-lg font-bold text-[9px] flex items-center hover:bg-gray-50 transition-colors ${isThisPrinting ? 'opacity-50' : ''}`} title="PDF出力">
-                  {isThisPrinting && printingId === act.id ? <Loader2 size={12} className="mr-1 animate-spin" /> : <Printer size={12} className="mr-1" />}
-                  PDF
-                </button>
-              </>
+            {userRole === 'admin' && (
+              <button 
+                onClick={(e) => { e.stopPropagation(); handleGenerateDocuments(act); }} 
+                disabled={generatingId === act.id} 
+                className={`px-2 py-1.5 rounded-lg font-bold text-[9px] flex items-center transition-colors ${generatingId === act.id ? 'bg-green-400 text-white' : 'bg-green-50 text-green-700 hover:bg-green-100'}`} 
+                title="提出書類を作成・保存"
+              >
+                {generatingId === act.id ? <Loader2 size={12} className="mr-1 animate-spin" /> : <FileSpreadsheet size={12} className="mr-1" />}
+                作成
+              </button>
+            )}
+            <button 
+              onClick={(e) => { e.stopPropagation(); handleDownloadDocuments(act); }} 
+              disabled={!act.isDocumentGenerated || downloadingId === act.id} 
+              className={`px-2 py-1.5 border rounded-lg font-bold text-[9px] flex items-center transition-colors ${!act.isDocumentGenerated ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50'}`} 
+              title={act.isDocumentGenerated ? "提出書類DL(ZIP)" : "書類未作成"}
+            >
+              {downloadingId === act.id ? <Loader2 size={12} className="mr-1 animate-spin" /> : <Archive size={12} className="mr-1" />}
+              DL
+            </button>
+            
+            {/* 🚀 追加：テーブル行用の書類削除ボタン */}
+            {userRole === 'admin' && act.isDocumentGenerated && (
+              <button 
+                onClick={(e) => { e.stopPropagation(); handleDeleteDocuments(act); }} 
+                disabled={deletingDocId === act.id} 
+                className={`px-2 py-1.5 border rounded-lg font-bold text-[9px] flex items-center transition-colors ${deletingDocId === act.id ? 'bg-orange-50 text-orange-400 border-orange-200' : 'bg-white text-orange-600 border-orange-200 hover:bg-orange-50'}`} 
+                title="提出書類を削除"
+              >
+                {deletingDocId === act.id ? <Loader2 size={12} className="mr-1 animate-spin" /> : <FileX size={12} className="mr-1" />}
+                書類削除
+              </button>
             )}
 
             {canDeleteAct && (
@@ -875,15 +1212,7 @@ export const Dashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 pb-28 md:pb-16 print:bg-white print:pb-0 relative">
-      <style>{`
-        @media print {
-          body { background: white !important; }
-          @page { margin: 15mm; size: A4; }
-          .no-print { display: none !important; }
-          .break-before-page { page-break-before: always; break-before: page; }
-        }
-      `}</style>
+    <div className="min-h-screen bg-gray-100 pb-28 md:pb-16 relative">
 
       <header className="bg-white shadow-sm px-4 py-3 flex flex-col md:flex-row justify-between items-start md:items-center sticky top-0 z-30 no-print">
         <div className="flex items-center w-full md:w-auto mb-3 md:mb-0">
@@ -1030,7 +1359,7 @@ export const Dashboard = () => {
                     type="checkbox" 
                     checked={includeUnimplemented}
                     onChange={(e) => setIncludeUnimplemented(e.target.checked)}
-                    className="mr-1.5 rounded border-gray-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
+                    className="mr-1.5 rounded border-gray-300 text-purple-600 focus:ring-purple-50 cursor-pointer"
                   />
                   未実施を含む
                 </label>
@@ -1331,28 +1660,40 @@ export const Dashboard = () => {
           </div>
           <div className="h-4 w-px bg-gray-700"></div>
           <div className="flex items-center gap-2">
-            {(userRole === 'admin' || userRole === 'manager') && (
+            
+            {userRole === 'admin' && (
               <>
                 <button 
-                  onClick={handleBulkExportExcel} 
-                  disabled={isBulkExportingExcel}
+                  onClick={handleBulkGenerate} 
+                  disabled={isBulkGenerating}
                   className="px-3.5 py-1.5 bg-green-600 hover:bg-green-700 text-white font-bold text-xs rounded-xl flex items-center transition-all shadow active:scale-95 disabled:opacity-50"
                 >
-                  {isBulkExportingExcel ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : <FileSpreadsheet size={14} className="mr-1.5" />}
-                  {isBulkExportingExcel ? '出力中...' : '一括Excel'}
+                  {isBulkGenerating ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : <UploadCloud size={14} className="mr-1.5" />}
+                  {isBulkGenerating ? '作成中...' : '一括書類作成'}
                 </button>
                 <button 
-                  onClick={handleBulkPrint}
-                  className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl flex items-center transition-all shadow active:scale-95"
+                  onClick={handleBulkDeleteDocuments}
+                  disabled={isBulkDeletingDocs}
+                  className="px-3.5 py-1.5 bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs rounded-xl flex items-center transition-all shadow active:scale-95 disabled:opacity-50"
                 >
-                  <Printer size={14} className="mr-1.5" />
-                  一括PDF
+                  {isBulkDeletingDocs ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : <FileX size={14} className="mr-1.5" />}
+                  {isBulkDeletingDocs ? '削除中...' : '一括書類削除'}
                 </button>
               </>
             )}
+
+            <button 
+              onClick={handleBulkDownload}
+              disabled={isBulkDownloading}
+              className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl flex items-center transition-all shadow active:scale-95 disabled:opacity-50"
+            >
+              {isBulkDownloading ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : <Archive size={14} className="mr-1.5" />}
+              {isBulkDownloading ? 'DL中...' : '一括DL(ZIP)'}
+            </button>
+              
             <button 
               onClick={() => setSelectedActivityIds([])}
-              className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white font-bold text-xs rounded-xl transition-all"
+              className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white font-bold text-xs rounded-xl transition-all ml-1"
             >
               解除
             </button>
@@ -1388,25 +1729,35 @@ export const Dashboard = () => {
                 <span className="font-bold">この活動を編集する</span>
               </button>
               
-              {getPermissions(actionMenuActivity).canExport && (
+              {userRole === 'admin' && (
                 <>
                   <button 
-                    onClick={() => handleExportSingleReport(actionMenuActivity)} 
+                    onClick={() => { handleGenerateDocuments(actionMenuActivity); setActionMenuActivity(null); }} 
                     className="w-full flex items-center p-3 rounded-xl hover:bg-green-50 text-green-700 transition-colors border border-transparent hover:border-green-100 group"
                   >
                     <div className="bg-green-100 p-2 rounded-lg mr-3 group-hover:bg-green-200 transition-colors"><FileSpreadsheet size={20} /></div>
-                    <span className="font-bold">Excelで出力する (活動報告書)</span>
+                    <span className="font-bold">提出書類を作成 (サーバ保存)</span>
                   </button>
-                  
-                  <button 
-                    onClick={() => handleDirectPrint(actionMenuActivity)} 
-                    className="w-full flex items-center p-3 rounded-xl hover:bg-gray-50 text-gray-800 transition-colors border border-transparent hover:border-gray-200 group"
-                  >
-                    <div className="bg-gray-200 p-2 rounded-lg mr-3 group-hover:bg-gray-300 transition-colors"><Printer size={20} /></div>
-                    <span className="font-bold">PDFで出力・印刷する</span>
-                  </button>
+                  {actionMenuActivity.isDocumentGenerated && (
+                    <button 
+                      onClick={() => { handleDeleteDocuments(actionMenuActivity); setActionMenuActivity(null); }} 
+                      className="w-full flex items-center p-3 rounded-xl hover:bg-orange-50 text-orange-600 transition-colors border border-transparent hover:border-orange-100 group"
+                    >
+                      <div className="bg-orange-100 p-2 rounded-lg mr-3 group-hover:bg-orange-200 transition-colors"><FileX size={20} /></div>
+                      <span className="font-bold">サーバ上の提出書類を削除する</span>
+                    </button>
+                  )}
                 </>
               )}
+                
+              <button 
+                onClick={() => { handleDownloadDocuments(actionMenuActivity); setActionMenuActivity(null); }} 
+                disabled={!actionMenuActivity.isDocumentGenerated}
+                className={`w-full flex items-center p-3 rounded-xl transition-colors border border-transparent group ${!actionMenuActivity.isDocumentGenerated ? 'opacity-50 cursor-not-allowed text-gray-500' : 'hover:bg-blue-50 text-blue-700 hover:border-blue-100'}`}
+              >
+                <div className={`p-2 rounded-lg mr-3 transition-colors ${!actionMenuActivity.isDocumentGenerated ? 'bg-gray-100' : 'bg-blue-100 group-hover:bg-blue-200'}`}><Archive size={20} /></div>
+                <span className="font-bold">提出書類をダウンロード (ZIP)</span>
+              </button>
 
               <button 
                 onClick={(e) => handleCopyLink(actionMenuActivity, e)} 
@@ -1455,45 +1806,105 @@ export const Dashboard = () => {
         </div>
       )}
 
-      {(printActivity || bulkPrintActivities.length > 0) && (() => {
-        const renderList = bulkPrintActivities.length > 0 ? bulkPrintActivities : [printActivity];
-
-        return (
-          <div className="hidden print:block w-full text-black bg-white font-serif">
-            {renderList.map((act, actIdx) => {
-              const printImages = act.imageUrls || (act.imageUrl ? [act.imageUrl] : []);
-              const totalImages = printImages.length;
-
-              return (
-                <div key={act.id} className={actIdx > 0 ? "break-before-page pt-8" : ""}>
-                  <h1 className="text-2xl font-bold text-center border-b-4 border-black pb-2 mb-6">活動状況写真台帳</h1>
-                  <table className="w-full border-2 border-black border-collapse mb-6 text-sm">
-                    <tbody>
-                      <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">報告書NO</th><td className="border border-black p-3" colSpan="3">{act.reportNo || '（未設定）'}</td></tr>
-                      <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">実施年月日</th><td className="border border-black p-3" colSpan="3">{act.date}</td></tr>
-                      <tr><th className="border border-black bg-gray-100 p-3 text-left">活動内容</th><td className="border border-black p-3" colSpan="3">{act.activityType}</td></tr>
-                    </tbody>
-                  </table>
-                  <div className="space-y-6">
-                    {printImages.map((img, idx) => (
-                      <div key={idx} className="break-inside-avoid">
-                        <div className="text-sm font-bold mb-1 text-left">{idx + 1}/{totalImages}枚目</div>
-                        <div className="border border-gray-400 p-1">
-                          <img src={img} alt="" decoding="async" className="w-full h-auto max-h-[140mm] object-contain" />
-                        </div>
-                      </div>
-                    ))}
+      {/* 🚀 進捗・完了モーダル */}
+      {progressModal.isOpen && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-md rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-6">
+              <div className="flex items-center mb-4">
+                {progressModal.isComplete ? (
+                  progressModal.hasError ? (
+                    <AlertTriangle className="text-red-500 mr-2 w-6 h-6" />
+                  ) : (
+                    <CheckCircle className="text-green-500 mr-2 w-6 h-6" />
+                  )
+                ) : (
+                  <Loader2 className="text-blue-500 mr-2 w-6 h-6 animate-spin" />
+                )}
+                <h3 className="text-lg font-bold text-gray-900">{progressModal.title}</h3>
+              </div>
+              
+              <p className="text-sm text-gray-600 mb-6 whitespace-pre-wrap leading-relaxed">{progressModal.message}</p>
+              
+              {/* プログレスバー */}
+              {!progressModal.isComplete && progressModal.total > 0 && (
+                <div className="mb-2">
+                  <div className="flex justify-between text-xs font-bold text-gray-500 mb-2">
+                    <span>進捗状況</span>
+                    <span>{Math.round((progressModal.current / progressModal.total) * 100)}% ({progressModal.current}/{progressModal.total})</span>
                   </div>
-                  <div className="mt-8 flex justify-between items-end border-t border-black pt-4">
-                    <div className="text-sm">組織名：{ORGANIZATION_NAME || '鎌田緑保護会'}</div>
-                    <div className="text-sm text-right">出力日：{new Date().toLocaleDateString('ja-JP')}</div>
+                  <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
+                    <div 
+                      className="bg-blue-600 h-2.5 rounded-full transition-all duration-300" 
+                      style={{ width: `${Math.round((progressModal.current / progressModal.total) * 100)}%` }}
+                    ></div>
                   </div>
                 </div>
-              );
-            })}
+              )}
+
+              {progressModal.isComplete && (
+                <div className="flex justify-center mt-6">
+                  <button 
+                    onClick={() => setProgressModal({ isOpen: false, title: '', message: '', current: 0, total: 0, isComplete: false, hasError: false })}
+                    className="px-6 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors w-full"
+                  >
+                    閉じる
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-        );
-      })()}
+        </div>
+      )}
+
+      {/* 🚀 PDF生成用の隠し領域（インラインスタイルでレイアウト崩壊を完全防止） */}
+      <div style={{ position: 'absolute', top: '-10000px', left: '-10000px', zIndex: -1000, pointerEvents: 'none' }}>
+        {printActivity && (
+          <div id={`pdf-report-${printActivity.id}`} style={{ width: '794px', padding: '40px', backgroundColor: '#ffffff', color: '#000000', fontFamily: 'serif', boxSizing: 'border-box' }}>
+            <h1 style={{ fontSize: '24px', fontWeight: 'bold', textAlign: 'center', borderBottom: '4px solid #000000', paddingBottom: '8px', margin: '0 0 24px 0' }}>
+              活動状況写真台帳
+            </h1>
+            
+            <table style={{ width: '100%', borderCollapse: 'collapse', border: '2px solid #000000', marginBottom: '24px', fontSize: '14px' }}>
+              <tbody>
+                <tr>
+                  <th style={{ border: '1px solid #000000', padding: '10px 14px', width: '25%', textAlign: 'left', backgroundColor: '#f3f4f6' }}>報告書NO</th>
+                  <td style={{ border: '1px solid #000000', padding: '10px 14px' }}>{printActivity.reportNo || '（未設定）'}</td>
+                </tr>
+                <tr>
+                  <th style={{ border: '1px solid #000000', padding: '10px 14px', width: '25%', textAlign: 'left', backgroundColor: '#f3f4f6' }}>実施年月日</th>
+                  <td style={{ border: '1px solid #000000', padding: '10px 14px' }}>{printActivity.date}</td>
+                </tr>
+                <tr>
+                  <th style={{ border: '1px solid #000000', padding: '10px 14px', textAlign: 'left', backgroundColor: '#f3f4f6' }}>活動内容</th>
+                  <td style={{ border: '1px solid #000000', padding: '10px 14px' }}>{printActivity.activityType}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              {(printActivity.imageUrls || (printActivity.imageUrl ? [printActivity.imageUrl] : [])).map((img, idx, arr) => (
+                <div key={idx} style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+                  <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '4px' }}>{idx + 1}/{arr.length}枚目</div>
+                  <div style={{ border: '1px solid #9ca3af', padding: '4px', textAlign: 'center', backgroundColor: '#ffffff' }}>
+                    <img 
+                      src={img} 
+                      crossOrigin="anonymous" 
+                      alt="" 
+                      style={{ maxWidth: '100%', maxHeight: '500px', width: 'auto', height: 'auto', display: 'inline-block', objectFit: 'contain' }} 
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ marginTop: '32px', borderTop: '1px solid #000000', paddingTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+              <div style={{ fontSize: '14px' }}>組織名：{ORGANIZATION_NAME || '鎌田緑保護会'}</div>
+            </div>
+          </div>
+        )}
+      </div>
+
     </div>
   );
 };
