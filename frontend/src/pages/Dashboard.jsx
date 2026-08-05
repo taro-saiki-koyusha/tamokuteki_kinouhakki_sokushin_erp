@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Clock, Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock, Map, MoreVertical, Edit, Info, History, Loader2, Ticket, RefreshCw, Database, Download, UploadCloud, Archive, FileX } from 'lucide-react';
+import { Clock, Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock, Map, MoreVertical, Edit, Info, History, Loader2, Ticket, RefreshCw, Database, Download, UploadCloud, Archive, FileX, FileText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, doc, getDoc, deleteDoc, updateDoc, where, addDoc, serverTimestamp } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -34,7 +34,7 @@ const formatTimestamp = (timestamp) => {
 
 export const Dashboard = () => {
   const navigate = useNavigate();
-  const storage = getStorage(); // Firebase Storage インスタンス
+  const storage = getStorage(); 
   
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -43,7 +43,7 @@ export const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('home');
   const [exportingId, setExportingId] = useState(null);
   
-  // 🚀 各種ローディングステータス
+  // 🚀 各種ローディング・モーダルステータス
   const [generatingId, setGeneratingId] = useState(null);
   const [downloadingId, setDownloadingId] = useState(null);
   const [deletingDocId, setDeletingDocId] = useState(null);
@@ -51,6 +51,10 @@ export const Dashboard = () => {
   const [isBulkDownloading, setIsBulkDownloading] = useState(false);
   const [isBulkDeletingDocs, setIsBulkDeletingDocs] = useState(false);
   
+  // 手動書類管理モーダル用
+  const [manualUploadActivity, setManualUploadActivity] = useState(null);
+  const [uploadingDocType, setUploadingDocType] = useState(null); // 'excel' | 'pdf' | null
+
   // 🚀 進捗モーダル用のstate
   const [progressModal, setProgressModal] = useState({
     isOpen: false,
@@ -346,24 +350,21 @@ export const Dashboard = () => {
     return new Promise((resolve, reject) => {
       setPrintActivity(activity); 
       
-      // 🚀 画像をすべてプリロード（事前読み込み）して、レイアウト崩れを防ぐ
       const imagesToLoad = activity.imageUrls || (activity.imageUrl ? [activity.imageUrl] : []);
       const loadPromises = imagesToLoad.map(src => {
         return new Promise((res) => {
           const img = new Image();
           img.crossOrigin = "anonymous";
           img.onload = () => res();
-          img.onerror = () => res(); // エラーでも処理は進める
+          img.onerror = () => res(); 
           img.src = src;
         });
       });
 
-      // 最大でも3秒でタイムアウトして次へ進む
       Promise.race([
         Promise.all(loadPromises),
         new Promise(res => setTimeout(res, 3000))
       ]).then(() => {
-        // DOMの反映を少し待つ
         setTimeout(async () => {
           try {
             const element = document.getElementById(`pdf-report-${activity.id}`);
@@ -373,7 +374,7 @@ export const Dashboard = () => {
               scale: 2, 
               useCORS: true, 
               logging: false,
-              windowWidth: 794 // A4サイズのピクセル幅を明示的に指定して表の崩れを防止
+              windowWidth: 794 
             });
             const imgData = canvas.toDataURL("image/jpeg", 0.9);
             
@@ -389,7 +390,7 @@ export const Dashboard = () => {
             setPrintActivity(null);
             reject(err);
           }
-        }, 500); // DOMレンダリング待機
+        }, 500); 
       });
     });
   };
@@ -435,6 +436,52 @@ export const Dashboard = () => {
     }
   };
 
+  // 🚀 書類の個別手動アップロード機能
+  const handleManualUpload = async (activity, file, type) => {
+    if (!file) return;
+    setUploadingDocType(type);
+    try {
+      const fileBaseName = activity.documentBaseName || activity.reportNo || activity.id;
+      const extension = type === 'excel' ? 'xlsx' : 'pdf';
+      const fileRef = ref(storage, `reports/${fileBaseName}/${fileBaseName}.${extension}`);
+      
+      await uploadBytes(fileRef, file);
+      
+      // どちらか1つでもアップロードされたら「生成済みフラグ」を立てる
+      await updateDoc(doc(db, 'activities', activity.id), {
+        isDocumentGenerated: true,
+        documentBaseName: fileBaseName
+      });
+      
+      alert(`手動アップロードが完了しました。(${type === 'excel' ? 'Excel' : 'PDF'})`);
+    } catch (error) {
+      console.error(error);
+      alert('アップロード中にエラーが発生しました。');
+    } finally {
+      setUploadingDocType(null);
+    }
+  };
+
+  // 🚀 書類の個別手動削除機能
+  const handleIndividualDelete = async (activity, type) => {
+    if (!window.confirm(`この活動の ${type === 'excel' ? 'Excel' : 'PDF'} ファイルのみを削除しますか？`)) return;
+    
+    setUploadingDocType(type);
+    try {
+      const fileBaseName = activity.documentBaseName || activity.reportNo || activity.id;
+      const extension = type === 'excel' ? 'xlsx' : 'pdf';
+      const fileRef = ref(storage, `reports/${fileBaseName}/${fileBaseName}.${extension}`);
+      
+      await deleteObject(fileRef);
+      alert(`削除しました。(${type === 'excel' ? 'Excel' : 'PDF'})`);
+    } catch (error) {
+      console.error(error);
+      alert('ファイルの削除に失敗しました（既に削除されている可能性があります）。');
+    } finally {
+      setUploadingDocType(null);
+    }
+  };
+
   const handleDownloadDocuments = async (activity) => {
     setDownloadingId(activity.id);
     setProgressModal({
@@ -450,16 +497,31 @@ export const Dashboard = () => {
     try {
       const fileBaseName = activity.documentBaseName || activity.reportNo || activity.id;
       const zip = new JSZip();
-      
-      const excelUrl = await getDownloadURL(ref(storage, `reports/${fileBaseName}/${fileBaseName}.xlsx`));
-      const pdfUrl = await getDownloadURL(ref(storage, `reports/${fileBaseName}/${fileBaseName}.pdf`));
+      let hasFile = false;
       
       setProgressModal(prev => ({ ...prev, message: 'ZIPファイルを作成中...' }));
-      const [excelRes, pdfRes] = await Promise.all([fetch(excelUrl), fetch(pdfUrl)]);
       
-      zip.file(`活動報告書_${fileBaseName}.xlsx`, await excelRes.blob());
-      zip.file(`活動写真台帳_${fileBaseName}.pdf`, await pdfRes.blob());
+      // Excelの取得（存在すればZIPに追加）
+      try {
+        const excelUrl = await getDownloadURL(ref(storage, `reports/${fileBaseName}/${fileBaseName}.xlsx`));
+        const excelRes = await fetch(excelUrl);
+        zip.file(`活動報告書_${fileBaseName}.xlsx`, await excelRes.blob());
+        hasFile = true;
+      } catch (e) {}
+
+      // PDFの取得（存在すればZIPに追加）
+      try {
+        const pdfUrl = await getDownloadURL(ref(storage, `reports/${fileBaseName}/${fileBaseName}.pdf`));
+        const pdfRes = await fetch(pdfUrl);
+        zip.file(`活動写真台帳_${fileBaseName}.pdf`, await pdfRes.blob());
+        hasFile = true;
+      } catch (e) {}
       
+      // どちらのファイルも見つからなかった場合
+      if (!hasFile) {
+        throw new Error("No files found");
+      }
+
       const zipBlob = await zip.generateAsync({ type: "blob" });
       saveAs(zipBlob, `提出書類_${fileBaseName}.zip`);
 
@@ -478,7 +540,7 @@ export const Dashboard = () => {
   };
 
   const handleDeleteDocuments = async (activity) => {
-    if (!window.confirm('サーバに保存されているこの活動の提出書類（PDF/Excel）を削除しますか？\n※活動データ自体は削除されません。')) return;
+    if (!window.confirm('サーバに保存されているこの活動の提出書類（PDF/Excel）を【両方とも】一括で削除しますか？\n※活動データ自体は削除されません。')) return;
 
     setDeletingDocId(activity.id);
     setProgressModal({
@@ -504,7 +566,7 @@ export const Dashboard = () => {
 
       setProgressModal(prev => ({
         ...prev,
-        message: '提出書類をサーバから削除しました。',
+        message: '提出書類をサーバから完全に削除しました。',
         current: 1,
         isComplete: true
       }));
@@ -593,18 +655,30 @@ export const Dashboard = () => {
       for (let i = 0; i < selectedActs.length; i++) {
         const act = selectedActs[i];
         const fileBaseName = act.documentBaseName || act.reportNo || act.id;
+        let hasFile = false;
+        
         try {
           setProgressModal(prev => ({ ...prev, message: `(${i + 1}/${selectedActs.length}) 「${act.activityType}」を取得中...` }));
-          const excelUrl = await getDownloadURL(ref(storage, `reports/${fileBaseName}/${fileBaseName}.xlsx`));
-          const pdfUrl = await getDownloadURL(ref(storage, `reports/${fileBaseName}/${fileBaseName}.pdf`));
-          
-          const [excelRes, pdfRes] = await Promise.all([fetch(excelUrl), fetch(pdfUrl)]);
-          
           const folder = zip.folder(fileBaseName);
-          folder.file(`活動報告書_${fileBaseName}.xlsx`, await excelRes.blob());
-          folder.file(`活動写真台帳_${fileBaseName}.pdf`, await pdfRes.blob());
-          successCount++;
-          setProgressModal(prev => ({ ...prev, current: successCount }));
+          
+          try {
+            const excelUrl = await getDownloadURL(ref(storage, `reports/${fileBaseName}/${fileBaseName}.xlsx`));
+            const excelRes = await fetch(excelUrl);
+            folder.file(`活動報告書_${fileBaseName}.xlsx`, await excelRes.blob());
+            hasFile = true;
+          } catch(e){}
+          
+          try {
+            const pdfUrl = await getDownloadURL(ref(storage, `reports/${fileBaseName}/${fileBaseName}.pdf`));
+            const pdfRes = await fetch(pdfUrl);
+            folder.file(`活動写真台帳_${fileBaseName}.pdf`, await pdfRes.blob());
+            hasFile = true;
+          } catch(e){}
+
+          if (hasFile) {
+            successCount++;
+          }
+          setProgressModal(prev => ({ ...prev, current: i + 1 }));
         } catch (e) {
           console.error(`Error fetching ${fileBaseName}`, e);
         }
@@ -963,7 +1037,7 @@ export const Dashboard = () => {
               className={`flex-1 py-2 rounded-xl font-bold text-[10px] flex items-center justify-center transition-colors ${generatingId === activity.id ? 'bg-green-400 text-white' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}
             >
               {generatingId === activity.id ? <Loader2 size={14} className="mr-1 animate-spin" /> : <FileSpreadsheet size={14} className="mr-1" />}
-              {generatingId === activity.id ? '作成中...' : '書類作成'}
+              {generatingId === activity.id ? '作成中...' : '自動作成'}
             </button>
           )}
           <button 
@@ -972,17 +1046,24 @@ export const Dashboard = () => {
             className={`flex-1 border py-2 rounded-xl font-bold text-[10px] flex items-center justify-center transition-colors ${!activity.isDocumentGenerated ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'}`}
           >
             {downloadingId === activity.id ? <Loader2 size={14} className="mr-1 animate-spin" /> : <Archive size={14} className="mr-1" />}
-            {downloadingId === activity.id ? 'DL中...' : '書類DL'}
+            {downloadingId === activity.id ? 'DL中...' : 'DL'}
           </button>
-          {/* 🚀 追加：カード用の書類削除ボタン */}
+          {userRole === 'admin' && (
+            <button 
+              onClick={(e) => { e.stopPropagation(); setManualUploadActivity(activity); }} 
+              className={`flex-1 border py-2 rounded-xl font-bold text-[10px] flex items-center justify-center transition-colors bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100`}
+            >
+              <UploadCloud size={14} className="mr-1" /> 手動
+            </button>
+          )}
           {userRole === 'admin' && activity.isDocumentGenerated && (
             <button 
               onClick={(e) => { e.stopPropagation(); handleDeleteDocuments(activity); }} 
               disabled={deletingDocId === activity.id} 
-              className={`flex-1 border py-2 rounded-xl font-bold text-[10px] flex items-center justify-center transition-colors ${deletingDocId === activity.id ? 'bg-orange-100 text-orange-400 border-orange-200 cursor-not-allowed' : 'bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100'}`}
+              className={`w-10 border py-2 rounded-xl font-bold text-[10px] flex items-center justify-center transition-colors ${deletingDocId === activity.id ? 'bg-orange-100 text-orange-400 border-orange-200 cursor-not-allowed' : 'bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100'}`}
+              title="書類削除"
             >
-              {deletingDocId === activity.id ? <Loader2 size={14} className="mr-1 animate-spin" /> : <FileX size={14} className="mr-1" />}
-              {deletingDocId === activity.id ? '削除中...' : '書類削除'}
+              {deletingDocId === activity.id ? <Loader2 size={14} className="animate-spin" /> : <FileX size={14} />}
             </button>
           )}
         </div>
@@ -1084,7 +1165,7 @@ export const Dashboard = () => {
                 onClick={(e) => { e.stopPropagation(); handleGenerateDocuments(act); }} 
                 disabled={generatingId === act.id} 
                 className={`px-2 py-1.5 rounded-lg font-bold text-[9px] flex items-center transition-colors ${generatingId === act.id ? 'bg-green-400 text-white' : 'bg-green-50 text-green-700 hover:bg-green-100'}`} 
-                title="提出書類を作成・保存"
+                title="提出書類を自動作成・保存"
               >
                 {generatingId === act.id ? <Loader2 size={12} className="mr-1 animate-spin" /> : <FileSpreadsheet size={12} className="mr-1" />}
                 作成
@@ -1099,22 +1180,32 @@ export const Dashboard = () => {
               {downloadingId === act.id ? <Loader2 size={12} className="mr-1 animate-spin" /> : <Archive size={12} className="mr-1" />}
               DL
             </button>
+
+            {userRole === 'admin' && (
+              <button 
+                onClick={(e) => { e.stopPropagation(); setManualUploadActivity(act); }} 
+                className={`px-2 py-1.5 border rounded-lg font-bold text-[9px] flex items-center transition-colors bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50`} 
+                title="手動で書類を登録・個別削除"
+              >
+                <UploadCloud size={12} className="mr-1" />
+                手動
+              </button>
+            )}
             
-            {/* 🚀 追加：テーブル行用の書類削除ボタン */}
             {userRole === 'admin' && act.isDocumentGenerated && (
               <button 
                 onClick={(e) => { e.stopPropagation(); handleDeleteDocuments(act); }} 
                 disabled={deletingDocId === act.id} 
                 className={`px-2 py-1.5 border rounded-lg font-bold text-[9px] flex items-center transition-colors ${deletingDocId === act.id ? 'bg-orange-50 text-orange-400 border-orange-200' : 'bg-white text-orange-600 border-orange-200 hover:bg-orange-50'}`} 
-                title="提出書類を削除"
+                title="提出書類を一括削除"
               >
                 {deletingDocId === act.id ? <Loader2 size={12} className="mr-1 animate-spin" /> : <FileX size={12} className="mr-1" />}
-                書類削除
+                削除
               </button>
             )}
 
             {canDeleteAct && (
-              <button onClick={(e) => handleDeleteClick(act.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="削除">
+              <button onClick={(e) => handleDeleteClick(act.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="活動記録の削除">
                 <Trash2 size={14} />
               </button>
             )}
@@ -1359,7 +1450,7 @@ export const Dashboard = () => {
                     type="checkbox" 
                     checked={includeUnimplemented}
                     onChange={(e) => setIncludeUnimplemented(e.target.checked)}
-                    className="mr-1.5 rounded border-gray-300 text-purple-600 focus:ring-purple-50 cursor-pointer"
+                    className="mr-1.5 rounded border-gray-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
                   />
                   未実施を含む
                 </label>
@@ -1738,13 +1829,20 @@ export const Dashboard = () => {
                     <div className="bg-green-100 p-2 rounded-lg mr-3 group-hover:bg-green-200 transition-colors"><FileSpreadsheet size={20} /></div>
                     <span className="font-bold">提出書類を作成 (サーバ保存)</span>
                   </button>
+                  <button 
+                    onClick={() => { setManualUploadActivity(actionMenuActivity); setActionMenuActivity(null); }} 
+                    className="w-full flex items-center p-3 rounded-xl hover:bg-indigo-50 text-indigo-700 transition-colors border border-transparent hover:border-indigo-100 group"
+                  >
+                    <div className="bg-indigo-100 p-2 rounded-lg mr-3 group-hover:bg-indigo-200 transition-colors"><UploadCloud size={20} /></div>
+                    <span className="font-bold">書類の個別登録・削除 (手動管理)</span>
+                  </button>
                   {actionMenuActivity.isDocumentGenerated && (
                     <button 
                       onClick={() => { handleDeleteDocuments(actionMenuActivity); setActionMenuActivity(null); }} 
                       className="w-full flex items-center p-3 rounded-xl hover:bg-orange-50 text-orange-600 transition-colors border border-transparent hover:border-orange-100 group"
                     >
                       <div className="bg-orange-100 p-2 rounded-lg mr-3 group-hover:bg-orange-200 transition-colors"><FileX size={20} /></div>
-                      <span className="font-bold">サーバ上の提出書類を削除する</span>
+                      <span className="font-bold">サーバ上の提出書類を一括削除</span>
                     </button>
                   )}
                 </>
@@ -1806,6 +1904,86 @@ export const Dashboard = () => {
         </div>
       )}
 
+      {/* 🚀 書類の個別手動アップロード・削除モーダル */}
+      {manualUploadActivity && (
+        <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setManualUploadActivity(null)}>
+          <div className="bg-white w-full max-w-md rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-gray-100 flex justify-between items-center">
+              <h3 className="text-lg font-bold text-gray-900 flex items-center">
+                <UploadCloud className="text-indigo-600 mr-2" size={20} />
+                個別アップロード・削除
+              </h3>
+              <button onClick={() => setManualUploadActivity(null)} className="text-gray-400 hover:text-gray-600 bg-gray-100 p-1 rounded-full">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-5 space-y-6">
+              <p className="text-sm text-gray-600 font-medium">
+                自動作成された書類を手元で修正して上書きアップロードしたり、不要なファイルだけを削除することができます。
+              </p>
+
+              {/* Excelエリア */}
+              <div className="bg-green-50 p-4 rounded-xl border border-green-100">
+                <h4 className="font-bold text-green-800 text-sm mb-3 flex items-center"><FileSpreadsheet size={16} className="mr-1.5"/> Excel (活動報告書)</h4>
+                <div className="flex items-center gap-2">
+                  <label className={`flex-1 flex items-center justify-center bg-white border border-green-200 text-green-700 py-2.5 rounded-lg text-xs font-bold cursor-pointer transition-colors ${uploadingDocType !== null ? 'opacity-50' : 'hover:bg-green-100'}`}>
+                    {uploadingDocType === 'excel' ? <Loader2 size={14} className="animate-spin mr-1" /> : <UploadCloud size={14} className="mr-1" />}
+                    アップロード
+                    <input 
+                      type="file" 
+                      accept=".xlsx" 
+                      className="hidden" 
+                      disabled={uploadingDocType !== null}
+                      onChange={(e) => {
+                        handleManualUpload(manualUploadActivity, e.target.files[0], 'excel');
+                        e.target.value = ''; // 連続アップロード可能に
+                      }} 
+                    />
+                  </label>
+                  <button 
+                    onClick={() => handleIndividualDelete(manualUploadActivity, 'excel')} 
+                    disabled={uploadingDocType !== null} 
+                    className="px-4 py-2.5 bg-white border border-red-200 text-red-600 rounded-lg text-xs font-bold hover:bg-red-50 transition-colors flex items-center disabled:opacity-50"
+                  >
+                    <Trash2 size={14} className="mr-1" /> 削除
+                  </button>
+                </div>
+              </div>
+
+              {/* PDFエリア */}
+              <div className="bg-red-50 p-4 rounded-xl border border-red-100">
+                <h4 className="font-bold text-red-800 text-sm mb-3 flex items-center"><FileText size={16} className="mr-1.5"/> PDF (写真台帳)</h4>
+                <div className="flex items-center gap-2">
+                  <label className={`flex-1 flex items-center justify-center bg-white border border-red-200 text-red-700 py-2.5 rounded-lg text-xs font-bold cursor-pointer transition-colors ${uploadingDocType !== null ? 'opacity-50' : 'hover:bg-red-100'}`}>
+                    {uploadingDocType === 'pdf' ? <Loader2 size={14} className="animate-spin mr-1" /> : <UploadCloud size={14} className="mr-1" />}
+                    アップロード
+                    <input 
+                      type="file" 
+                      accept=".pdf" 
+                      className="hidden" 
+                      disabled={uploadingDocType !== null}
+                      onChange={(e) => {
+                        handleManualUpload(manualUploadActivity, e.target.files[0], 'pdf');
+                        e.target.value = ''; // 連続アップロード可能に
+                      }} 
+                    />
+                  </label>
+                  <button 
+                    onClick={() => handleIndividualDelete(manualUploadActivity, 'pdf')} 
+                    disabled={uploadingDocType !== null} 
+                    className="px-4 py-2.5 bg-white border border-red-200 text-red-600 rounded-lg text-xs font-bold hover:bg-red-50 transition-colors flex items-center disabled:opacity-50"
+                  >
+                    <Trash2 size={14} className="mr-1" /> 削除
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 🚀 進捗・完了モーダル */}
       {progressModal.isOpen && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -1857,7 +2035,7 @@ export const Dashboard = () => {
         </div>
       )}
 
-      {/* 🚀 PDF生成用の隠し領域（インラインスタイルでレイアウト崩壊を完全防止） */}
+      {/* 🚀 PDF生成用の隠し領域 */}
       <div style={{ position: 'absolute', top: '-10000px', left: '-10000px', zIndex: -1000, pointerEvents: 'none' }}>
         {printActivity && (
           <div id={`pdf-report-${printActivity.id}`} style={{ width: '794px', padding: '40px', backgroundColor: '#ffffff', color: '#000000', fontFamily: 'serif', boxSizing: 'border-box' }}>
