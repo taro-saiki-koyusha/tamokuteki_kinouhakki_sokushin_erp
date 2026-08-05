@@ -195,7 +195,6 @@ export const ActivityForm = () => {
       participantName: '', 
       isManualName: false, 
       isAgri: true, 
-      // 🚀 修正: マスタ設定のデフォルト単価をセット
       wageId: systemSettings.defaultWageId || '', 
       workTime: baseHours, 
       machineId: '', 
@@ -249,7 +248,6 @@ export const ActivityForm = () => {
       return { 
         participantName: user ? (user.name || user.displayName || '未設定') : '', 
         isManualName: false, 
-        // 🚀 修正: マスタ設定のデフォルト単価をセット
         wageId: systemSettings.defaultWageId || '', 
         isAgri: user ? (user.isAgri !== false) : true, 
         workTime: baseHours, 
@@ -378,7 +376,12 @@ export const ActivityForm = () => {
       try { 
         await deleteDoc(doc(db, 'activities', editData.id)); 
 
-        const currentUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || currentUser?.displayName || '名称未設定';
+        // 🚀 修正：あらゆるパターンで確実に名前を取得できるように強化
+        const currentUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || 
+                                systemUsers.find(u => u.id === currentUser?.uid)?.displayName || 
+                                currentUser?.displayName || 
+                                '名称未設定';
+
         await addDoc(collection(db, 'audit_logs'), {
           action: 'DELETE',
           userName: currentUserName,
@@ -509,7 +512,12 @@ export const ActivityForm = () => {
           updatedAt: serverTimestamp()
         });
 
-        const currentUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || currentUser?.displayName || '名称未設定';
+        // 🚀 修正：あらゆるパターンで確実に名前を取得できるように強化
+        const currentUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || 
+                                systemUsers.find(u => u.id === currentUser?.uid)?.displayName || 
+                                currentUser?.displayName || 
+                                '名称未設定';
+
         await addDoc(collection(db, 'audit_logs'), {
           action: 'UPDATE',
           userName: currentUserName,
@@ -538,7 +546,12 @@ export const ActivityForm = () => {
           updatedAt: serverTimestamp()
         });
 
-        const currentUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || currentUser?.displayName || '名称未設定';
+        // 🚀 修正：あらゆるパターンで確実に名前を取得できるように強化
+        const currentUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || 
+                                systemUsers.find(u => u.id === currentUser?.uid)?.displayName || 
+                                currentUser?.displayName || 
+                                '名称未設定';
+
         await addDoc(collection(db, 'audit_logs'), {
           action: 'UPDATE',
           userName: currentUserName,
@@ -630,7 +643,11 @@ export const ActivityForm = () => {
         updatedAt: serverTimestamp() 
       };
 
-      const currentUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || currentUser?.displayName || '名称未設定';
+      // 🚀 修正：あらゆるパターンで確実に名前を取得できるように強化
+      const currentUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || 
+                              systemUsers.find(u => u.id === currentUser?.uid)?.displayName || 
+                              currentUser?.displayName || 
+                              '名称未設定';
 
       if (editData) { 
         submitData.updatedBy = currentUser?.uid; 
@@ -1538,7 +1555,6 @@ export const ActivityForm = () => {
             </div>
             <div className="mt-8 flex justify-between items-end border-t border-black pt-4">
               <div className="text-sm">組織名：{ORGANIZATION_NAME || '鎌田緑保護会'}</div>
-              <div className="text-sm text-right">出力日：{new Date().toLocaleDateString('ja-JP')}</div>
             </div>
           </div>
         );
