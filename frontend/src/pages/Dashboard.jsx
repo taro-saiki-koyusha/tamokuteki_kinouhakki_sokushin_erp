@@ -43,7 +43,6 @@ export const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('home');
   const [exportingId, setExportingId] = useState(null);
   
-  // 🚀 各種ローディング・モーダルステータス
   const [generatingId, setGeneratingId] = useState(null);
   const [downloadingId, setDownloadingId] = useState(null);
   const [deletingDocId, setDeletingDocId] = useState(null);
@@ -51,11 +50,9 @@ export const Dashboard = () => {
   const [isBulkDownloading, setIsBulkDownloading] = useState(false);
   const [isBulkDeletingDocs, setIsBulkDeletingDocs] = useState(false);
   
-  // 手動書類管理モーダル用
   const [manualUploadActivity, setManualUploadActivity] = useState(null);
-  const [uploadingDocType, setUploadingDocType] = useState(null); // 'excel' | 'pdf' | null
+  const [uploadingDocType, setUploadingDocType] = useState(null);
 
-  // 🚀 進捗モーダル用のstate
   const [progressModal, setProgressModal] = useState({
     isOpen: false,
     title: '',
@@ -271,9 +268,6 @@ export const Dashboard = () => {
     setActionMenuActivity(null);
   };
 
-  // =======================================================================
-  // 🚀 PDF・Excel生成とStorage管理の関連機能
-  // =======================================================================
   const generateExcelBlob = async (activity) => {
     const response = await fetch(`/様式1_活動報告書_農地維持支払.xlsx?t=${Date.now()}`);
     if (!response.ok) throw new Error('テンプレートが見つかりません');
@@ -436,7 +430,6 @@ export const Dashboard = () => {
     }
   };
 
-  // 🚀 書類の個別手動アップロード機能
   const handleManualUpload = async (activity, file, type) => {
     if (!file) return;
     setUploadingDocType(type);
@@ -447,7 +440,6 @@ export const Dashboard = () => {
       
       await uploadBytes(fileRef, file);
       
-      // どちらか1つでもアップロードされたら「生成済みフラグ」を立てる
       await updateDoc(doc(db, 'activities', activity.id), {
         isDocumentGenerated: true,
         documentBaseName: fileBaseName
@@ -462,7 +454,6 @@ export const Dashboard = () => {
     }
   };
 
-  // 🚀 書類の個別手動削除機能
   const handleIndividualDelete = async (activity, type) => {
     if (!window.confirm(`この活動の ${type === 'excel' ? 'Excel' : 'PDF'} ファイルのみを削除しますか？`)) return;
     
@@ -501,7 +492,6 @@ export const Dashboard = () => {
       
       setProgressModal(prev => ({ ...prev, message: 'ZIPファイルを作成中...' }));
       
-      // Excelの取得（存在すればZIPに追加）
       try {
         const excelUrl = await getDownloadURL(ref(storage, `reports/${fileBaseName}/${fileBaseName}.xlsx`));
         const excelRes = await fetch(excelUrl);
@@ -509,7 +499,6 @@ export const Dashboard = () => {
         hasFile = true;
       } catch (e) {}
 
-      // PDFの取得（存在すればZIPに追加）
       try {
         const pdfUrl = await getDownloadURL(ref(storage, `reports/${fileBaseName}/${fileBaseName}.pdf`));
         const pdfRes = await fetch(pdfUrl);
@@ -517,7 +506,6 @@ export const Dashboard = () => {
         hasFile = true;
       } catch (e) {}
       
-      // どちらのファイルも見つからなかった場合
       if (!hasFile) {
         throw new Error("No files found");
       }
@@ -1084,12 +1072,16 @@ export const Dashboard = () => {
     const actualCost = calculateActivityCost(act);
     const isChecked = selectedActivityIds.includes(act.id);
 
+    // 🚀 固定列用の背景色ロジック
+    const baseBgClass = isChecked ? 'bg-[#ebf7ee]' : 'bg-white';
+    const hoverBgClass = isChecked ? '' : (act.isLocked ? 'group-hover/row:bg-gray-50' : 'group-hover/row:bg-green-50');
+
     return (
       <tr 
         onClick={() => navigate(`/activity-form/${act.id}`, { state: { editData: act, isViewMode: true } })}
-        className={`border-b border-gray-100 cursor-pointer transition-colors group/row active:bg-gray-200 ${isChecked ? 'bg-green-50/60 font-medium' : (act.isLocked ? 'hover:bg-gray-50/80' : 'hover:bg-green-50')}`}
+        className={`border-b border-gray-100 cursor-pointer transition-colors group/row active:bg-gray-200 ${isChecked ? 'bg-[#ebf7ee] font-medium' : (act.isLocked ? 'bg-white hover:bg-gray-50' : 'bg-white hover:bg-green-50')}`}
       >
-        <td className="p-3 text-center whitespace-nowrap" onClick={e => e.stopPropagation()}>
+        <td className={`p-3 text-center whitespace-nowrap sticky left-0 z-10 border-r border-gray-100 ${baseBgClass} ${hoverBgClass}`} onClick={e => e.stopPropagation()}>
           <input 
             type="checkbox" 
             checked={isChecked} 
@@ -1097,7 +1089,7 @@ export const Dashboard = () => {
             className="w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500 cursor-pointer" 
           />
         </td>
-        <td className="p-3 text-sm text-gray-700 whitespace-nowrap">{act.date}</td>
+        <td className={`p-3 text-sm text-gray-700 whitespace-nowrap sticky left-12 z-10 border-r border-gray-100 shadow-[4px_0_6px_-2px_rgba(0,0,0,0.05)] ${baseBgClass} ${hoverBgClass}`}>{act.date}</td>
         
         <td className="p-3 text-sm font-bold text-gray-900 whitespace-nowrap overflow-hidden text-ellipsis">{act.activityType}</td>
         
@@ -1241,18 +1233,22 @@ export const Dashboard = () => {
 
     return (
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden relative">
-        {(userRole === 'admin' || userRole === 'manager') && (
-          <div className="md:hidden bg-blue-50/80 px-3 py-2 text-[10px] text-blue-600 flex items-center font-bold border-b border-blue-100">
+        <div className="bg-blue-50/80 px-3 py-2 text-[10px] sm:text-xs text-blue-600 flex items-center justify-between font-bold border-b border-blue-100">
+          <div className="flex items-center">
             <Info className="w-3.5 h-3.5 mr-1.5 shrink-0" /> 
-            <span>各行の右端の<span className="bg-blue-100 px-1 rounded mx-0.5 font-black">︙</span>を押すとメニューが表示されます</span>
+            <span>【ヒント】 <span className="bg-white px-1 border border-blue-200 rounded mx-0.5">Shift</span> ＋ マウスホイールで横スクロールできます</span>
           </div>
-        )}
+          {(userRole === 'admin' || userRole === 'manager') && (
+            <span className="md:hidden">右端の <span className="bg-blue-100 px-1 rounded mx-0.5 font-black">︙</span> からメニュー</span>
+          )}
+        </div>
 
-        <div className="overflow-x-auto relative">
+        {/* 🚀 スクロールバーを見やすくするカスタムクラスを追加 */}
+        <div className="overflow-x-auto relative custom-scrollbar pb-2">
           <table className="w-full text-left border-collapse min-w-[1450px] table-fixed select-none">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200 text-sm text-gray-700">
-                <th className="p-3 w-12 text-center whitespace-nowrap">
+                <th className="p-3 w-12 text-center whitespace-nowrap sticky left-0 z-20 bg-gray-50 border-r border-gray-200">
                   <input 
                     type="checkbox" 
                     checked={isAllTableSelected} 
@@ -1260,7 +1256,7 @@ export const Dashboard = () => {
                     className="w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500 cursor-pointer" 
                   />
                 </th>
-                <th onClick={toggleDateSort} className="p-3 font-bold w-32 cursor-pointer hover:bg-gray-200 transition-colors group whitespace-nowrap" title="日付で並び替え">
+                <th onClick={toggleDateSort} className="p-3 font-bold w-32 cursor-pointer hover:bg-gray-200 transition-colors group whitespace-nowrap sticky left-12 z-20 bg-gray-50 border-r border-gray-200 shadow-[4px_0_6px_-2px_rgba(0,0,0,0.05)]" title="日付で並び替え">
                   <div className="flex items-center text-blue-700">
                     日付
                     {dateSortOrder === 'desc' ? <ChevronDown size={16} className="ml-1 text-blue-600 group-hover:text-blue-800" /> : <ChevronUp size={16} className="ml-1 text-blue-600 group-hover:text-blue-800" />}
@@ -1304,6 +1300,24 @@ export const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-gray-100 pb-28 md:pb-16 relative">
+      {/* 🚀 スクロールバー強化用のCSS */}
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          height: 12px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: #f1f5f9;
+          border-radius: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background-color: #cbd5e1;
+          border-radius: 8px;
+          border: 3px solid #f1f5f9;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background-color: #94a3b8;
+        }
+      `}</style>
 
       <header className="bg-white shadow-sm px-4 py-3 flex flex-col md:flex-row justify-between items-start md:items-center sticky top-0 z-30 no-print">
         <div className="flex items-center w-full md:w-auto mb-3 md:mb-0">
