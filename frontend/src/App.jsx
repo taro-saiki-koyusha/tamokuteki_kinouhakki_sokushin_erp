@@ -13,6 +13,9 @@ import { AuditLogs } from './pages/AuditLogs';
 import { TicketManagement } from './pages/TicketManagement';
 import { BackupManagement } from './pages/BackupManagement';
 
+// 🚀 新規追加：申請管理画面
+import { ApplicationManagement } from './pages/ApplicationManagement';
+
 function App() {
   return (
     <Router>
@@ -33,6 +36,9 @@ function App() {
         
         {/* 新規：チケット管理（合体ツール） */}
         <Route path="/ticket-management" element={<TicketManagement />} />
+        
+        {/* 🚀 新規追加：申請管理画面 */}
+        <Route path="/applications" element={<ApplicationManagement />} />
 
         {/* ⚠️ 未定義のURLにアクセスした場合はログイン画面に戻す */}
         <Route path="*" element={<Navigate to="/" replace />} />

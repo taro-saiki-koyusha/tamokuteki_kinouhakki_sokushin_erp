@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Clock, Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock, Map, MoreVertical, Edit, Info, History, Loader2, Ticket, RefreshCw, Database, Download, UploadCloud, Archive, FileX, FileText } from 'lucide-react';
+// 🚀 FileCheck アイコンを追加
+import { Clock, Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock, Map, MoreVertical, Edit, Info, History, Loader2, Ticket, RefreshCw, Database, Download, UploadCloud, Archive, FileX, FileText, FileCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, doc, getDoc, deleteDoc, updateDoc, where, addDoc, serverTimestamp } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -34,7 +35,7 @@ const formatTimestamp = (timestamp) => {
 
 export const Dashboard = () => {
   const navigate = useNavigate();
-  const storage = getStorage(); 
+  const storage = getStorage(); // Firebase Storage インスタンス
   
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -43,6 +44,7 @@ export const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('home');
   const [exportingId, setExportingId] = useState(null);
   
+  // 🚀 各種ローディングステータス
   const [generatingId, setGeneratingId] = useState(null);
   const [downloadingId, setDownloadingId] = useState(null);
   const [deletingDocId, setDeletingDocId] = useState(null);
@@ -1072,7 +1074,6 @@ export const Dashboard = () => {
     const actualCost = calculateActivityCost(act);
     const isChecked = selectedActivityIds.includes(act.id);
 
-    // 🚀 固定列用の背景色ロジック
     const baseBgClass = isChecked ? 'bg-[#ebf7ee]' : 'bg-white';
     const hoverBgClass = isChecked ? '' : (act.isLocked ? 'group-hover/row:bg-gray-50' : 'group-hover/row:bg-green-50');
 
@@ -1233,17 +1234,13 @@ export const Dashboard = () => {
 
     return (
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden relative">
-        <div className="bg-blue-50/80 px-3 py-2 text-[10px] sm:text-xs text-blue-600 flex items-center justify-between font-bold border-b border-blue-100">
-          <div className="flex items-center">
+        {(userRole === 'admin' || userRole === 'manager') && (
+          <div className="md:hidden bg-blue-50/80 px-3 py-2 text-[10px] text-blue-600 flex items-center font-bold border-b border-blue-100">
             <Info className="w-3.5 h-3.5 mr-1.5 shrink-0" /> 
-            <span>【ヒント】 <span className="bg-white px-1 border border-blue-200 rounded mx-0.5">Shift</span> ＋ マウスホイールで横スクロールできます</span>
+            <span>各行の右端の<span className="bg-blue-100 px-1 rounded mx-0.5 font-black">︙</span>を押すとメニューが表示されます</span>
           </div>
-          {(userRole === 'admin' || userRole === 'manager') && (
-            <span className="md:hidden">右端の <span className="bg-blue-100 px-1 rounded mx-0.5 font-black">︙</span> からメニュー</span>
-          )}
-        </div>
+        )}
 
-        {/* 🚀 スクロールバーを見やすくするカスタムクラスを追加 */}
         <div className="overflow-x-auto relative custom-scrollbar pb-2">
           <table className="w-full text-left border-collapse min-w-[1450px] table-fixed select-none">
             <thead>
@@ -1300,7 +1297,6 @@ export const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-gray-100 pb-28 md:pb-16 relative">
-      {/* 🚀 スクロールバー強化用のCSS */}
       <style>{`
         .custom-scrollbar::-webkit-scrollbar {
           height: 12px;
@@ -1332,6 +1328,11 @@ export const Dashboard = () => {
           
           {(userRole === 'admin' || userRole === 'manager') && (
             <>
+              {/* 🚀 追加：申請管理へのリンク（PC） */}
+              <button onClick={() => navigate('/applications')} className="flex items-center text-sm font-bold text-gray-500 hover:text-blue-600">
+                <FileCheck size={18} className="mr-1"/> 申請管理
+              </button>
+
               <button onClick={() => navigate('/groups')} className="flex items-center text-sm font-bold text-gray-500 hover:text-blue-600">
                 <Users size={18} className="mr-1"/> グループ管理
               </button>
@@ -1374,6 +1375,9 @@ export const Dashboard = () => {
         <div className="md:hidden flex items-center w-full overflow-x-auto space-x-3 pb-1">
            {(userRole === 'admin' || userRole === 'manager') && (
             <>
+              {/* 🚀 追加：申請管理へのリンク（スマホ） */}
+              <button onClick={() => navigate('/applications')} className="p-2 text-gray-500 hover:text-blue-600 transition-colors" title="申請管理"><FileCheck size={20} /></button>
+
               <button onClick={() => navigate('/groups')} className="p-2 text-gray-500 hover:text-blue-600 transition-colors"><Users size={20} /></button>
               <button onClick={() => navigate('/costs')} className="p-2 text-gray-500 hover:text-green-600 transition-colors"><Wallet size={20} /></button>
             </>
@@ -1951,7 +1955,7 @@ export const Dashboard = () => {
                       disabled={uploadingDocType !== null}
                       onChange={(e) => {
                         handleManualUpload(manualUploadActivity, e.target.files[0], 'excel');
-                        e.target.value = ''; // 連続アップロード可能に
+                        e.target.value = ''; 
                       }} 
                     />
                   </label>
@@ -1979,7 +1983,7 @@ export const Dashboard = () => {
                       disabled={uploadingDocType !== null}
                       onChange={(e) => {
                         handleManualUpload(manualUploadActivity, e.target.files[0], 'pdf');
-                        e.target.value = ''; // 連続アップロード可能に
+                        e.target.value = ''; 
                       }} 
                     />
                   </label>
