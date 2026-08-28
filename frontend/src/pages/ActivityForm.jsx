@@ -82,7 +82,6 @@ export const ActivityForm = () => {
 
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
-  // 🚀 追加: 新規作成時にマスタのデフォルト値を反映させる
   useEffect(() => {
     if (!id && !isViewMode && systemSettings) {
       setFormData(prev => ({
@@ -376,7 +375,6 @@ export const ActivityForm = () => {
       try { 
         await deleteDoc(doc(db, 'activities', editData.id)); 
 
-        // 🚀 修正：あらゆるパターンで確実に名前を取得できるように強化
         const currentUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || 
                                 systemUsers.find(u => u.id === currentUser?.uid)?.displayName || 
                                 currentUser?.displayName || 
@@ -512,7 +510,6 @@ export const ActivityForm = () => {
           updatedAt: serverTimestamp()
         });
 
-        // 🚀 修正：あらゆるパターンで確実に名前を取得できるように強化
         const currentUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || 
                                 systemUsers.find(u => u.id === currentUser?.uid)?.displayName || 
                                 currentUser?.displayName || 
@@ -546,7 +543,6 @@ export const ActivityForm = () => {
           updatedAt: serverTimestamp()
         });
 
-        // 🚀 修正：あらゆるパターンで確実に名前を取得できるように強化
         const currentUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || 
                                 systemUsers.find(u => u.id === currentUser?.uid)?.displayName || 
                                 currentUser?.displayName || 
@@ -643,7 +639,6 @@ export const ActivityForm = () => {
         updatedAt: serverTimestamp() 
       };
 
-      // 🚀 修正：あらゆるパターンで確実に名前を取得できるように強化
       const currentUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || 
                               systemUsers.find(u => u.id === currentUser?.uid)?.displayName || 
                               currentUser?.displayName || 
@@ -960,7 +955,8 @@ export const ActivityForm = () => {
                 <label className="block text-sm font-bold text-blue-900 mb-1">対象グループ <span className="text-red-500">*</span></label>
                 <select name="groupId" value={formData.groupId} onChange={handleChange} disabled={isViewMode} className={`${inputClass} border-blue-200 focus:ring-blue-500 bg-white`} required>
                   <option value="">グループを選択してください</option>
-                  {selectableGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                  {/* 🚀 修正：プルダウンの表示名のみ変更 */}
+                  {selectableGroups.map(g => <option key={g.id} value={g.id}>{g.name === '農）カマタ' ? '農事組合法人カマタ' : g.name}</option>)}
                 </select>
               </div>
 
@@ -1527,7 +1523,6 @@ export const ActivityForm = () => {
       </main>
 
       {/* 🚀 PDF出力（印刷）用の隠しレイアウト */}
-      {/* 常にレンダリングせず、ボタンを押した時だけDOMに展開することで初期負荷をゼロにする */}
       {editData && isPreparingPrint && (() => {
         const printImages = existingUrls;
         const totalImages = printImages.length;
@@ -1538,7 +1533,6 @@ export const ActivityForm = () => {
             <table className="w-full border-2 border-black border-collapse mb-6 text-sm">
               <tbody>
                 <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">報告書No.</th><td className="border border-black p-3" colSpan="3">{editData.reportNo || '（未設定）'}</td></tr>
-                {/* 🚀 修正: 「活動項目番号」「実施場所」「支払区分」「参加人数」を削除し、レイアウトを調整 */}
                 <tr><th className="border border-black bg-gray-100 p-3 w-1/4 text-left">実施年月日</th><td className="border border-black p-3" colSpan="3">{editData.date || '（省略）'}</td></tr>
                 <tr><th className="border border-black bg-gray-100 p-3 text-left">活動内容</th><td className="border border-black p-3" colSpan="3">{editData.activityType}</td></tr>
               </tbody>

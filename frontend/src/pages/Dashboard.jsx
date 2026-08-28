@@ -119,9 +119,19 @@ export const Dashboard = () => {
     const unsubMaterials = onSnapshot(collection(db, 'materials'), (snapshot) => {
       setMaterialsList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
+    
+    // 🚀 修正：データの取得時に「農）カマタ」を「農事組合法人カマタ」に置き換える
     const unsubscribeGroups = onSnapshot(collection(db, 'groups'), (snapshot) => {
-      setGroupsList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setGroupsList(snapshot.docs.map(doc => {
+        const data = doc.data();
+        return { 
+          id: doc.id, 
+          ...data,
+          name: data.name === '農）カマタ' ? '農事組合法人カマタ' : data.name
+        };
+      }));
     });
+    
     const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
       setSystemUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
