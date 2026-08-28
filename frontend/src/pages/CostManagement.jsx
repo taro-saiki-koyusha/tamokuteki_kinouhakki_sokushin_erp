@@ -248,7 +248,6 @@ export const CostManagement = () => {
         
         personMap[participantName].paymentTotals[payCatKey] += totalIndividualCost;
 
-        // 🚀 絞り込み表示のために、元の属性データ（groupId, payCatKey）も持たせておく
         personMap[participantName].details.push({
           id: act.id,
           date: act.date,
@@ -262,7 +261,8 @@ export const CostManagement = () => {
           mCost: mCost,
           total: totalIndividualCost,
           groupId: actualGid,
-          payCatKey: payCatKey
+          payCatKey: payCatKey,
+          originalAct: act // 🚀 追加：遷移用に元の活動データを保持
         });
       });
     });
@@ -316,9 +316,8 @@ export const CostManagement = () => {
     };
   }, [filteredActivities, membersList, machinesList, materialsList, groupsList, systemUsers, userRole, myName, systemSettings.paymentDates, sortConfig]);
 
-  // 🚀 金額セルをクリックしたときの絞り込みフィルターハンドラー
   const handleCellClick = (e, person, filterFn, filterTitle) => {
-    e.stopPropagation(); // 行全体のクリックイベントを発火させない
+    e.stopPropagation(); 
     const filteredDetails = person.details.filter(filterFn);
     
     if (filteredDetails.length > 0) {
@@ -380,7 +379,6 @@ export const CostManagement = () => {
                   <FileText className="mr-2 text-blue-600" size={24} />
                   {selectedPerson.name} 様 の作業明細
                 </div>
-                {/* 🚀 追加：絞り込み条件のタイトル表示 */}
                 {selectedPerson.filterTitle && (
                   <span className="text-sm text-blue-700 bg-blue-100 px-3 py-1 rounded-lg border border-blue-200 shadow-sm ml-2">
                     {selectedPerson.filterTitle}
@@ -433,9 +431,17 @@ export const CostManagement = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {selectedPerson.details.map((detail, idx) => (
-                      <tr key={idx} className="hover:bg-gray-50 text-sm">
+                      <tr 
+                        key={idx} 
+                        className="hover:bg-blue-50 cursor-pointer transition-colors text-sm group"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/activity-form/${detail.id}`, { state: { editData: detail.originalAct, isViewMode: true } });
+                        }}
+                        title="クリックして活動の詳細を表示"
+                      >
                         <td className="p-3 text-gray-600 whitespace-nowrap">{detail.date}</td>
-                        <td className="p-3 font-bold text-gray-900 truncate max-w-[200px]" title={detail.activityType}>{detail.activityType}</td>
+                        <td className="p-3 font-bold text-gray-900 group-hover:text-blue-700 transition-colors truncate max-w-[200px]" title={detail.activityType}>{detail.activityType}</td>
                         <td className="p-3 text-blue-600 font-mono text-xs whitespace-nowrap">{detail.reportNo}</td>
                         <td className="p-3 text-xs text-gray-500">{detail.groupName}</td>
                         <td className="p-3 text-xs text-purple-600 font-bold whitespace-nowrap">{detail.paymentLabel}</td>
@@ -443,7 +449,7 @@ export const CostManagement = () => {
                         <td className="p-3 text-right text-gray-600 font-mono">¥{detail.pCost.toLocaleString()}</td>
                         <td className="p-3 text-right text-gray-600">{detail.machineTime}h</td>
                         <td className="p-3 text-right text-gray-600 font-mono">¥{detail.mCost.toLocaleString()}</td>
-                        <td className="p-3 text-right font-bold text-blue-700 bg-blue-50/30 font-mono">
+                        <td className="p-3 text-right font-bold text-blue-700 bg-blue-50/30 group-hover:bg-blue-100/50 font-mono">
                           ¥{detail.total.toLocaleString()}
                         </td>
                       </tr>
@@ -711,7 +717,6 @@ export const CostManagement = () => {
                               key={person.name} 
                               className="hover:bg-blue-50/50 transition-colors group"
                             >
-                              {/* 左端のセルはクリックで全件表示 */}
                               <td 
                                 className="p-3 pl-8 font-bold text-gray-800 whitespace-nowrap cursor-pointer group-hover:text-blue-700 sticky left-0 z-10 bg-white group-hover:bg-blue-50/50"
                                 onClick={() => setSelectedPerson(person)}
@@ -728,7 +733,6 @@ export const CostManagement = () => {
                                 const isThickBorder = idx === 0 || g.name === '鎌田町内会';
                                 return (
                                   <React.Fragment key={`d-grp-${g.id}`}>
-                                    {/* 🚀 修正：セル単体のクリックで絞り込み */}
                                     <td 
                                       className={`p-3 text-right font-mono border-l ${isThickBorder ? 'border-gray-400 border-l-2' : 'border-gray-100'} ${amount > 0 ? 'text-gray-800 font-bold cursor-pointer hover:text-blue-600 hover:bg-blue-100/50 transition-colors' : 'text-gray-300'}`}
                                       onClick={(e) => amount > 0 && handleCellClick(e, person, d => d.groupId === g.id, `絞り込み：活動グループ「${g.name}」`)}
@@ -1110,7 +1114,6 @@ export const CostManagement = () => {
           <div className="flex justify-between items-end mb-6">
             <div className="text-xl font-bold border-b border-black pb-1 min-w-[250px]">
               {selectedPerson.name} <span className="text-lg font-normal ml-2">様</span>
-              {/* 🚀 追加: PDF側にも絞り込みタイトルを表示 */}
               {selectedPerson.filterTitle && (
                 <span className="text-sm font-bold ml-4 bg-gray-100 px-2 py-1 border border-black rounded">
                   {selectedPerson.filterTitle}
