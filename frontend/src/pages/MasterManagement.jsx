@@ -11,6 +11,7 @@ export const MasterManagement = () => {
   const [materials, setMaterials] = useState([]); 
   const [systemSettings, setSystemSettings] = useState({ 
     fiscalYearStartMonth: 4,
+    targetYear: new Date().getFullYear(), // 🚀 追加：対象年度
     paymentDates: [],
     budgetAgriMaintain: 0,
     budgetResourceJoint: 0,
@@ -42,6 +43,7 @@ export const MasterManagement = () => {
         const data = docSnap.data();
         setSystemSettings({
           fiscalYearStartMonth: data.fiscalYearStartMonth || 4,
+          targetYear: data.targetYear || new Date().getFullYear(), // 🚀 追加
           paymentDates: data.paymentDates || [],
           budgetAgriMaintain: data.budgetAgriMaintain || 0,
           budgetResourceJoint: data.budgetResourceJoint || 0,
@@ -134,6 +136,7 @@ export const MasterManagement = () => {
     try {
       await setDoc(doc(db, 'settings', 'system'), {
         fiscalYearStartMonth: Number(systemSettings.fiscalYearStartMonth),
+        targetYear: Number(systemSettings.targetYear), // 🚀 追加
         paymentDates: systemSettings.paymentDates, 
         budgetAgriMaintain: Number(systemSettings.budgetAgriMaintain || 0),
         budgetResourceJoint: Number(systemSettings.budgetResourceJoint || 0),
@@ -220,6 +223,21 @@ export const MasterManagement = () => {
                     ))}
                   </select>
                   <p className="text-xs text-gray-500">※ この月を起点として、ダッシュボードや実績一覧の「年度」が自動計算されます。</p>
+                </div>
+
+                {/* 🚀 追加：対象年度の入力欄 */}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4 mt-5">
+                  <label className="text-sm font-bold text-gray-700 min-w-[150px]">対象年度（西暦）</label>
+                  <div className="flex items-center w-full sm:w-48">
+                    <input 
+                      type="number" 
+                      value={systemSettings.targetYear} 
+                      onChange={(e) => setSystemSettings({ ...systemSettings, targetYear: Number(e.target.value) })}
+                      className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 font-bold bg-white text-right"
+                    />
+                    <span className="ml-2 text-sm text-gray-600 font-bold">年</span>
+                  </div>
+                  <p className="text-xs text-gray-500">※ 支払明細書に出力される「令和〇年度」の基準となります。（例: 2026年 → 令和8年度）</p>
                 </div>
               </div>
 
@@ -320,7 +338,6 @@ export const MasterManagement = () => {
                 <p className="text-xs text-purple-600/80 mt-4">※ ここで設定した振込日が、活動実績の入力画面で選択できるようになります。</p>
               </div>
 
-              {/* 🚀 追加: 活動実績のデフォルト値設定 */}
               <div className="bg-blue-50/50 p-5 rounded-xl border border-blue-100">
                 <h3 className="font-bold text-blue-900 mb-4 flex items-center border-b border-blue-200 pb-2">
                   <Sprout className="w-5 h-5 mr-2" /> 活動実績のデフォルト値設定

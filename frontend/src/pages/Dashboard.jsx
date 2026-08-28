@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from 'react';
-// 🚀 FileCheck アイコンを追加
 import { Clock, Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock, Map, MoreVertical, Edit, Info, History, Loader2, Ticket, RefreshCw, Database, Download, UploadCloud, Archive, FileX, FileText, FileCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, doc, getDoc, deleteDoc, updateDoc, where, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -8,7 +7,6 @@ import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'fire
 import { db, auth } from '../firebase';
 import XlsxPopulate from 'xlsx-populate/browser/xlsx-populate';
 
-// 🚀 新規追加ライブラリ
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
 import JSZip from "jszip";
@@ -35,7 +33,7 @@ const formatTimestamp = (timestamp) => {
 
 export const Dashboard = () => {
   const navigate = useNavigate();
-  const storage = getStorage(); // Firebase Storage インスタンス
+  const storage = getStorage();
   
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -44,7 +42,6 @@ export const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('home');
   const [exportingId, setExportingId] = useState(null);
   
-  // 🚀 各種ローディングステータス
   const [generatingId, setGeneratingId] = useState(null);
   const [downloadingId, setDownloadingId] = useState(null);
   const [deletingDocId, setDeletingDocId] = useState(null);
@@ -120,7 +117,6 @@ export const Dashboard = () => {
       setMaterialsList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
     
-    // 🚀 修正：データの取得時に「農）カマタ」を「農事組合法人カマタ」に置き換える
     const unsubscribeGroups = onSnapshot(collection(db, 'groups'), (snapshot) => {
       setGroupsList(snapshot.docs.map(doc => {
         const data = doc.data();
@@ -1338,9 +1334,8 @@ export const Dashboard = () => {
           
           {(userRole === 'admin' || userRole === 'manager') && (
             <>
-              {/* 🚀 追加：申請管理へのリンク（PC） */}
               <button onClick={() => navigate('/applications')} className="flex items-center text-sm font-bold text-gray-500 hover:text-blue-600">
-                <FileCheck size={18} className="mr-1"/> 申請管理
+                <FileCheck size={18} className="mr-1"/> 作業明細管理
               </button>
 
               <button onClick={() => navigate('/groups')} className="flex items-center text-sm font-bold text-gray-500 hover:text-blue-600">
@@ -1385,8 +1380,7 @@ export const Dashboard = () => {
         <div className="md:hidden flex items-center w-full overflow-x-auto space-x-3 pb-1">
            {(userRole === 'admin' || userRole === 'manager') && (
             <>
-              {/* 🚀 追加：申請管理へのリンク（スマホ） */}
-              <button onClick={() => navigate('/applications')} className="p-2 text-gray-500 hover:text-blue-600 transition-colors" title="申請管理"><FileCheck size={20} /></button>
+              <button onClick={() => navigate('/applications')} className="p-2 text-gray-500 hover:text-blue-600 transition-colors" title="作業明細管理"><FileCheck size={20} /></button>
 
               <button onClick={() => navigate('/groups')} className="p-2 text-gray-500 hover:text-blue-600 transition-colors"><Users size={20} /></button>
               <button onClick={() => navigate('/costs')} className="p-2 text-gray-500 hover:text-green-600 transition-colors"><Wallet size={20} /></button>
