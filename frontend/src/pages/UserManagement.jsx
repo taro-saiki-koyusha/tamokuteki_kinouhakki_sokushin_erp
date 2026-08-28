@@ -1,12 +1,28 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-// 🚀 ログ記録用に addDoc, serverTimestamp を追加
 import { collection, doc, updateDoc, onSnapshot, setDoc, addDoc, serverTimestamp } from 'firebase/firestore'; 
 import { ArrowLeft, UserCog, Edit, Trash2, X, ShieldCheck, Mail, Wallet, Plus, CheckCircle, UserPlus, Phone, Hash, Users, Loader2, ChevronUp, ChevronDown, Copy, Sprout, Building } from 'lucide-react'; 
 import { db, auth } from '../firebase'; 
 import { initializeApp, deleteApp } from 'firebase/app'; 
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+
+// 🚀 追加：農業者区分の定義一覧
+const FARMER_TYPES = {
+  '1': '農業者個人',
+  '2': '農事組合法人',
+  '3': '営農組合',
+  '4': 'その他の農業者団体',
+  '5': '農業者以外個人',
+  '6': '自治会',
+  '7': '女性会',
+  '8': '子供会',
+  '9': '土地改良区',
+  '10': 'JA',
+  '11': '学校・PTA',
+  '12': 'NPO',
+  '13': 'その他の農業者以外団体',
+};
 
 export const UserManagement = () => {
   const navigate = useNavigate();
@@ -28,14 +44,14 @@ export const UserManagement = () => {
     password: '',
     role: 'reporter',
     memberNo: '', 
-    affiliation: '', // 🚀 追加: 所属先
+    affiliation: '', 
     groupIds: [],
     canEditOwn: false,
     canEditGroup: false,
+    farmerType: '1', // 🚀 追加：デフォルトを「1: 農業者個人」に設定
     isAgri: true
   });
 
-  // 現在操作している管理者自身の名前を取得するヘルパー関数
   const getCurrentUserName = () => {
     if (!auth.currentUser) return '不明なユーザー';
     const currentUserDoc = usersList.find(u => u.id === auth.currentUser.uid);
@@ -144,6 +160,12 @@ export const UserManagement = () => {
     }
     try {
       const { id, ...updateData } = editingUser;
+      
+      // 🚀 従来の isAgri フラグも、farmerType に合わせて自動設定
+      if (updateData.farmerType) {
+        updateData.isAgri = parseInt(updateData.farmerType, 10) <= 4;
+      }
+
       await updateDoc(doc(db, 'users', id), updateData);
 
       await addDoc(collection(db, 'audit_logs'), {
@@ -211,11 +233,12 @@ export const UserManagement = () => {
         email: loginEmail,
         role: newUser.role,
         memberNo: newUser.memberNo || '', 
-        affiliation: newUser.affiliation || '', // 🚀 所属先を保存
+        affiliation: newUser.affiliation || '', 
         groupIds: newUser.groupIds,
         canEditOwn: newUser.canEditOwn,
         canEditGroup: newUser.canEditGroup,
-        isAgri: newUser.isAgri !== false, 
+        farmerType: newUser.farmerType || '1', // 🚀 詳細区分を保存
+        isAgri: parseInt(newUser.farmerType || '1', 10) <= 4, // 🚀 互換用のフラグも保存
         createdAt: new Date()
       });
 
@@ -234,7 +257,7 @@ export const UserManagement = () => {
       setSuccessModal({ show: true, loginId: displayId, password: newUser.password });
 
       setNewUser({
-        displayName: '', phone: '', password: '', role: 'reporter', memberNo: '', affiliation: '', groupIds: [], canEditOwn: false, canEditGroup: false, isAgri: true
+        displayName: '', phone: '', password: '', role: 'reporter', memberNo: '', affiliation: '', groupIds: [], canEditOwn: false, canEditGroup: false, farmerType: '1', isAgri: true
       });
       setIsAddingUser(false);
 
@@ -375,7 +398,6 @@ export const UserManagement = () => {
                   <p className="text-[10px] text-gray-500 mt-1">※Excel出力時にこの番号が反映されます。</p>
                 </div>
 
-                {/* 🚀 追加: 所属先 */}
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">所属先 (任意)</label>
                   <div className="relative">
@@ -384,18 +406,32 @@ export const UserManagement = () => {
                   </div>
                 </div>
 
+                {/* 🚀 修正：農業者区分をセレクトボックスに変更 */}
                 <div className="pt-2 border-t border-gray-100">
                   <label className="block text-sm font-bold text-gray-700 mb-2">農業者区分</label>
-                  <div className="flex space-x-6">
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                      <input type="radio" name="newIsAgri" value="true" checked={newUser.isAgri !== false} onChange={() => setNewUser({...newUser, isAgri: true})} className="w-4 h-4 text-green-600 focus:ring-green-500" />
-                      <span className="text-sm font-bold text-gray-700">農業者</span>
-                    </label>
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                      <input type="radio" name="newIsAgri" value="false" checked={newUser.isAgri === false} onChange={() => setNewUser({...newUser, isAgri: false})} className="w-4 h-4 text-orange-500 focus:ring-orange-500" />
-                      <span className="text-sm font-bold text-gray-700">以外 (非農家等)</span>
-                    </label>
-                  </div>
+                  <select 
+                    value={newUser.farmerType || '1'} 
+                    onChange={e => setNewUser({...newUser, farmerType: e.target.value})}
+                    className="w-full border border-gray-300 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500 bg-white"
+                  >
+                    <optgroup label="【農業者】">
+                      <option value="1">農業者個人</option>
+                      <option value="2">農事組合法人</option>
+                      <option value="3">営農組合</option>
+                      <option value="4">その他の農業者団体</option>
+                    </optgroup>
+                    <optgroup label="【農業者以外】">
+                      <option value="5">農業者以外個人</option>
+                      <option value="6">自治会</option>
+                      <option value="7">女性会</option>
+                      <option value="8">子供会</option>
+                      <option value="9">土地改良区</option>
+                      <option value="10">JA</option>
+                      <option value="11">学校・PTA</option>
+                      <option value="12">NPO</option>
+                      <option value="13">その他の農業者以外団体</option>
+                    </optgroup>
+                  </select>
                 </div>
 
                 <div>
@@ -514,7 +550,6 @@ export const UserManagement = () => {
                 />
               </div>
 
-              {/* 🚀 追加: 所属先の編集フィールド */}
               <div className="mb-6">
                 <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center">
                   <Building size={16} className="mr-1 text-gray-500" />
@@ -529,21 +564,35 @@ export const UserManagement = () => {
                 />
               </div>
 
+              {/* 🚀 修正：農業者区分を詳細なセレクトボックスに変更 */}
               <div className="mb-6">
                 <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center">
                   <Sprout size={16} className="mr-1 text-gray-500" />
                   農業者区分
                 </label>
-                <div className="flex space-x-6 bg-white border border-gray-300 rounded-xl p-3">
-                  <label className="flex items-center space-x-2 cursor-pointer">
-                    <input type="radio" name="editIsAgri" value="true" checked={editingUser?.isAgri !== false} onChange={() => setEditingUser({...editingUser, isAgri: true})} className="w-4 h-4 text-green-600 focus:ring-green-500" />
-                    <span className="text-sm font-bold text-gray-700">農業者</span>
-                  </label>
-                  <label className="flex items-center space-x-2 cursor-pointer">
-                    <input type="radio" name="editIsAgri" value="false" checked={editingUser?.isAgri === false} onChange={() => setEditingUser({...editingUser, isAgri: false})} className="w-4 h-4 text-orange-500 focus:ring-orange-500" />
-                    <span className="text-sm font-bold text-gray-700">以外 (非農家等)</span>
-                  </label>
-                </div>
+                <select 
+                  value={editingUser?.farmerType || '1'} 
+                  onChange={(e) => setEditingUser({ ...editingUser, farmerType: e.target.value })}
+                  className="w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-purple-500 bg-white"
+                >
+                    <optgroup label="【農業者】">
+                      <option value="1">農業者個人</option>
+                      <option value="2">農事組合法人</option>
+                      <option value="3">営農組合</option>
+                      <option value="4">その他の農業者団体</option>
+                    </optgroup>
+                    <optgroup label="【農業者以外】">
+                      <option value="5">農業者以外個人</option>
+                      <option value="6">自治会</option>
+                      <option value="7">女性会</option>
+                      <option value="8">子供会</option>
+                      <option value="9">土地改良区</option>
+                      <option value="10">JA</option>
+                      <option value="11">学校・PTA</option>
+                      <option value="12">NPO</option>
+                      <option value="13">その他の農業者以外団体</option>
+                    </optgroup>
+                </select>
               </div>
 
               <div className="mb-6">
@@ -673,7 +722,6 @@ export const UserManagement = () => {
                     </div>
                   </th>
 
-                  {/* 🚀 追加: 所属先のヘッダー */}
                   <th onClick={() => requestSort('affiliation')} className="px-4 py-3 font-bold cursor-pointer hover:bg-gray-100 transition-colors select-none group" title="所属先で並び替え">
                     <div className="flex items-center text-gray-700">
                       所属先
@@ -721,7 +769,6 @@ export const UserManagement = () => {
                       <span className="text-sm text-gray-700 font-mono">{user.memberNo || <span className="text-gray-300 text-xs">未設定</span>}</span>
                     </td>
 
-                    {/* 🚀 追加: 所属先のデータ列 */}
                     <td className="px-4 py-4">
                       <span className="text-sm text-gray-700 font-bold">{user.affiliation || <span className="text-gray-300 text-xs">未設定</span>}</span>
                     </td>
@@ -729,10 +776,17 @@ export const UserManagement = () => {
                     <td className="px-4 py-4">
                       <div className="flex flex-col space-y-1">
                         {getRoleBadge(user.role)}
-                        {user.isAgri === false ? (
-                          <span className="bg-orange-50 text-orange-600 px-2 py-1 rounded-md text-[10px] font-bold border border-orange-100 w-max">農業者以外</span>
+                        {/* 🚀 追加：詳細な農業者区分ラベルの表示 */}
+                        {user.farmerType ? (
+                          <span className={`${parseInt(user.farmerType, 10) <= 4 ? 'bg-green-50 text-green-600 border-green-100' : 'bg-orange-50 text-orange-600 border-orange-100'} px-2 py-1 rounded-md text-[10px] font-bold border w-max`}>
+                            {FARMER_TYPES[user.farmerType]}
+                          </span>
                         ) : (
-                          <span className="bg-green-50 text-green-600 px-2 py-1 rounded-md text-[10px] font-bold border border-green-100 w-max">農業者</span>
+                          user.isAgri === false ? (
+                            <span className="bg-orange-50 text-orange-600 px-2 py-1 rounded-md text-[10px] font-bold border border-orange-100 w-max">農業者以外 (未設定)</span>
+                          ) : (
+                            <span className="bg-green-50 text-green-600 px-2 py-1 rounded-md text-[10px] font-bold border border-green-100 w-max">農業者 (未設定)</span>
+                          )
                         )}
                         {user.role === 'reporter' && (user.canEditOwn || user.canEditGroup) && (
                           <span className="text-[9px] text-blue-500 font-bold border border-blue-200 px-1.5 rounded w-max">特別編集権限あり</span>
@@ -755,7 +809,11 @@ export const UserManagement = () => {
                     
                     <td className="px-4 py-4">
                       <div className="flex justify-center space-x-2">
-                        <button onClick={() => setEditingUser(user)} className="p-2 text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors" title="権限・所属情報編集">
+                        {/* 🚀 追加：編集ボタンを押した際に旧データにデフォルト値を設定 */}
+                        <button onClick={() => setEditingUser({
+                          ...user, 
+                          farmerType: user.farmerType || (user.isAgri === false ? '5' : '1') 
+                        })} className="p-2 text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors" title="権限・所属情報編集">
                           <Edit size={16}/>
                         </button>
                         <button onClick={() => handleDelete(user.id, user.displayName || user.name)} className="p-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors" disabled={user.id === auth.currentUser?.uid} title="ユーザーを完全に削除">
