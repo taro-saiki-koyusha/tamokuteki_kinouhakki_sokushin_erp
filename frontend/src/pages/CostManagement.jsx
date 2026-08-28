@@ -248,18 +248,21 @@ export const CostManagement = () => {
         
         personMap[participantName].paymentTotals[payCatKey] += totalIndividualCost;
 
+        // 🚀 絞り込み表示のために、元の属性データ（groupId, payCatKey）も持たせておく
         personMap[participantName].details.push({
           id: act.id,
           date: act.date,
           activityType: act.activityType,
-          reportNo: act.reportNo || '-', // 🚀 追加: 報告書Noを取得
+          reportNo: act.reportNo || '-',
           groupName: groupInfo ? groupInfo.name : '未登録',
           paymentLabel: paymentLabel, 
           workTime: pd.workTime || 0,
           pCost: pCost,
           machineTime: pd.machineTime || 0,
           mCost: mCost,
-          total: totalIndividualCost
+          total: totalIndividualCost,
+          groupId: actualGid,
+          payCatKey: payCatKey
         });
       });
     });
@@ -313,6 +316,24 @@ export const CostManagement = () => {
     };
   }, [filteredActivities, membersList, machinesList, materialsList, groupsList, systemUsers, userRole, myName, systemSettings.paymentDates, sortConfig]);
 
+  // 🚀 金額セルをクリックしたときの絞り込みフィルターハンドラー
+  const handleCellClick = (e, person, filterFn, filterTitle) => {
+    e.stopPropagation(); // 行全体のクリックイベントを発火させない
+    const filteredDetails = person.details.filter(filterFn);
+    
+    if (filteredDetails.length > 0) {
+      setSelectedPerson({
+        ...person,
+        filterTitle: filterTitle,
+        details: filteredDetails,
+        pCost: filteredDetails.reduce((sum, d) => sum + d.pCost, 0),
+        mCost: filteredDetails.reduce((sum, d) => sum + d.mCost, 0),
+        workTime: filteredDetails.reduce((sum, d) => sum + d.workTime, 0),
+        machineTime: filteredDetails.reduce((sum, d) => sum + d.machineTime, 0),
+      });
+    }
+  };
+
   const handleExportDummy = () => {
     alert("全員分の支払明細一括出力機能は現在準備中です。\n※個人別の明細は、表の名前をクリックして「PDF出力」から印刷可能です。");
   };
@@ -354,9 +375,17 @@ export const CostManagement = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm no-print" onClick={() => setSelectedPerson(null)}>
           <div className="bg-white w-full max-w-6xl max-h-[90vh] rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center p-4 md:p-5 border-b border-gray-100 bg-gray-50">
-              <h2 className="text-lg md:text-xl font-bold text-gray-800 flex items-center">
-                <FileText className="mr-2 text-blue-600" size={24} />
-                {selectedPerson.name} 様 の作業明細
+              <h2 className="text-lg md:text-xl font-bold text-gray-800 flex items-center flex-wrap gap-2">
+                <div className="flex items-center">
+                  <FileText className="mr-2 text-blue-600" size={24} />
+                  {selectedPerson.name} 様 の作業明細
+                </div>
+                {/* 🚀 追加：絞り込み条件のタイトル表示 */}
+                {selectedPerson.filterTitle && (
+                  <span className="text-sm text-blue-700 bg-blue-100 px-3 py-1 rounded-lg border border-blue-200 shadow-sm ml-2">
+                    {selectedPerson.filterTitle}
+                  </span>
+                )}
               </h2>
               <div className="flex items-center space-x-2">
                 <button onClick={handlePrintDetail} className="bg-gray-800 text-white px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-sm font-bold flex items-center hover:bg-gray-700 transition-colors shadow-sm">
@@ -392,7 +421,6 @@ export const CostManagement = () => {
                     <tr className="bg-gray-50 text-xs text-gray-500 border-b border-gray-200">
                       <th className="p-3 font-bold">日付</th>
                       <th className="p-3 font-bold">活動内容</th>
-                      {/* 🚀 追加: 報告書No */}
                       <th className="p-3 font-bold">報告書No.</th>
                       <th className="p-3 font-bold">グループ</th>
                       <th className="p-3 font-bold">振込時期</th> 
@@ -408,7 +436,6 @@ export const CostManagement = () => {
                       <tr key={idx} className="hover:bg-gray-50 text-sm">
                         <td className="p-3 text-gray-600 whitespace-nowrap">{detail.date}</td>
                         <td className="p-3 font-bold text-gray-900 truncate max-w-[200px]" title={detail.activityType}>{detail.activityType}</td>
-                        {/* 🚀 追加: 報告書No */}
                         <td className="p-3 text-blue-600 font-mono text-xs whitespace-nowrap">{detail.reportNo}</td>
                         <td className="p-3 text-xs text-gray-500">{detail.groupName}</td>
                         <td className="p-3 text-xs text-purple-600 font-bold whitespace-nowrap">{detail.paymentLabel}</td>
@@ -583,7 +610,7 @@ export const CostManagement = () => {
                         key={idx} 
                         className="hover:bg-blue-50 transition-colors cursor-pointer group"
                         onClick={() => setSelectedPerson(person)}
-                        title="クリックして明細を表示"
+                        title="クリックして明細を全件表示"
                       >
                         <td className="p-4 font-bold text-gray-800 whitespace-nowrap group-hover:text-blue-700">
                           {person.name} 
@@ -682,11 +709,14 @@ export const CostManagement = () => {
                           {membersInAff.map((person) => (
                             <tr 
                               key={person.name} 
-                              className="hover:bg-blue-50/50 transition-colors cursor-pointer group"
-                              onClick={() => setSelectedPerson(person)}
-                              title="クリックして明細を表示"
+                              className="hover:bg-blue-50/50 transition-colors group"
                             >
-                              <td className="p-3 pl-8 font-bold text-gray-800 whitespace-nowrap group-hover:text-blue-700 sticky left-0 z-10 bg-white group-hover:bg-blue-50/50">
+                              {/* 左端のセルはクリックで全件表示 */}
+                              <td 
+                                className="p-3 pl-8 font-bold text-gray-800 whitespace-nowrap cursor-pointer group-hover:text-blue-700 sticky left-0 z-10 bg-white group-hover:bg-blue-50/50"
+                                onClick={() => setSelectedPerson(person)}
+                                title="クリックして明細を全件表示"
+                              >
                                 {person.name} 
                                 <span className="text-xs text-gray-400 font-normal ml-2 font-mono">
                                   {person.memberNo ? `(${person.memberNo})` : '(-)'}
@@ -698,15 +728,23 @@ export const CostManagement = () => {
                                 const isThickBorder = idx === 0 || g.name === '鎌田町内会';
                                 return (
                                   <React.Fragment key={`d-grp-${g.id}`}>
-                                    <td className={`p-3 text-right font-mono border-l ${isThickBorder ? 'border-gray-400 border-l-2' : 'border-gray-100'} ${amount > 0 ? 'text-gray-800 font-bold' : 'text-gray-300'}`}>
+                                    {/* 🚀 修正：セル単体のクリックで絞り込み */}
+                                    <td 
+                                      className={`p-3 text-right font-mono border-l ${isThickBorder ? 'border-gray-400 border-l-2' : 'border-gray-100'} ${amount > 0 ? 'text-gray-800 font-bold cursor-pointer hover:text-blue-600 hover:bg-blue-100/50 transition-colors' : 'text-gray-300'}`}
+                                      onClick={(e) => amount > 0 && handleCellClick(e, person, d => d.groupId === g.id, `絞り込み：活動グループ「${g.name}」`)}
+                                      title={amount > 0 ? "クリックして該当の明細のみを表示" : ""}
+                                    >
                                       {amount > 0 ? `¥${amount.toLocaleString()}` : '-'}
                                     </td>
                                     {g.id === lastSubtotalGroup?.id && (() => {
-                                      const pSubtotal = sortedGroupsList
-                                        .filter(sg => subtotalGroupNames.includes(sg.name))
-                                        .reduce((sum, sg) => sum + (person.groupTotals[sg.id] || 0), 0);
+                                      const subGIds = sortedGroupsList.filter(sg => subtotalGroupNames.includes(sg.name)).map(sg => sg.id);
+                                      const pSubtotal = subGIds.reduce((sum, gid) => sum + (person.groupTotals[gid] || 0), 0);
                                       return (
-                                        <td className={`p-3 text-right font-mono border-l-2 border-gray-400 bg-orange-50/30 ${pSubtotal > 0 ? 'text-gray-800 font-bold' : 'text-gray-300'}`}>
+                                        <td 
+                                          className={`p-3 text-right font-mono border-l-2 border-gray-400 bg-orange-50/30 ${pSubtotal > 0 ? 'text-gray-800 font-bold cursor-pointer hover:text-blue-600 hover:bg-orange-100/50 transition-colors' : 'text-gray-300'}`}
+                                          onClick={(e) => pSubtotal > 0 && handleCellClick(e, person, d => subGIds.includes(d.groupId), `絞り込み：個人・法人小計`)}
+                                          title={pSubtotal > 0 ? "クリックして該当の明細のみを表示" : ""}
+                                        >
                                           {pSubtotal > 0 ? `¥${pSubtotal.toLocaleString()}` : '-'}
                                         </td>
                                       );
@@ -715,11 +753,19 @@ export const CostManagement = () => {
                                 );
                               })}
                               
-                              <td className={`p-3 text-right font-mono border-l border-gray-100 ${(person.groupTotals['other'] || 0) > 0 ? 'text-gray-800 font-bold' : 'text-gray-300'}`}>
+                              <td 
+                                className={`p-3 text-right font-mono border-l border-gray-100 ${(person.groupTotals['other'] || 0) > 0 ? 'text-gray-800 font-bold cursor-pointer hover:text-blue-600 hover:bg-blue-100/50 transition-colors' : 'text-gray-300'}`}
+                                onClick={(e) => (person.groupTotals['other'] || 0) > 0 && handleCellClick(e, person, d => d.groupId === 'other', `絞り込み：未登録・その他`)}
+                                title={(person.groupTotals['other'] || 0) > 0 ? "クリックして該当の明細のみを表示" : ""}
+                              >
                                 {(person.groupTotals['other'] || 0) > 0 ? `¥${(person.groupTotals['other']).toLocaleString()}` : '-'}
                               </td>
 
-                              <td className="p-3 text-right font-black text-blue-700 bg-blue-50/30 font-mono text-base border-l-2 border-gray-400 group-hover:bg-blue-100/50">
+                              <td 
+                                className="p-3 text-right font-black text-blue-700 bg-blue-50/30 font-mono text-base border-l-2 border-gray-400 group-hover:bg-blue-100/50 cursor-pointer hover:text-blue-900 transition-colors"
+                                onClick={() => setSelectedPerson(person)}
+                                title="クリックして明細を全件表示"
+                              >
                                 ¥{(person.pCost + person.mCost).toLocaleString()}
                               </td>
                             </tr>
@@ -875,11 +921,13 @@ export const CostManagement = () => {
                           {membersInAff.map((person) => (
                             <tr 
                               key={person.name} 
-                              className="hover:bg-blue-50/50 transition-colors cursor-pointer group"
-                              onClick={() => setSelectedPerson(person)}
-                              title="クリックして明細を表示"
+                              className="hover:bg-blue-50/50 transition-colors group"
                             >
-                              <td className="p-3 pl-8 font-bold text-gray-800 whitespace-nowrap group-hover:text-blue-700 sticky left-0 z-10 bg-white group-hover:bg-blue-50/50">
+                              <td 
+                                className="p-3 pl-8 font-bold text-gray-800 whitespace-nowrap cursor-pointer group-hover:text-blue-700 sticky left-0 z-10 bg-white group-hover:bg-blue-50/50"
+                                onClick={() => setSelectedPerson(person)}
+                                title="クリックして明細を全件表示"
+                              >
                                 {person.name} 
                                 <span className="text-xs text-gray-400 font-normal ml-2 font-mono">
                                   {person.memberNo ? `(${person.memberNo})` : '(-)'}
@@ -889,17 +937,30 @@ export const CostManagement = () => {
                               {PAYMENT_CATEGORIES.map(cat => {
                                 const amount = person.paymentTotals[cat.id] || 0;
                                 return (
-                                  <td key={`d-pay-${cat.id}`} className={`p-3 text-right font-mono border-l border-gray-100 ${amount > 0 ? 'text-gray-800 font-bold' : 'text-gray-300'}`}>
+                                  <td 
+                                    key={`d-pay-${cat.id}`} 
+                                    className={`p-3 text-right font-mono border-l border-gray-100 ${amount > 0 ? 'text-gray-800 font-bold cursor-pointer hover:text-blue-600 hover:bg-blue-100/50 transition-colors' : 'text-gray-300'}`}
+                                    onClick={(e) => amount > 0 && handleCellClick(e, person, d => d.payCatKey === cat.id, `絞り込み：支払区分「${cat.label}」`)}
+                                    title={amount > 0 ? "クリックして該当の明細のみを表示" : ""}
+                                  >
                                     {amount > 0 ? `¥${amount.toLocaleString()}` : '-'}
                                   </td>
                                 );
                               })}
                               
-                              <td className={`p-3 text-right font-mono border-l border-gray-100 ${(person.paymentTotals['other'] || 0) > 0 ? 'text-gray-800 font-bold' : 'text-gray-300'}`}>
+                              <td 
+                                className={`p-3 text-right font-mono border-l border-gray-100 ${(person.paymentTotals['other'] || 0) > 0 ? 'text-gray-800 font-bold cursor-pointer hover:text-blue-600 hover:bg-blue-100/50 transition-colors' : 'text-gray-300'}`}
+                                onClick={(e) => (person.paymentTotals['other'] || 0) > 0 && handleCellClick(e, person, d => d.payCatKey === 'other', `絞り込み：未登録・その他`)}
+                                title={(person.paymentTotals['other'] || 0) > 0 ? "クリックして該当の明細のみを表示" : ""}
+                              >
                                 {(person.paymentTotals['other'] || 0) > 0 ? `¥${(person.paymentTotals['other']).toLocaleString()}` : '-'}
                               </td>
 
-                              <td className="p-3 text-right font-black text-blue-700 bg-blue-50/30 font-mono text-base border-l-2 border-gray-400 group-hover:bg-blue-100/50">
+                              <td 
+                                className="p-3 text-right font-black text-blue-700 bg-blue-50/30 font-mono text-base border-l-2 border-gray-400 group-hover:bg-blue-100/50 cursor-pointer hover:text-blue-900 transition-colors"
+                                onClick={() => setSelectedPerson(person)}
+                                title="クリックして明細を全件表示"
+                              >
                                 ¥{(person.pCost + person.mCost).toLocaleString()}
                               </td>
                             </tr>
@@ -1049,6 +1110,12 @@ export const CostManagement = () => {
           <div className="flex justify-between items-end mb-6">
             <div className="text-xl font-bold border-b border-black pb-1 min-w-[250px]">
               {selectedPerson.name} <span className="text-lg font-normal ml-2">様</span>
+              {/* 🚀 追加: PDF側にも絞り込みタイトルを表示 */}
+              {selectedPerson.filterTitle && (
+                <span className="text-sm font-bold ml-4 bg-gray-100 px-2 py-1 border border-black rounded">
+                  {selectedPerson.filterTitle}
+                </span>
+              )}
             </div>
             <div className="text-right">
               <div className="text-sm mb-1">出力日: {new Date().toLocaleDateString('ja-JP')}</div>
@@ -1082,7 +1149,6 @@ export const CostManagement = () => {
               <tr className="bg-gray-100">
                 <th className="border border-black p-2 text-center w-24">日付</th>
                 <th className="border border-black p-2 text-center">活動内容</th>
-                {/* 🚀 追加: 印刷レイアウトの報告書No */}
                 <th className="border border-black p-2 text-center w-24">報告書No.</th>
                 <th className="border border-black p-2 text-center w-24">振込時期</th> 
                 <th className="border border-black p-2 text-center w-16">作業時間</th>
@@ -1097,7 +1163,6 @@ export const CostManagement = () => {
                 <tr key={idx}>
                   <td className="border border-black p-2 text-center">{detail.date}</td>
                   <td className="border border-black p-2">{detail.activityType}</td>
-                  {/* 🚀 追加: 印刷レイアウトの報告書Noデータ */}
                   <td className="border border-black p-2 text-center">{detail.reportNo}</td>
                   <td className="border border-black p-2 text-center">{detail.paymentLabel}</td> 
                   <td className="border border-black p-2 text-right">{detail.workTime} h</td>
