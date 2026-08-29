@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { ArrowLeft, Calendar, FileSpreadsheet, UploadCloud, CheckCircle, AlertTriangle, Download, List, FileCheck, Info, Loader2, BarChart2, Printer, X } from 'lucide-react';
+import { ArrowLeft, Calendar, FileSpreadsheet, UploadCloud, CheckCircle, AlertTriangle, Download, List, FileCheck, Info, Loader2, BarChart2, Printer, X, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { collection, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -27,10 +27,12 @@ export const ApplicationManagement = () => {
   const [importedWorkbook, setImportedWorkbook] = useState(null);
   const [analysisDone, setAnalysisDone] = useState(false);
 
+  // 🚀 タブと選択ステートの追加
+  const [activeTab, setActiveTab] = useState('activities'); // 'activities' or 'participants'
   const [selectedActivityIds, setSelectedActivityIds] = useState([]);
+  const [selectedParticipantNames, setSelectedParticipantNames] = useState([]);
+
   const [isPrinting, setIsPrinting] = useState(false);
-  
-  // 🚀 発行日指定モーダル用のステート
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [printDate, setPrintDate] = useState(new Date().toISOString().split('T')[0]);
 
@@ -106,7 +108,6 @@ export const ApplicationManagement = () => {
     return paymentOptions.find(o => o.value === selectedPayment)?.label || "未設定";
   }, [selectedPayment, paymentOptions]);
 
-  // 🚀 支払明細書の「振込日」印字用に、選択された振込時期の日付を抽出
   const selectedPaymentDate = useMemo(() => {
     const opt = paymentOptions.find(o => o.value === selectedPayment);
     return opt && opt.date ? opt.date : "未定";
@@ -153,11 +154,10 @@ export const ApplicationManagement = () => {
     return displayUserName.replace(/[\s ]/g, '');
   }, [displayUserName]);
 
-  const pdfPersonSummaries = useMemo(() => {
+  // 🚀 全参加者の集計（参加者一覧タブ用）
+  const allParticipantsSummary = useMemo(() => {
     const summary = {};
-    const selectedActs = filteredActivities.filter(a => selectedActivityIds.includes(a.id));
-
-    selectedActs.forEach(act => {
+    filteredActivities.forEach(act => {
       (act.participantDetails || []).forEach(detail => {
         const wId = detail.wageId || detail.memberId;
         const wage = membersList.find(m => m.id === wId);
@@ -198,12 +198,68 @@ export const ApplicationManagement = () => {
     });
 
     const allSummaries = Object.values(summary).sort((a, b) => b.grandTotal - a.grandTotal);
-
     if (userRole === 'admin' || userRole === 'manager') {
       return allSummaries; 
     }
     return allSummaries.filter(p => p.normName === normalizedDisplayUserName);
-  }, [filteredActivities, selectedActivityIds, membersList, machinesList, userRole, normalizedDisplayUserName]);
+  }, [filteredActivities, membersList, machinesList, userRole, normalizedDisplayUserName]);
+
+  // 🚀 PDF出力用のデータをタブの状態に応じて切り替え
+  const targetPdfSummaries = useMemo(() => {
+    if (activeTab === 'activities') {
+      const summary = {};
+      const selectedActs = filteredActivities.filter(a => selectedActivityIds.includes(a.id));
+
+      selectedActs.forEach(act => {
+        (act.participantDetails || []).forEach(detail => {
+          const wId = detail.wageId || detail.memberId;
+          const wage = membersList.find(m => m.id === wId);
+          const memberWage = wage ? (wage.defaultWage || 0) : 0;
+          const memberTotal = (detail.workTime || 0) * memberWage;
+
+          const machine = machinesList.find(m => m.id === detail.machineId);
+          const machinePrice = machine ? (machine.defaultPrice || 0) : 0;
+          const machineTotal = (detail.machineTime || 0) * machinePrice;
+
+          const personName = detail.participantName || wage?.name || '名称未設定';
+          const normName = personName.replace(/[\s ]/g, '');
+
+          if (!summary[normName]) {
+            summary[normName] = {
+              name: personName,
+              normName: normName,
+              wageTotal: 0,
+              machineTotal: 0,
+              grandTotal: 0,
+              details: []
+            };
+          }
+
+          if (memberTotal > 0 || machineTotal > 0) {
+            summary[normName].wageTotal += memberTotal;
+            summary[normName].machineTotal += machineTotal;
+            summary[normName].grandTotal += (memberTotal + machineTotal);
+            summary[normName].details.push({
+              date: act.date,
+              activityName: act.activityType,
+              wage: memberTotal,
+              machine: machineTotal,
+              total: memberTotal + machineTotal
+            });
+          }
+        });
+      });
+
+      const allSummaries = Object.values(summary).sort((a, b) => b.grandTotal - a.grandTotal);
+      if (userRole === 'admin' || userRole === 'manager') {
+        return allSummaries; 
+      }
+      return allSummaries.filter(p => p.normName === normalizedDisplayUserName);
+    } else {
+      // 参加者タブが選択されている場合は、選択した参加者のみ抽出
+      return allParticipantsSummary.filter(p => selectedParticipantNames.includes(p.normName));
+    }
+  }, [activeTab, filteredActivities, selectedActivityIds, allParticipantsSummary, selectedParticipantNames, membersList, machinesList, userRole, normalizedDisplayUserName]);
 
   const annualSummary = useMemo(() => {
     const categories = [
@@ -502,9 +558,22 @@ export const ApplicationManagement = () => {
     setSelectedActivityIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
-  // 🚀 PDF作成ボタンで直接印刷画面ではなく、日付指定モーダルを開くように変更
+  // 🚀 参加者の全選択・解除
+  const handleSelectAllParticipants = (e) => {
+    if (e.target.checked) {
+        setSelectedParticipantNames(allParticipantsSummary.map(p => p.normName));
+    } else {
+        setSelectedParticipantNames([]);
+    }
+  };
+
+  // 🚀 参加者の個別選択・解除
+  const toggleParticipantSelect = (normName) => {
+    setSelectedParticipantNames(prev => prev.includes(normName) ? prev.filter(x => x !== normName) : [...prev, normName]);
+  };
+
   const handleGenerateReceipts = () => {
-    if (pdfPersonSummaries.length === 0) return;
+    if (targetPdfSummaries.length === 0) return;
     setIsPrintModalOpen(true);
   };
 
@@ -589,6 +658,7 @@ export const ApplicationManagement = () => {
                         setMismatches([]);
                         setImportedWorkbook(null);
                         setSelectedActivityIds([]); 
+                        setSelectedParticipantNames([]); // 🚀 絞り込み変更時に選択をリセット
                     }} 
                     className="w-full md:w-1/2 box-border border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-blue-500 bg-white font-bold"
                   >
@@ -609,6 +679,7 @@ export const ApplicationManagement = () => {
                   onChange={e => {
                       setSelectedPayment(e.target.value);
                       setSelectedActivityIds([]); 
+                      setSelectedParticipantNames([]);
                   }} 
                   className="w-full md:w-1/2 box-border border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-blue-500 bg-white font-bold"
                 >
@@ -689,89 +760,164 @@ export const ApplicationManagement = () => {
                 )}
 
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                  {/* 🚀 タブの追加 */}
+                  <div className="flex border-b border-gray-200">
+                    <button 
+                      onClick={() => setActiveTab('activities')} 
+                      className={`flex-1 py-3.5 font-bold text-sm transition-colors flex justify-center items-center ${activeTab === 'activities' ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}
+                    >
+                      <List className="w-4 h-4 mr-2" /> 申請対象の活動一覧
+                    </button>
+                    <button 
+                      onClick={() => setActiveTab('participants')} 
+                      className={`flex-1 py-3.5 font-bold text-sm transition-colors flex justify-center items-center ${activeTab === 'participants' ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}
+                    >
+                      <Users className="w-4 h-4 mr-2" /> 参加者・支払額一覧
+                    </button>
+                  </div>
+                  
                   <div className="p-4 bg-gray-50 border-b flex justify-between items-center flex-wrap gap-3">
-                    <h2 className="font-bold text-gray-800 flex items-center"><List className="mr-2 text-purple-600"/> 申請対象の活動一覧 ({filteredActivities.length}件)</h2>
-                    {selectedActivityIds.length > 0 && pdfPersonSummaries.length > 0 && (
+                    <h2 className="font-bold text-gray-800 flex items-center">
+                      {activeTab === 'activities' ? (
+                        <><List className="mr-2 text-purple-600"/> 申請対象の活動一覧 ({filteredActivities.length}件)</>
+                      ) : (
+                        <><Users className="mr-2 text-purple-600"/> 参加者一覧 ({allParticipantsSummary.length}名)</>
+                      )}
+                    </h2>
+                    {((activeTab === 'activities' && selectedActivityIds.length > 0) || 
+                      (activeTab === 'participants' && selectedParticipantNames.length > 0)) && (
                       <button 
                         onClick={handleGenerateReceipts} 
                         className="bg-green-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold flex items-center hover:bg-green-700 transition-colors shadow-sm active:scale-95"
                       >
                         <Printer size={16} className="mr-2" />
-                        選択した活動の支払明細書をPDF出力
+                        {activeTab === 'activities' ? '選択した活動の' : '選択した参加者の'}支払明細書を作成
                       </button>
                     )}
                   </div>
+
                   <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm whitespace-nowrap">
-                      <thead className="bg-gray-100 text-gray-600 font-bold border-b border-gray-200">
-                        <tr>
-                          <th className="p-3 text-center w-12">
-                            <input 
-                              type="checkbox" 
-                              checked={filteredActivities.length > 0 && selectedActivityIds.length === filteredActivities.length}
-                              onChange={handleSelectAllActivities}
-                              className="w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500 cursor-pointer" 
-                            />
-                          </th>
-                          <th className="p-3 text-center w-12">No.</th>
-                          <th className="p-3">日付</th>
-                          <th className="p-3">時間帯</th>
-                          <th className="p-3">活動内容</th>
-                          <th className="p-3">報告書NO</th>
-                          <th className="p-3 text-right">日当合計</th>
-                          <th className="p-3 text-right">機械利用料計</th>
-                          <th className="p-3 text-right text-blue-800">合計金額</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredActivities.length === 0 ? (
-                            <tr><td colSpan="9" className="p-6 text-center text-gray-400 font-bold">この申請時期に該当する活動はありません</td></tr>
-                        ) : (
-                            <>
-                                {filteredActivities.map((act, index) => {
-                                    const cost = calculateCost(act);
-                                    const isChecked = selectedActivityIds.includes(act.id);
-                                    return (
-                                        <tr key={act.id} className={`border-b border-gray-50 hover:bg-green-50 transition-colors cursor-pointer ${isChecked ? 'bg-[#ebf7ee]' : ''}`} onClick={() => navigate(`/activity-form/${act.id}`, { state: { isViewMode: true }})}>
-                                            <td className="p-3 text-center" onClick={e => e.stopPropagation()}>
-                                              <input 
-                                                type="checkbox" 
-                                                checked={isChecked}
-                                                onChange={() => toggleActivitySelect(act.id)}
-                                                className="w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500 cursor-pointer" 
-                                              />
-                                            </td>
-                                            <td className="p-3 text-center text-gray-500 font-mono">{index + 1}</td>
-                                            <td className="p-3">{act.date}</td>
-                                            <td className="p-3 font-mono">{act.startTime}〜{act.endTime}</td>
-                                            <td className="p-3 font-bold text-gray-800 truncate max-w-[200px]" title={act.activityType}>{act.activityType}</td>
-                                            <td className="p-3 font-bold text-blue-600">{act.reportNo}</td>
-                                            <td className="p-3 text-right font-mono text-gray-600">¥{cost.pCost.toLocaleString()}</td>
-                                            <td className="p-3 text-right font-mono text-gray-600">¥{cost.mCost.toLocaleString()}</td>
-                                            <td className="p-3 text-right font-mono font-bold text-blue-800">¥{cost.total.toLocaleString()}</td>
-                                        </tr>
-                                    );
-                                })}
+                    {activeTab === 'activities' ? (
+                      <table className="w-full text-left text-sm whitespace-nowrap">
+                        <thead className="bg-gray-100 text-gray-600 font-bold border-b border-gray-200">
+                          <tr>
+                            <th className="p-3 text-center w-12">
+                              <input 
+                                type="checkbox" 
+                                checked={filteredActivities.length > 0 && selectedActivityIds.length === filteredActivities.length}
+                                onChange={handleSelectAllActivities}
+                                className="w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500 cursor-pointer" 
+                              />
+                            </th>
+                            <th className="p-3 text-center w-12">No.</th>
+                            <th className="p-3">日付</th>
+                            <th className="p-3">時間帯</th>
+                            <th className="p-3">活動内容</th>
+                            <th className="p-3">報告書NO</th>
+                            <th className="p-3 text-right">日当合計</th>
+                            <th className="p-3 text-right">機械利用料計</th>
+                            <th className="p-3 text-right text-blue-800">合計金額</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredActivities.length === 0 ? (
+                              <tr><td colSpan="9" className="p-6 text-center text-gray-400 font-bold">この申請時期に該当する活動はありません</td></tr>
+                          ) : (
+                              <>
+                                  {filteredActivities.map((act, index) => {
+                                      const cost = calculateCost(act);
+                                      const isChecked = selectedActivityIds.includes(act.id);
+                                      return (
+                                          <tr key={act.id} className={`border-b border-gray-50 hover:bg-green-50 transition-colors cursor-pointer ${isChecked ? 'bg-[#ebf7ee]' : ''}`} onClick={() => navigate(`/activity-form/${act.id}`, { state: { isViewMode: true }})}>
+                                              <td className="p-3 text-center" onClick={e => e.stopPropagation()}>
+                                                <input 
+                                                  type="checkbox" 
+                                                  checked={isChecked}
+                                                  onChange={() => toggleActivitySelect(act.id)}
+                                                  className="w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500 cursor-pointer" 
+                                                />
+                                              </td>
+                                              <td className="p-3 text-center text-gray-500 font-mono">{index + 1}</td>
+                                              <td className="p-3">{act.date}</td>
+                                              <td className="p-3 font-mono">{act.startTime}〜{act.endTime}</td>
+                                              <td className="p-3 font-bold text-gray-800 truncate max-w-[200px]" title={act.activityType}>{act.activityType}</td>
+                                              <td className="p-3 font-bold text-blue-600">{act.reportNo}</td>
+                                              <td className="p-3 text-right font-mono text-gray-600">¥{cost.pCost.toLocaleString()}</td>
+                                              <td className="p-3 text-right font-mono text-gray-600">¥{cost.mCost.toLocaleString()}</td>
+                                              <td className="p-3 text-right font-mono font-bold text-blue-800">¥{cost.total.toLocaleString()}</td>
+                                          </tr>
+                                      );
+                                  })}
 
-                                {categoryTotals.map((cat, idx) => (
-                                    <tr key={`cat-${idx}`} className="bg-gray-50 border-t border-gray-200">
-                                        <td className="p-3 text-right font-bold text-gray-600" colSpan="6">【小計】 {cat.name}</td>
-                                        <td className="p-3 text-right font-mono text-gray-600">¥{cat.pCost.toLocaleString()}</td>
-                                        <td className="p-3 text-right font-mono text-gray-600">¥{cat.mCost.toLocaleString()}</td>
-                                        <td className="p-3 text-right font-mono font-bold text-gray-700">¥{cat.total.toLocaleString()}</td>
-                                    </tr>
-                                ))}
+                                  {categoryTotals.map((cat, idx) => (
+                                      <tr key={`cat-${idx}`} className="bg-gray-50 border-t border-gray-200">
+                                          <td className="p-3 text-right font-bold text-gray-600" colSpan="6">【小計】 {cat.name}</td>
+                                          <td className="p-3 text-right font-mono text-gray-600">¥{cat.pCost.toLocaleString()}</td>
+                                          <td className="p-3 text-right font-mono text-gray-600">¥{cat.mCost.toLocaleString()}</td>
+                                          <td className="p-3 text-right font-mono font-bold text-gray-700">¥{cat.total.toLocaleString()}</td>
+                                      </tr>
+                                  ))}
 
-                                <tr className="bg-blue-50/50 border-t-2 border-blue-200 font-bold">
-                                    <td className="p-3 text-center text-blue-800" colSpan="6">総合計</td>
-                                    <td className="p-3 text-right font-mono text-blue-800">¥{totals.pCost.toLocaleString()}</td>
-                                    <td className="p-3 text-right font-mono text-blue-800">¥{totals.mCost.toLocaleString()}</td>
-                                    <td className="p-3 text-right font-mono text-blue-900 text-lg">¥{totals.total.toLocaleString()}</td>
+                                  <tr className="bg-blue-50/50 border-t-2 border-blue-200 font-bold">
+                                      <td className="p-3 text-center text-blue-800" colSpan="6">総合計</td>
+                                      <td className="p-3 text-right font-mono text-blue-800">¥{totals.pCost.toLocaleString()}</td>
+                                      <td className="p-3 text-right font-mono text-blue-800">¥{totals.mCost.toLocaleString()}</td>
+                                      <td className="p-3 text-right font-mono text-blue-900 text-lg">¥{totals.total.toLocaleString()}</td>
+                                  </tr>
+                              </>
+                          )}
+                        </tbody>
+                      </table>
+                    ) : (
+                      // 🚀 参加者一覧タブの表示
+                      <table className="w-full text-left text-sm whitespace-nowrap">
+                        <thead className="bg-gray-100 text-gray-600 font-bold border-b border-gray-200">
+                          <tr>
+                            <th className="p-3 text-center w-12">
+                              <input 
+                                type="checkbox" 
+                                checked={allParticipantsSummary.length > 0 && selectedParticipantNames.length === allParticipantsSummary.length}
+                                onChange={handleSelectAllParticipants}
+                                className="w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500 cursor-pointer" 
+                              />
+                            </th>
+                            <th className="p-3">氏名</th>
+                            <th className="p-3 text-right">日当合計</th>
+                            <th className="p-3 text-right">機械利用料計</th>
+                            <th className="p-3 text-right text-blue-800">支払合計額</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {allParticipantsSummary.length === 0 ? (
+                            <tr><td colSpan="5" className="p-6 text-center text-gray-400 font-bold">この申請時期に該当する参加者はいません</td></tr>
+                          ) : (
+                            allParticipantsSummary.map((person) => {
+                              const isChecked = selectedParticipantNames.includes(person.normName);
+                              return (
+                                <tr 
+                                  key={person.normName} 
+                                  className={`border-b border-gray-50 hover:bg-green-50 transition-colors cursor-pointer ${isChecked ? 'bg-[#ebf7ee]' : ''}`} 
+                                  onClick={() => toggleParticipantSelect(person.normName)}
+                                >
+                                  <td className="p-3 text-center" onClick={e => e.stopPropagation()}>
+                                    <input 
+                                      type="checkbox" 
+                                      checked={isChecked}
+                                      onChange={() => toggleParticipantSelect(person.normName)}
+                                      className="w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500 cursor-pointer" 
+                                    />
+                                  </td>
+                                  <td className="p-3 font-bold text-gray-800">{person.name}</td>
+                                  <td className="p-3 text-right font-mono text-gray-600">¥{person.wageTotal.toLocaleString()}</td>
+                                  <td className="p-3 text-right font-mono text-gray-600">¥{person.machineTotal.toLocaleString()}</td>
+                                  <td className="p-3 text-right font-mono font-bold text-blue-800">¥{person.grandTotal.toLocaleString()}</td>
                                 </tr>
-                            </>
-                        )}
-                      </tbody>
-                    </table>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    )}
                   </div>
                 </div>
 
@@ -855,16 +1001,23 @@ export const ApplicationManagement = () => {
           </div>
           
           <div style={{ backgroundColor: '#f3f4f6', padding: '20px 0' }} className="print:bg-white print:p-0">
-            {pdfPersonSummaries.map((person) => (
+            {targetPdfSummaries.map((person) => (
               <div 
                 key={person.normName} 
                 className="print-page"
                 style={{ 
-                  width: '100%', maxWidth: '210mm', margin: '0 auto 20px auto', padding: '20mm', 
-                  backgroundColor: 'white', color: 'black', fontFamily: '"Noto Serif JP", "Mincho", serif', 
-                  boxSizing: 'border-box', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                  width: '100%', 
+                  maxWidth: '210mm',
+                  margin: '0 auto 20px auto', 
+                  padding: '20mm', 
+                  backgroundColor: 'white', 
+                  color: 'black', 
+                  fontFamily: '"Noto Serif JP", "Mincho", serif', 
+                  boxSizing: 'border-box',
+                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
                 }}
               >
+                
                 <div style={{ textAlign: 'center', marginBottom: '40px' }}>
                   <h1 style={{ fontSize: '24px', fontWeight: 'bold', borderBottom: '2px solid black', display: 'inline-block', paddingBottom: '5px' }}>
                     支払明細書
@@ -883,7 +1036,6 @@ export const ApplicationManagement = () => {
 
                 <div style={{ fontSize: '15px', marginBottom: '20px', lineHeight: '1.6' }}>
                   下記の通り、活動に対する報酬をお支払いいたします。<br />
-                  {/* 🚀 修正：表記の変更 */}
                   <span style={{ fontWeight: 'bold' }}>振込日： {selectedPaymentDate}</span>
                 </div>
 
