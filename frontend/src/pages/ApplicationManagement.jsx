@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { ArrowLeft, Calendar, FileSpreadsheet, UploadCloud, CheckCircle, AlertTriangle, Download, List, FileCheck, Info, Loader2, BarChart2, Printer } from 'lucide-react';
+import { ArrowLeft, Calendar, FileSpreadsheet, UploadCloud, CheckCircle, AlertTriangle, Download, List, FileCheck, Info, Loader2, BarChart2, Printer, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { collection, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -29,6 +29,10 @@ export const ApplicationManagement = () => {
 
   const [selectedActivityIds, setSelectedActivityIds] = useState([]);
   const [isPrinting, setIsPrinting] = useState(false);
+  
+  // 🚀 発行日指定モーダル用のステート
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [printDate, setPrintDate] = useState(new Date().toISOString().split('T')[0]);
 
   useEffect(() => {
     const unsubActivities = onSnapshot(collection(db, 'activities'), (s) => setActivities(s.docs.map(d => ({ id: d.id, ...d.data() }))));
@@ -83,14 +87,14 @@ export const ApplicationManagement = () => {
   const paymentOptions = useMemo(() => {
     const opts = new Map();
     (systemSettings.paymentDates || []).forEach(p => {
-        opts.set(p.id, { type: 'system', label: `${p.label} ${p.date ? `(${p.date})` : ''}`, value: p.id });
+        opts.set(p.id, { type: 'system', label: `${p.label} ${p.date ? `(${p.date})` : ''}`, date: p.date, value: p.id });
     });
 
     activities.forEach(a => {
         if (a.status !== '未実施' && a.paymentDateId === 'custom' && a.customPaymentDate) {
             const val = `custom_${a.customPaymentDate}`;
             if (!opts.has(val)) {
-                opts.set(val, { type: 'custom', label: `任意指定: ${a.customPaymentDate}`, value: val });
+                opts.set(val, { type: 'custom', label: `任意指定: ${a.customPaymentDate}`, date: a.customPaymentDate, value: val });
             }
         }
     });
@@ -100,6 +104,12 @@ export const ApplicationManagement = () => {
 
   const selectedPaymentLabel = useMemo(() => {
     return paymentOptions.find(o => o.value === selectedPayment)?.label || "未設定";
+  }, [selectedPayment, paymentOptions]);
+
+  // 🚀 支払明細書の「振込日」印字用に、選択された振込時期の日付を抽出
+  const selectedPaymentDate = useMemo(() => {
+    const opt = paymentOptions.find(o => o.value === selectedPayment);
+    return opt && opt.date ? opt.date : "未定";
   }, [selectedPayment, paymentOptions]);
 
   const filteredActivities = useMemo(() => {
@@ -492,9 +502,10 @@ export const ApplicationManagement = () => {
     setSelectedActivityIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
+  // 🚀 PDF作成ボタンで直接印刷画面ではなく、日付指定モーダルを開くように変更
   const handleGenerateReceipts = () => {
     if (pdfPersonSummaries.length === 0) return;
-    setIsPrinting(true);
+    setIsPrintModalOpen(true);
   };
 
   if (loading) {
@@ -770,36 +781,61 @@ export const ApplicationManagement = () => {
         </div>
       </div>
 
+      {/* 🚀 印刷日指定モーダル */}
+      {isPrintModalOpen && (
+        <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm no-print">
+          <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+              <h2 className="font-bold text-gray-800 flex items-center">
+                <Printer className="w-5 h-5 mr-2 text-blue-600" />
+                支払明細書の作成
+              </h2>
+              <button onClick={() => setIsPrintModalOpen(false)} className="text-gray-400 hover:bg-gray-200 p-1 rounded-full transition-colors">
+                <X size={20}/>
+              </button>
+            </div>
+            <div className="p-5">
+              <label className="block text-sm font-bold text-gray-700 mb-2">明細書の発行日 (右上に印字される日付)</label>
+              <input 
+                type="date" 
+                value={printDate} 
+                onChange={(e) => setPrintDate(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-blue-500 font-bold"
+              />
+            </div>
+            <div className="p-4 border-t border-gray-100 bg-gray-50 flex gap-3">
+              <button onClick={() => setIsPrintModalOpen(false)} className="flex-1 py-2.5 bg-white border border-gray-300 rounded-xl font-bold text-gray-700 hover:bg-gray-100 transition-colors">キャンセル</button>
+              <button 
+                onClick={() => { setIsPrintModalOpen(false); setIsPrinting(true); }} 
+                className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-sm active:scale-95"
+              >
+                作成する
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 🚀 印刷モード用の画面 */}
       {isPrinting && (
         <div className="bg-white min-h-screen w-full relative z-[9999]">
           
-          {/* 🚀 印刷時のみ適用されるCSS設定：ここでブラウザ標準の余白を消去し、白紙ページを防ぐ */}
           <style>
             {`
               @media print {
-                @page { 
-                  margin: 0; 
-                  size: A4 portrait; 
-                }
-                body { 
-                  background: white; 
-                  margin: 0; 
-                  padding: 0; 
-                }
-                .no-print { 
-                  display: none !important; 
-                }
+                @page { margin: 0; size: A4 portrait; }
+                body { background: white; margin: 0; padding: 0; }
+                .no-print { display: none !important; }
                 .print-page { 
                   margin: 0 !important; 
                   box-shadow: none !important; 
                   border: none !important;
-                  padding: 15mm 20mm !important; /* 印刷時の余白をここで指定 */
+                  padding: 15mm 20mm !important;
                   page-break-after: always;
                   page-break-inside: avoid;
                 }
                 .print-page:last-child {
-                  page-break-after: auto; /* 最後のページの後には改ページを入れない（白紙防止） */
+                  page-break-after: auto;
                 }
               }
             `}
@@ -824,18 +860,11 @@ export const ApplicationManagement = () => {
                 key={person.normName} 
                 className="print-page"
                 style={{ 
-                  width: '100%', 
-                  maxWidth: '210mm',
-                  margin: '0 auto 20px auto', 
-                  padding: '20mm', 
-                  backgroundColor: 'white', 
-                  color: 'black', 
-                  fontFamily: '"Noto Serif JP", "Mincho", serif', 
-                  boxSizing: 'border-box',
-                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                  width: '100%', maxWidth: '210mm', margin: '0 auto 20px auto', padding: '20mm', 
+                  backgroundColor: 'white', color: 'black', fontFamily: '"Noto Serif JP", "Mincho", serif', 
+                  boxSizing: 'border-box', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
                 }}
               >
-                
                 <div style={{ textAlign: 'center', marginBottom: '40px' }}>
                   <h1 style={{ fontSize: '24px', fontWeight: 'bold', borderBottom: '2px solid black', display: 'inline-block', paddingBottom: '5px' }}>
                     支払明細書
@@ -847,14 +876,15 @@ export const ApplicationManagement = () => {
                     {person.name} <span style={{ fontSize: '16px', marginLeft: '10px' }}>様</span>
                   </div>
                   <div style={{ fontSize: '14px', textAlign: 'right', lineHeight: '1.6' }}>
-                    <div>発行日： {new Date().toLocaleDateString('ja-JP')}</div>
+                    <div>発行日： {new Date(printDate).toLocaleDateString('ja-JP')}</div>
                     <div style={{ fontWeight: 'bold', fontSize: '16px', marginTop: '10px' }}>{ORGANIZATION_NAME || '鎌田緑保護会'}</div>
                   </div>
                 </div>
 
                 <div style={{ fontSize: '15px', marginBottom: '20px', lineHeight: '1.6' }}>
                   下記の通り、活動に対する報酬をお支払いいたします。<br />
-                  <span style={{ fontWeight: 'bold' }}>対象期間・申請区分： {selectedPaymentLabel}</span>
+                  {/* 🚀 修正：表記の変更 */}
+                  <span style={{ fontWeight: 'bold' }}>振込日： {selectedPaymentDate}</span>
                 </div>
 
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', marginBottom: '40px' }}>
@@ -881,17 +911,10 @@ export const ApplicationManagement = () => {
                       <th colSpan={2} style={{ border: '1px solid black', padding: '12px', textAlign: 'center' }}>合計</th>
                       <td style={{ border: '1px solid black', padding: '12px', textAlign: 'right', fontWeight: 'bold' }}>¥{person.wageTotal.toLocaleString()}</td>
                       <td style={{ border: '1px solid black', padding: '12px', textAlign: 'right', fontWeight: 'bold' }}>¥{person.machineTotal.toLocaleString()}</td>
-                      <td style={{ border: '1px solid black', padding: '12px', textAlign: 'right', fontWeight: 'bold', fontSize: '16px' }}>¥{person.grandTotal.toLocaleString()}</td>
+                      <td style={{ border: '1px solid black', padding: '12px', textAlign: 'right', fontWeight: 'bold', fontSize: '16px', color: '#1e3a8a' }}>¥{person.grandTotal.toLocaleString()}</td>
                     </tr>
                   </tbody>
                 </table>
-
-                <div style={{ marginTop: '80px', display: 'flex', justifyContent: 'flex-end' }}>
-                  <div style={{ width: '250px', borderBottom: '1px solid black', textAlign: 'left', paddingBottom: '5px', fontSize: '14px' }}>
-                    受領印：
-                  </div>
-                </div>
-
               </div>
             ))}
           </div>
