@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+// 🚀 FileCheck アイコンを追加
 import { Clock, Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock, Map, MoreVertical, Edit, Info, History, Loader2, Ticket, RefreshCw, Database, Download, UploadCloud, Archive, FileX, FileText, FileCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, doc, getDoc, deleteDoc, updateDoc, where, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -7,6 +8,7 @@ import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'fire
 import { db, auth } from '../firebase';
 import XlsxPopulate from 'xlsx-populate/browser/xlsx-populate';
 
+// 🚀 新規追加ライブラリ
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
 import JSZip from "jszip";
@@ -33,7 +35,7 @@ const formatTimestamp = (timestamp) => {
 
 export const Dashboard = () => {
   const navigate = useNavigate();
-  const storage = getStorage();
+  const storage = getStorage(); // Firebase Storage インスタンス
   
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -42,6 +44,7 @@ export const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('home');
   const [exportingId, setExportingId] = useState(null);
   
+  // 🚀 各種ローディングステータス
   const [generatingId, setGeneratingId] = useState(null);
   const [downloadingId, setDownloadingId] = useState(null);
   const [deletingDocId, setDeletingDocId] = useState(null);
@@ -117,6 +120,7 @@ export const Dashboard = () => {
       setMaterialsList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
     
+    // 🚀 修正：データの取得時に「農）カマタ」を「農事組合法人カマタ」に置き換える
     const unsubscribeGroups = onSnapshot(collection(db, 'groups'), (snapshot) => {
       setGroupsList(snapshot.docs.map(doc => {
         const data = doc.data();
@@ -1248,7 +1252,8 @@ export const Dashboard = () => {
         )}
 
         <div className="overflow-x-auto relative custom-scrollbar pb-2">
-          <table className="w-full text-left border-collapse min-w-[1450px] table-fixed select-none">
+          {/* 🚀 修正：min-w-[1450px] → min-w-[1750px] に拡張し、全体的に広げる */}
+          <table className="w-full text-left border-collapse min-w-[1750px] table-fixed select-none">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200 text-sm text-gray-700">
                 <th className="p-3 w-12 text-center whitespace-nowrap sticky left-0 z-20 bg-gray-50 border-r border-gray-200">
@@ -1259,26 +1264,27 @@ export const Dashboard = () => {
                     className="w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500 cursor-pointer" 
                   />
                 </th>
-                <th onClick={toggleDateSort} className="p-3 font-bold w-32 cursor-pointer hover:bg-gray-200 transition-colors group whitespace-nowrap sticky left-12 z-20 bg-gray-50 border-r border-gray-200 shadow-[4px_0_6px_-2px_rgba(0,0,0,0.05)]" title="日付で並び替え">
+                <th onClick={toggleDateSort} className="p-3 font-bold w-28 cursor-pointer hover:bg-gray-200 transition-colors group whitespace-nowrap sticky left-12 z-20 bg-gray-50 border-r border-gray-200 shadow-[4px_0_6px_-2px_rgba(0,0,0,0.05)]" title="日付で並び替え">
                   <div className="flex items-center text-blue-700">
                     日付
                     {dateSortOrder === 'desc' ? <ChevronDown size={16} className="ml-1 text-blue-600 group-hover:text-blue-800" /> : <ChevronUp size={16} className="ml-1 text-blue-600 group-hover:text-blue-800" />}
                   </div>
                 </th>
                 
-                <th className="p-3 font-bold w-full whitespace-nowrap">活動内容</th>
+                {/* 🚀 修正：各列の幅に余裕を持たせる */}
+                <th className="p-3 font-bold w-full min-w-[250px] whitespace-nowrap">活動内容</th>
                 
-                <th className="p-3 font-bold w-24 text-center whitespace-nowrap">登録者</th>
+                <th className="p-3 font-bold w-28 text-center whitespace-nowrap">登録者</th>
 
-                <th className="p-3 font-bold w-20 text-center whitespace-nowrap">状態</th>
+                <th className="p-3 font-bold w-24 text-center whitespace-nowrap">状態</th>
                 <th className="p-3 font-bold w-24 text-center whitespace-nowrap">区分</th>
-                <th className="p-3 font-bold w-32 whitespace-nowrap">支払区分</th>
-                <th className="p-3 font-bold w-24 whitespace-nowrap">報告書NO</th>
+                <th className="p-3 font-bold w-44 whitespace-nowrap">支払区分</th>
+                <th className="p-3 font-bold w-36 whitespace-nowrap">報告書NO</th>
                 <th className="p-3 font-bold w-28 text-right whitespace-nowrap">予算額</th>
                 <th className="p-3 font-bold w-28 text-right whitespace-nowrap">実績額</th>
-                <th className="p-3 font-bold w-36 whitespace-nowrap">グループ</th>
-                <th className="p-3 font-bold w-40 whitespace-nowrap">活動場所</th>
-                <th className="p-3 font-bold w-20 whitespace-nowrap">項目番号</th>
+                <th className="p-3 font-bold w-40 whitespace-nowrap">グループ</th>
+                <th className="p-3 font-bold w-48 whitespace-nowrap">活動場所</th>
+                <th className="p-3 font-bold w-24 whitespace-nowrap">項目番号</th>
                 
                 <th className="p-3 font-bold w-12 text-center whitespace-nowrap">写真</th>
                 
@@ -1334,6 +1340,7 @@ export const Dashboard = () => {
           
           {(userRole === 'admin' || userRole === 'manager') && (
             <>
+              {/* 🚀 追加：申請管理へのリンク（PC） */}
               <button onClick={() => navigate('/applications')} className="flex items-center text-sm font-bold text-gray-500 hover:text-blue-600">
                 <FileCheck size={18} className="mr-1"/> 作業明細管理
               </button>
@@ -1380,6 +1387,7 @@ export const Dashboard = () => {
         <div className="md:hidden flex items-center w-full overflow-x-auto space-x-3 pb-1">
            {(userRole === 'admin' || userRole === 'manager') && (
             <>
+              {/* 🚀 追加：申請管理へのリンク（スマホ） */}
               <button onClick={() => navigate('/applications')} className="p-2 text-gray-500 hover:text-blue-600 transition-colors" title="作業明細管理"><FileCheck size={20} /></button>
 
               <button onClick={() => navigate('/groups')} className="p-2 text-gray-500 hover:text-blue-600 transition-colors"><Users size={20} /></button>
@@ -2008,7 +2016,7 @@ export const Dashboard = () => {
 
       {/* 🚀 進捗・完了モーダル */}
       {progressModal.isOpen && (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm no-print">
           <div className="bg-white w-full max-w-md rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200">
             <div className="p-6">
               <div className="flex items-center mb-4">
