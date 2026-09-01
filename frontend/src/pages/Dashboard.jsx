@@ -1,19 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
-// 🚀 FileCheck アイコンを追加
-import { Clock, Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock, Map, MoreVertical, Edit, Info, History, Loader2, Ticket, RefreshCw, Database, Download, UploadCloud, Archive, FileX, FileText, FileCheck } from 'lucide-react';
+import { Clock, Calendar, CheckCircle, Plus, Settings, LogOut, Sprout, Users, UserCog, User, MessageSquare, Trash2, X, MapPin, BarChart2, Activity, Printer, FileSpreadsheet, LayoutList, Layers, AlertTriangle, LayoutGrid, List, ChevronUp, ChevronDown, Link, Wallet, Lock, Map, MoreVertical, Edit, Info, History, Loader2, Ticket, RefreshCw, Database, Download, UploadCloud, Archive, FileX, FileText, FileCheck, Image as ImageIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, doc, getDoc, deleteDoc, updateDoc, where, addDoc, serverTimestamp } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, auth } from '../firebase';
 import XlsxPopulate from 'xlsx-populate/browser/xlsx-populate';
-
-// 🚀 新規追加ライブラリ
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
-
 import { ORGANIZATION_NAME } from '../constants';
 
 const formatTimestamp = (timestamp) => {
@@ -35,7 +31,7 @@ const formatTimestamp = (timestamp) => {
 
 export const Dashboard = () => {
   const navigate = useNavigate();
-  const storage = getStorage(); // Firebase Storage インスタンス
+  const storage = getStorage(); 
   
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -44,7 +40,6 @@ export const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('home');
   const [exportingId, setExportingId] = useState(null);
   
-  // 🚀 各種ローディングステータス
   const [generatingId, setGeneratingId] = useState(null);
   const [downloadingId, setDownloadingId] = useState(null);
   const [deletingDocId, setDeletingDocId] = useState(null);
@@ -56,13 +51,7 @@ export const Dashboard = () => {
   const [uploadingDocType, setUploadingDocType] = useState(null);
 
   const [progressModal, setProgressModal] = useState({
-    isOpen: false,
-    title: '',
-    message: '',
-    current: 0,
-    total: 0,
-    isComplete: false,
-    hasError: false
+    isOpen: false, title: '', message: '', current: 0, total: 0, isComplete: false, hasError: false
   });
 
   const [membersList, setMembersList] = useState([]);
@@ -72,11 +61,7 @@ export const Dashboard = () => {
   const [systemUsers, setSystemUsers] = useState([]); 
   
   const [systemSettings, setSystemSettings] = useState({ 
-    fiscalYearStartMonth: 4, 
-    paymentDates: [],
-    budgetAgriMaintain: 0,
-    budgetResourceJoint: 0,
-    budgetResourceLongLife: 0
+    fiscalYearStartMonth: 4, paymentDates: [], budgetAgriMaintain: 0, budgetResourceJoint: 0, budgetResourceLongLife: 0
   });
 
   const [displayMode, setDisplayMode] = useState(() => localStorage.getItem('dashboardDisplayMode') || 'group');
@@ -103,9 +88,7 @@ export const Dashboard = () => {
   const [actionMenuActivity, setActionMenuActivity] = useState(null);
 
   useEffect(() => {
-    const fallbackTimer = setTimeout(() => {
-      setLoading(false);
-    }, 10000);
+    const fallbackTimer = setTimeout(() => { setLoading(false); }, 10000);
     return () => clearTimeout(fallbackTimer);
   }, []);
 
@@ -119,23 +102,15 @@ export const Dashboard = () => {
     const unsubMaterials = onSnapshot(collection(db, 'materials'), (snapshot) => {
       setMaterialsList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
-    
-    // 🚀 修正：データの取得時に「農）カマタ」を「農事組合法人カマタ」に置き換える
     const unsubscribeGroups = onSnapshot(collection(db, 'groups'), (snapshot) => {
       setGroupsList(snapshot.docs.map(doc => {
         const data = doc.data();
-        return { 
-          id: doc.id, 
-          ...data,
-          name: data.name === '農）カマタ' ? '農事組合法人カマタ' : data.name
-        };
+        return { id: doc.id, ...data, name: data.name === '農）カマタ' ? '農事組合法人カマタ' : data.name };
       }));
     });
-    
     const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
       setSystemUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
-
     const unsubSettings = onSnapshot(doc(db, 'settings', 'system'), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
@@ -198,13 +173,7 @@ export const Dashboard = () => {
     });
 
     return () => {
-      unsubscribeAuth();
-      unsubscribeGroups();
-      unsubMembers();
-      unsubMachines();
-      unsubMaterials();
-      unsubUsers();
-      unsubSettings(); 
+      unsubscribeAuth(); unsubscribeGroups(); unsubMembers(); unsubMachines(); unsubMaterials(); unsubUsers(); unsubSettings(); 
       if (unsubscribeData) unsubscribeData();
     };
   }, []);
@@ -278,6 +247,33 @@ export const Dashboard = () => {
       alert("リンクのコピーに失敗しました。");
     });
     setActionMenuActivity(null);
+  };
+
+  // 🚀 合体解除の処理
+  const handleUnlink = async (childId, e) => {
+    e.stopPropagation();
+    if (!window.confirm("合体を解除し、この記録を通常の一覧に戻しますか？\n\n※ベース側にコピーされた画像はそのまま残ります。\n（不要な場合は編集画面から手動で削除してください）")) return;
+
+    try {
+      await updateDoc(doc(db, 'activities', childId), {
+        mergedInto: null
+      });
+
+      const currentUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || currentUser?.displayName || '名称未設定';
+      await addDoc(collection(db, 'audit_logs'), {
+        action: 'UPDATE',
+        userName: currentUserName,
+        userId: currentUser?.uid || 'unknown',
+        target: '活動実績',
+        details: `画像合体を解除し、元のリストに復元しました (ID: ${childId})`,
+        createdAt: serverTimestamp()
+      });
+
+      alert('合体を解除しました。通常の一覧に再表示されます。');
+    } catch (error) {
+      console.error("解除エラー:", error);
+      alert('解除に失敗しました。');
+    }
   };
 
   const generateExcelBlob = async (activity) => {
@@ -404,18 +400,11 @@ export const Dashboard = () => {
   const handleGenerateDocuments = async (activity) => {
     setGeneratingId(activity.id);
     setProgressModal({
-      isOpen: true,
-      title: '提出書類を作成中',
-      message: '書類データを生成しています...\n（写真の枚数により数秒かかります）',
-      current: 0,
-      total: 1,
-      isComplete: false,
-      hasError: false
+      isOpen: true, title: '提出書類を作成中', message: '書類データを生成しています...\n（写真の枚数により数秒かかります）', current: 0, total: 1, isComplete: false, hasError: false
     });
 
     try {
       const fileBaseName = activity.reportNo ? activity.reportNo : activity.id;
-      
       const excelBlob = await generateExcelBlob(activity);
       const pdfBlob = await generatePDFBlob(activity);
       
@@ -423,19 +412,9 @@ export const Dashboard = () => {
       await uploadBytes(ref(storage, `reports/${fileBaseName}/${fileBaseName}.xlsx`), excelBlob);
       await uploadBytes(ref(storage, `reports/${fileBaseName}/${fileBaseName}.pdf`), pdfBlob);
       
-      await updateDoc(doc(db, 'activities', activity.id), {
-        isDocumentGenerated: true,
-        documentBaseName: fileBaseName
-      });
-
-      setProgressModal(prev => ({
-        ...prev,
-        message: `報告書NO：${fileBaseName}\n提出書類の作成と保存が完了しました。`,
-        current: 1,
-        isComplete: true
-      }));
+      await updateDoc(doc(db, 'activities', activity.id), { isDocumentGenerated: true, documentBaseName: fileBaseName });
+      setProgressModal(prev => ({ ...prev, message: `報告書NO：${fileBaseName}\n提出書類の作成と保存が完了しました。`, current: 1, isComplete: true }));
     } catch (error) {
-      console.error(error);
       setProgressModal(prev => ({ ...prev, message: '書類作成中にエラーが発生しました。', isComplete: true, hasError: true }));
     } finally {
       setGeneratingId(null);
@@ -449,281 +428,125 @@ export const Dashboard = () => {
       const fileBaseName = activity.documentBaseName || activity.reportNo || activity.id;
       const extension = type === 'excel' ? 'xlsx' : 'pdf';
       const fileRef = ref(storage, `reports/${fileBaseName}/${fileBaseName}.${extension}`);
-      
       await uploadBytes(fileRef, file);
-      
-      await updateDoc(doc(db, 'activities', activity.id), {
-        isDocumentGenerated: true,
-        documentBaseName: fileBaseName
-      });
-      
+      await updateDoc(doc(db, 'activities', activity.id), { isDocumentGenerated: true, documentBaseName: fileBaseName });
       alert(`手動アップロードが完了しました。(${type === 'excel' ? 'Excel' : 'PDF'})`);
-    } catch (error) {
-      console.error(error);
-      alert('アップロード中にエラーが発生しました。');
-    } finally {
-      setUploadingDocType(null);
-    }
+    } catch (error) { alert('アップロード中にエラーが発生しました。'); } finally { setUploadingDocType(null); }
   };
 
   const handleIndividualDelete = async (activity, type) => {
     if (!window.confirm(`この活動の ${type === 'excel' ? 'Excel' : 'PDF'} ファイルのみを削除しますか？`)) return;
-    
     setUploadingDocType(type);
     try {
       const fileBaseName = activity.documentBaseName || activity.reportNo || activity.id;
       const extension = type === 'excel' ? 'xlsx' : 'pdf';
-      const fileRef = ref(storage, `reports/${fileBaseName}/${fileBaseName}.${extension}`);
-      
-      await deleteObject(fileRef);
+      await deleteObject(ref(storage, `reports/${fileBaseName}/${fileBaseName}.${extension}`));
       alert(`削除しました。(${type === 'excel' ? 'Excel' : 'PDF'})`);
-    } catch (error) {
-      console.error(error);
-      alert('ファイルの削除に失敗しました（既に削除されている可能性があります）。');
-    } finally {
-      setUploadingDocType(null);
-    }
+    } catch (error) { alert('ファイルの削除に失敗しました（既に削除されている可能性があります）。'); } finally { setUploadingDocType(null); }
   };
 
   const handleDownloadDocuments = async (activity) => {
     setDownloadingId(activity.id);
-    setProgressModal({
-      isOpen: true,
-      title: 'ダウンロード準備中',
-      message: 'サーバからデータを取得しています...',
-      current: 0,
-      total: 1,
-      isComplete: false,
-      hasError: false
-    });
-
+    setProgressModal({ isOpen: true, title: 'ダウンロード準備中', message: 'サーバからデータを取得しています...', current: 0, total: 1, isComplete: false, hasError: false });
     try {
       const fileBaseName = activity.documentBaseName || activity.reportNo || activity.id;
       const zip = new JSZip();
       let hasFile = false;
-      
       setProgressModal(prev => ({ ...prev, message: 'ZIPファイルを作成中...' }));
       
-      try {
-        const excelUrl = await getDownloadURL(ref(storage, `reports/${fileBaseName}/${fileBaseName}.xlsx`));
-        const excelRes = await fetch(excelUrl);
-        zip.file(`活動報告書_${fileBaseName}.xlsx`, await excelRes.blob());
-        hasFile = true;
-      } catch (e) {}
-
-      try {
-        const pdfUrl = await getDownloadURL(ref(storage, `reports/${fileBaseName}/${fileBaseName}.pdf`));
-        const pdfRes = await fetch(pdfUrl);
-        zip.file(`活動写真台帳_${fileBaseName}.pdf`, await pdfRes.blob());
-        hasFile = true;
-      } catch (e) {}
+      try { const excelUrl = await getDownloadURL(ref(storage, `reports/${fileBaseName}/${fileBaseName}.xlsx`)); zip.file(`活動報告書_${fileBaseName}.xlsx`, await (await fetch(excelUrl)).blob()); hasFile = true; } catch (e) {}
+      try { const pdfUrl = await getDownloadURL(ref(storage, `reports/${fileBaseName}/${fileBaseName}.pdf`)); zip.file(`活動写真台帳_${fileBaseName}.pdf`, await (await fetch(pdfUrl)).blob()); hasFile = true; } catch (e) {}
       
-      if (!hasFile) {
-        throw new Error("No files found");
-      }
-
-      const zipBlob = await zip.generateAsync({ type: "blob" });
-      saveAs(zipBlob, `提出書類_${fileBaseName}.zip`);
-
-      setProgressModal(prev => ({
-        ...prev,
-        message: 'ダウンロードを開始しました。',
-        current: 1,
-        isComplete: true
-      }));
+      if (!hasFile) throw new Error("No files found");
+      saveAs(await zip.generateAsync({ type: "blob" }), `提出書類_${fileBaseName}.zip`);
+      setProgressModal(prev => ({ ...prev, message: 'ダウンロードを開始しました。', current: 1, isComplete: true }));
     } catch (error) {
-      console.error(error);
       setProgressModal(prev => ({ ...prev, message: 'ダウンロードに失敗しました。ファイルが存在しない可能性があります。', isComplete: true, hasError: true }));
-    } finally {
-      setDownloadingId(null);
-    }
+    } finally { setDownloadingId(null); }
   };
 
   const handleDeleteDocuments = async (activity) => {
     if (!window.confirm('サーバに保存されているこの活動の提出書類（PDF/Excel）を【両方とも】一括で削除しますか？\n※活動データ自体は削除されません。')) return;
-
     setDeletingDocId(activity.id);
-    setProgressModal({
-      isOpen: true,
-      title: '書類データ削除中',
-      message: 'サーバからデータを削除しています...',
-      current: 0,
-      total: 1,
-      isComplete: false,
-      hasError: false
-    });
+    setProgressModal({ isOpen: true, title: '書類データ削除中', message: 'サーバからデータを削除しています...', current: 0, total: 1, isComplete: false, hasError: false });
 
     try {
       const fileBaseName = activity.documentBaseName || activity.reportNo || activity.id;
-
       try { await deleteObject(ref(storage, `reports/${fileBaseName}/${fileBaseName}.xlsx`)); } catch(e){}
       try { await deleteObject(ref(storage, `reports/${fileBaseName}/${fileBaseName}.pdf`)); } catch(e){}
-
-      await updateDoc(doc(db, 'activities', activity.id), {
-        isDocumentGenerated: false,
-        documentBaseName: null
-      });
-
-      setProgressModal(prev => ({
-        ...prev,
-        message: '提出書類をサーバから完全に削除しました。',
-        current: 1,
-        isComplete: true
-      }));
+      await updateDoc(doc(db, 'activities', activity.id), { isDocumentGenerated: false, documentBaseName: null });
+      setProgressModal(prev => ({ ...prev, message: '提出書類をサーバから完全に削除しました。', current: 1, isComplete: true }));
     } catch (error) {
-      console.error(error);
       setProgressModal(prev => ({ ...prev, message: '書類の削除中にエラーが発生しました。', isComplete: true, hasError: true }));
-    } finally {
-      setDeletingDocId(null);
-    }
+    } finally { setDeletingDocId(null); }
   };
 
   const handleBulkGenerate = async () => {
     const selectedActs = activities.filter(a => selectedActivityIds.includes(a.id));
     if (selectedActs.length === 0) return;
     setIsBulkGenerating(true);
-    
-    setProgressModal({
-      isOpen: true,
-      title: '一括書類作成中',
-      message: '準備中...',
-      current: 0,
-      total: selectedActs.length,
-      isComplete: false,
-      hasError: false
-    });
+    setProgressModal({ isOpen: true, title: '一括書類作成中', message: '準備中...', current: 0, total: selectedActs.length, isComplete: false, hasError: false });
 
     let successCount = 0;
-    
     for (let i = 0; i < selectedActs.length; i++) {
       const act = selectedActs[i];
       try {
         setGeneratingId(act.id);
         const fileBaseName = act.reportNo ? act.reportNo : act.id;
-        
         setProgressModal(prev => ({ ...prev, message: `(${i + 1}/${selectedActs.length}) 「${act.activityType}」の書類を作成中...` }));
         const excelBlob = await generateExcelBlob(act);
         const pdfBlob = await generatePDFBlob(act);
-        
         setProgressModal(prev => ({ ...prev, message: `(${i + 1}/${selectedActs.length}) 「${act.activityType}」をサーバに保存中...` }));
         await uploadBytes(ref(storage, `reports/${fileBaseName}/${fileBaseName}.xlsx`), excelBlob);
         await uploadBytes(ref(storage, `reports/${fileBaseName}/${fileBaseName}.pdf`), pdfBlob);
-        
-        await updateDoc(doc(db, 'activities', act.id), { 
-          isDocumentGenerated: true, 
-          documentBaseName: fileBaseName 
-        });
+        await updateDoc(doc(db, 'activities', act.id), { isDocumentGenerated: true, documentBaseName: fileBaseName });
         successCount++;
         setProgressModal(prev => ({ ...prev, current: successCount }));
-      } catch (e) {
-        console.error(`Error generating docs for ${act.id}`, e);
-      }
+      } catch (e) { console.error(e); }
     }
-    
-    setGeneratingId(null);
-    setIsBulkGenerating(false);
-    setProgressModal(prev => ({
-      ...prev,
-      message: `${successCount} 件の活動書類を作成・保存しました。`,
-      isComplete: true
-    }));
+    setGeneratingId(null); setIsBulkGenerating(false);
+    setProgressModal(prev => ({ ...prev, message: `${successCount} 件の活動書類を作成・保存しました。`, isComplete: true }));
     setSelectedActivityIds([]);
   };
 
   const handleBulkDownload = async () => {
     const selectedActs = activities.filter(a => selectedActivityIds.includes(a.id) && a.isDocumentGenerated);
-    if (selectedActs.length === 0) {
-      alert('ダウンロード可能な（作成済みの）書類が選択されていません。');
-      return;
-    }
+    if (selectedActs.length === 0) { alert('ダウンロード可能な（作成済みの）書類が選択されていません。'); return; }
     setIsBulkDownloading(true);
-
-    setProgressModal({
-      isOpen: true,
-      title: '一括ダウンロード準備中',
-      message: 'サーバからデータを取得しています...',
-      current: 0,
-      total: selectedActs.length,
-      isComplete: false,
-      hasError: false
-    });
+    setProgressModal({ isOpen: true, title: '一括ダウンロード準備中', message: 'サーバからデータを取得しています...', current: 0, total: selectedActs.length, isComplete: false, hasError: false });
 
     try {
-      const zip = new JSZip();
-      let successCount = 0;
-
+      const zip = new JSZip(); let successCount = 0;
       for (let i = 0; i < selectedActs.length; i++) {
         const act = selectedActs[i];
         const fileBaseName = act.documentBaseName || act.reportNo || act.id;
         let hasFile = false;
-        
         try {
           setProgressModal(prev => ({ ...prev, message: `(${i + 1}/${selectedActs.length}) 「${act.activityType}」を取得中...` }));
           const folder = zip.folder(fileBaseName);
-          
-          try {
-            const excelUrl = await getDownloadURL(ref(storage, `reports/${fileBaseName}/${fileBaseName}.xlsx`));
-            const excelRes = await fetch(excelUrl);
-            folder.file(`活動報告書_${fileBaseName}.xlsx`, await excelRes.blob());
-            hasFile = true;
-          } catch(e){}
-          
-          try {
-            const pdfUrl = await getDownloadURL(ref(storage, `reports/${fileBaseName}/${fileBaseName}.pdf`));
-            const pdfRes = await fetch(pdfUrl);
-            folder.file(`活動写真台帳_${fileBaseName}.pdf`, await pdfRes.blob());
-            hasFile = true;
-          } catch(e){}
-
-          if (hasFile) {
-            successCount++;
-          }
+          try { folder.file(`活動報告書_${fileBaseName}.xlsx`, await (await fetch(await getDownloadURL(ref(storage, `reports/${fileBaseName}/${fileBaseName}.xlsx`)))).blob()); hasFile = true; } catch(e){}
+          try { folder.file(`活動写真台帳_${fileBaseName}.pdf`, await (await fetch(await getDownloadURL(ref(storage, `reports/${fileBaseName}/${fileBaseName}.pdf`)))).blob()); hasFile = true; } catch(e){}
+          if (hasFile) successCount++;
           setProgressModal(prev => ({ ...prev, current: i + 1 }));
-        } catch (e) {
-          console.error(`Error fetching ${fileBaseName}`, e);
-        }
+        } catch (e) { console.error(e); }
       }
-
       setProgressModal(prev => ({ ...prev, message: 'ZIPファイルを構築中...' }));
-      const zipBlob = await zip.generateAsync({ type: "blob" });
-      saveAs(zipBlob, `一括ダウンロード_提出書類_${new Date().toISOString().split('T')[0]}.zip`);
-
-      setProgressModal(prev => ({
-        ...prev,
-        message: `${successCount} 件の書類をダウンロードしました。`,
-        isComplete: true
-      }));
+      saveAs(await zip.generateAsync({ type: "blob" }), `一括ダウンロード_提出書類_${new Date().toISOString().split('T')[0]}.zip`);
+      setProgressModal(prev => ({ ...prev, message: `${successCount} 件の書類をダウンロードしました。`, isComplete: true }));
     } catch (error) {
-      console.error(error);
       setProgressModal(prev => ({ ...prev, message: '一括ダウンロードに失敗しました。', isComplete: true, hasError: true }));
-    } finally {
-      setIsBulkDownloading(false);
-      setSelectedActivityIds([]);
-    }
+    } finally { setIsBulkDownloading(false); setSelectedActivityIds([]); }
   };
 
   const handleBulkDeleteDocuments = async () => {
     const selectedActs = activities.filter(a => selectedActivityIds.includes(a.id) && a.isDocumentGenerated);
-    if (selectedActs.length === 0) {
-      alert('削除可能な（作成済みの）書類が選択されていません。');
-      return;
-    }
-
+    if (selectedActs.length === 0) { alert('削除可能な（作成済みの）書類が選択されていません。'); return; }
     if (!window.confirm(`選択された ${selectedActs.length} 件の活動の提出書類をサーバから一括削除しますか？\n※活動データ自体は削除されません。`)) return;
 
     setIsBulkDeletingDocs(true);
-    setProgressModal({
-      isOpen: true,
-      title: '一括書類削除中',
-      message: 'サーバから削除しています...',
-      current: 0,
-      total: selectedActs.length,
-      isComplete: false,
-      hasError: false
-    });
+    setProgressModal({ isOpen: true, title: '一括書類削除中', message: 'サーバから削除しています...', current: 0, total: selectedActs.length, isComplete: false, hasError: false });
 
     let successCount = 0;
-
     for (let i = 0; i < selectedActs.length; i++) {
       const act = selectedActs[i];
       try {
@@ -731,28 +554,15 @@ export const Dashboard = () => {
         const fileBaseName = act.documentBaseName || act.reportNo || act.id;
         try { await deleteObject(ref(storage, `reports/${fileBaseName}/${fileBaseName}.xlsx`)); } catch(e){}
         try { await deleteObject(ref(storage, `reports/${fileBaseName}/${fileBaseName}.pdf`)); } catch(e){}
-
-        await updateDoc(doc(db, 'activities', act.id), {
-          isDocumentGenerated: false,
-          documentBaseName: null
-        });
+        await updateDoc(doc(db, 'activities', act.id), { isDocumentGenerated: false, documentBaseName: null });
         successCount++;
         setProgressModal(prev => ({ ...prev, current: successCount }));
-      } catch (e) {
-        console.error(`Error deleting docs for ${act.id}`, e);
-      }
+      } catch (e) { console.error(e); }
     }
-
     setIsBulkDeletingDocs(false);
-    setProgressModal(prev => ({
-      ...prev,
-      message: `${successCount} 件の書類をサーバから削除しました。`,
-      isComplete: true
-    }));
+    setProgressModal(prev => ({ ...prev, message: `${successCount} 件の書類をサーバから削除しました。`, isComplete: true }));
     setSelectedActivityIds([]);
   };
-
-  // =======================================================================
 
   const handleExportGroupReport = async (groupName, groupActs) => {
     setExportingId(`group-${groupName}`); 
@@ -789,45 +599,26 @@ export const Dashboard = () => {
         sheet.cell(row, 12).value(creatorName);
       });
 
-      sheet.column("A").width(12);
-      sheet.column("B").width(30);
-      sheet.column("E").width(25);
-      sheet.column("I").width(20);
+      sheet.column("A").width(12); sheet.column("B").width(30); sheet.column("E").width(25); sheet.column("I").width(20);
 
       const blob = await workbook.outputAsync();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      const today = new Date().toISOString().split('T')[0];
-      a.download = `活動一覧_${groupName}_${today}.xlsx`; 
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-    } catch (error) { 
-      console.error(error); 
-      alert('Excel作成エラーが発生しました。'); 
-    } finally { 
-      setExportingId(null); 
-    }
+      a.download = `活動一覧_${groupName}_${new Date().toISOString().split('T')[0]}.xlsx`; 
+      document.body.appendChild(a); a.click(); document.body.removeChild(a); window.URL.revokeObjectURL(url);
+    } catch (error) { alert('Excel作成エラーが発生しました。'); } finally { setExportingId(null); }
   };
 
   const calculateActivityCost = (act) => {
     let pCost = 0; let mCost = 0; let matCost = 0;
     (act.participantDetails || []).forEach(detail => {
       const wId = detail.wageId || detail.memberId;
-      if (wId) {
-        const wage = membersList.find(m => m.id === wId);
-        if (wage) pCost += (detail.workTime || 0) * (wage.defaultWage || 0);
-      }
-      if (detail.machineId) {
-        const machine = machinesList.find(m => m.id === detail.machineId);
-        if (machine) mCost += (detail.machineTime || 0) * (machine.defaultPrice || 0);
-      }
+      if (wId) { const wage = membersList.find(m => m.id === wId); if (wage) pCost += (detail.workTime || 0) * (wage.defaultWage || 0); }
+      if (detail.machineId) { const machine = machinesList.find(m => m.id === detail.machineId); if (machine) mCost += (detail.machineTime || 0) * (machine.defaultPrice || 0); }
     });
     (act.materialDetails || []).forEach(detail => {
-      if (detail.materialId) {
-        const mat = materialsList.find(m => m.id === detail.materialId);
-        if (mat) matCost += (detail.quantity || 0) * (mat.defaultPrice || 0);
-      }
+      if (detail.materialId) { const mat = materialsList.find(m => m.id === detail.materialId); if (mat) matCost += (detail.quantity || 0) * (mat.defaultPrice || 0); }
     });
     return pCost + mCost + matCost;
   };
@@ -844,76 +635,38 @@ export const Dashboard = () => {
       const statusLabel = act.status || '実績入力済';
       const category = act.paymentCategory || '';
       const actBudget = Number(act.budget) || 0; 
-
       let targetKey = 'unassigned';
       if (category.includes('1') || category.includes('１')) targetKey = 'agriMaintain';
       else if (category.includes('2') || category.includes('２')) targetKey = 'resourceJoint';
       else if (category.includes('3') || category.includes('３')) targetKey = 'resourceLongLife';
 
       totals[targetKey].planned += actBudget;
-
-      if (statusLabel !== '未実施') {
-        totals[targetKey].actual += calculateActivityCost(act);
-      }
+      if (statusLabel !== '未実施') totals[targetKey].actual += calculateActivityCost(act);
     });
-
     return Object.values(totals);
   }, [activities, systemSettings, membersList, machinesList, materialsList]);
 
-  const handleOpenMap = () => {
-    const mapImageUrl = "/kamata_noudou.jpg"; 
-    window.open(mapImageUrl, '_blank');
-  };
-
+  const handleOpenMap = () => { window.open("/kamata_noudou.jpg", '_blank'); };
   const roleLabel = userRole === 'admin' ? '管理者' : userRole === 'manager' ? '事務・役員' : '現場リーダー';
-
-  const displayUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || 
-                          systemUsers.find(u => u.id === currentUser?.uid)?.displayName || 
-                          currentUser?.displayName || 
-                          'ユーザー';
+  const displayUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || systemUsers.find(u => u.id === currentUser?.uid)?.displayName || currentUser?.displayName || 'ユーザー';
 
   const myRewards = useMemo(() => {
-    let totalReward = 0;
-    let totalHours = 0;
-    const details = [];
-
+    let totalReward = 0; let totalHours = 0; const details = [];
     if (!displayUserName) return { totalReward, totalHours, details };
-
-    const normalizeName = (name) => (name || '').replace(/[\s ]/g, '');
-    const normalizedDisplayUserName = normalizeName(displayUserName);
+    const normalizedDisplayUserName = (displayUserName || '').replace(/[\s ]/g, '');
 
     activities.forEach(act => {
       if (!includeUnimplemented && act.status === '未実施') return;
-
       (act.participantDetails || []).forEach(p => {
-        const wId = p.wageId || p.memberId;
-        const wage = membersList.find(m => m.id === wId);
-        const pName = p.participantName || wage?.name;
-        
-        if (normalizeName(pName) === normalizedDisplayUserName && normalizedDisplayUserName !== '') {
-          const hours = p.workTime || 0;
-          const price = wage?.defaultWage || 0;
-          const reward = hours * price;
-          
-          totalHours += hours;
-          totalReward += reward;
-          
-          if (hours > 0 || reward > 0) {
-            details.push({
-              id: act.id,
-              date: act.date,
-              activityType: act.activityType,
-              hours: hours,
-              reward: reward,
-              originalAct: act 
-            });
-          }
+        const wage = membersList.find(m => m.id === (p.wageId || p.memberId));
+        if (((p.participantName || wage?.name) || '').replace(/[\s ]/g, '') === normalizedDisplayUserName && normalizedDisplayUserName !== '') {
+          const hours = p.workTime || 0; const reward = hours * (wage?.defaultWage || 0);
+          totalHours += hours; totalReward += reward;
+          if (hours > 0 || reward > 0) details.push({ id: act.id, date: act.date, activityType: act.activityType, hours: hours, reward: reward, originalAct: act });
         }
       });
     });
-    
     details.sort((a, b) => new Date(b.date) - new Date(a.date));
-
     return { totalReward, totalHours, details };
   }, [activities, membersList, displayUserName, includeUnimplemented]);
 
@@ -930,96 +683,52 @@ export const Dashboard = () => {
     const images = activity.imageUrls || (activity.imageUrl ? [activity.imageUrl] : []);
     const { canDeleteAct } = getPermissions(activity);
     const groupInfo = groupsList.find(g => g.id === activity.groupId);
-    
-    const statusLabel = activity.status || '実績入力済';
-    const planTypeLabel = activity.planType || '当初計画'; 
-    
     const budget = Number(activity.budget) || 0;
     const actualCost = calculateActivityCost(activity);
     const isChecked = selectedActivityIds.includes(activity.id);
+    
+    // 🚀 このカードに吸収された子チケットたちを取得
+    const children = globalSortedActivities.filter(c => c.mergedInto === activity.id);
 
     return (
       <div onClick={() => navigate(`/activity-form/${activity.id}`, { state: { editData: activity, isViewMode: true } })} className={`bg-white rounded-2xl shadow-sm border-l-4 border-green-500 p-4 cursor-pointer hover:shadow-md transition-all flex flex-col h-full relative group ${isChecked ? 'ring-2 ring-green-600 bg-green-50/20' : ''}`}>
         
         <div className="flex justify-between items-start mb-2 relative z-10">
           <div className="pt-0.5 pl-1" onClick={e => e.stopPropagation()}>
-            <input 
-              type="checkbox" 
-              checked={isChecked} 
-              onChange={(e) => toggleSelectActivity(activity.id, e)} 
-              className="w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500 cursor-pointer shadow-sm" 
-            />
+            <input type="checkbox" checked={isChecked} onChange={(e) => toggleSelectActivity(activity.id, e)} className="w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500 cursor-pointer shadow-sm" />
           </div>
-
           <div className="flex items-center space-x-1.5 ml-auto">
-            <button onClick={(e) => handleCopyLink(activity, e)} className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-md transition-colors" title="リンクをコピー">
-              <Link size={15} />
-            </button>
-
-            {canDeleteAct && (
-              <button onClick={(e) => handleDeleteClick(activity.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="この実績を削除">
-                <Trash2 size={16} />
-              </button>
-            )}
+            <button onClick={(e) => handleCopyLink(activity, e)} className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-md transition-colors" title="リンクをコピー"><Link size={15} /></button>
+            {canDeleteAct && <button onClick={(e) => handleDeleteClick(activity.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="この実績を削除"><Trash2 size={16} /></button>}
           </div>
         </div>
 
         <div className="flex flex-wrap gap-1.5 mb-2 pl-6">
-          <span className={`text-[10px] px-2 py-1 rounded-md font-bold border whitespace-nowrap ${
-            planTypeLabel === '当初計画' ? 'bg-blue-50 text-blue-600 border-blue-100' :
-            planTypeLabel === '期中追加' ? 'bg-orange-50 text-orange-600 border-orange-100' :
-            'bg-red-50 text-red-600 border-red-100'
-          }`}>
-            {planTypeLabel}
-          </span>
-          <span className={`text-[10px] px-2 py-1 rounded-md font-bold border whitespace-nowrap ${statusLabel === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-600 border-green-100'}`}>
-            {statusLabel}
-          </span>
-
-          {activity.isLocked && (
-            <span className="text-[10px] px-2 py-1 rounded-md font-bold border border-gray-500 bg-gray-600 text-white whitespace-nowrap flex items-center shadow-sm">
-              <Lock size={10} className="mr-1" /> 提出済
-            </span>
-          )}
+          <span className={`text-[10px] px-2 py-1 rounded-md font-bold border whitespace-nowrap ${activity.planType === '当初計画' ? 'bg-blue-50 text-blue-600 border-blue-100' : activity.planType === '期中追加' ? 'bg-orange-50 text-orange-600 border-orange-100' : 'bg-red-50 text-red-600 border-red-100'}`}>{activity.planType || '当初計画'}</span>
+          <span className={`text-[10px] px-2 py-1 rounded-md font-bold border whitespace-nowrap ${(activity.status || '実績入力済') === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-600 border-green-100'}`}>{activity.status || '実績入力済'}</span>
+          {activity.isLocked && <span className="text-[10px] px-2 py-1 rounded-md font-bold border border-gray-500 bg-gray-600 text-white whitespace-nowrap flex items-center shadow-sm"><Lock size={10} className="mr-1" /> 提出済</span>}
         </div>
         
         <div className="flex flex-col items-start space-y-1 pl-6 mb-3">
           <h3 className="font-bold text-lg text-gray-900 leading-tight">{activity.activityType || '内容未入力'}</h3>
-          {activity.isEssential && (
-            <span className="text-[9px] bg-yellow-50 text-yellow-700 border border-yellow-200 px-1.5 py-0.5 rounded font-bold">必須作業</span>
-          )}
+          {activity.isEssential && <span className="text-[9px] bg-yellow-50 text-yellow-700 border border-yellow-200 px-1.5 py-0.5 rounded font-bold">必須作業</span>}
         </div>
         
         <div className="space-y-1.5 text-xs text-gray-600 mb-3 flex-grow">
           <div className="flex flex-wrap items-center gap-1">
-            {groupInfo ? (
-              <span className="bg-gray-100 text-gray-600 text-[10px] px-2 py-1 rounded-md font-bold">{groupInfo.name}</span>
-            ) : (
-              <span className="bg-red-50 text-red-500 text-[10px] px-2 py-1 rounded-md font-bold border border-red-100">未登録</span>
-            )}
-            
-            {activity.paymentCategory && (
-              <span className="bg-teal-50 text-teal-700 text-[9px] px-2 py-1 rounded-md font-bold border border-teal-100 truncate max-w-[120px]">
-                {activity.paymentCategory}
-              </span>
-            )}
+            {groupInfo ? <span className="bg-gray-100 text-gray-600 text-[10px] px-2 py-1 rounded-md font-bold">{groupInfo.name}</span> : <span className="bg-red-50 text-red-500 text-[10px] px-2 py-1 rounded-md font-bold border border-red-100">未登録</span>}
+            {activity.paymentCategory && <span className="bg-teal-50 text-teal-700 text-[9px] px-2 py-1 rounded-md font-bold border border-teal-100 truncate max-w-[120px]">{activity.paymentCategory}</span>}
           </div>
           {activity.reportNo && <div className="flex items-center text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded-md w-max mb-1 mt-1.5">NO: {activity.reportNo}</div>}
           <div className="flex items-center mt-1"><Calendar className="mr-2 h-4 w-4 shrink-0" />{activity.date}</div>
-          {(activity.startTime || activity.endTime) && (
-            <div className="flex items-center"><Clock className="mr-2 h-4 w-4 shrink-0" />{activity.startTime || '--:--'} 〜 {activity.endTime || '--:--'}</div>
-          )}
+          {(activity.startTime || activity.endTime) && <div className="flex items-center"><Clock className="mr-2 h-4 w-4 shrink-0" />{activity.startTime || '--:--'} 〜 {activity.endTime || '--:--'}</div>}
           <div className="flex items-center"><MapPin className="mr-2 h-4 w-4 shrink-0" /><span className="truncate">{activity.location}</span></div>
         </div>
 
         {(budget > 0 || actualCost > 0) && (
           <div className="flex justify-between items-center mb-3 pt-2 border-t border-gray-100 border-dashed">
-            <div className="text-[10px] text-gray-500">
-              予算: <span className="font-bold text-gray-700">¥{budget.toLocaleString()}</span>
-            </div>
-            <div className="text-[10px] text-gray-500">
-              実績: <span className="font-bold text-blue-600">¥{actualCost.toLocaleString()}</span>
-            </div>
+            <div className="text-[10px] text-gray-500">予算: <span className="font-bold text-gray-700">¥{budget.toLocaleString()}</span></div>
+            <div className="text-[10px] text-gray-500">実績: <span className="font-bold text-blue-600">¥{actualCost.toLocaleString()}</span></div>
           </div>
         )}
 
@@ -1029,40 +738,42 @@ export const Dashboard = () => {
           </div>
         )}
 
+        {/* 🚀 子チケットのツリー表示 (カード版) */}
+        {children.length > 0 && (
+          <div className="mt-1 mb-3 bg-indigo-50/50 rounded-lg p-2.5 text-xs text-gray-600 border border-indigo-100">
+            <div className="text-[10px] text-indigo-500 font-bold mb-1.5 flex items-center">
+              <ImageIcon size={12} className="mr-1" /> 画像を合体済み
+            </div>
+            {children.map(child => (
+              <div key={child.id} className="flex justify-between items-center bg-white p-2 rounded border border-indigo-50 mb-1 cursor-pointer hover:bg-gray-50 shadow-sm" onClick={(e) => { e.stopPropagation(); navigate(`/activity-form/${child.id}`, { state: { editData: child, isViewMode: true } }); }}>
+                 <div className="truncate text-gray-700 font-bold flex items-center gap-1.5">
+                   <span className="text-indigo-400 font-normal">┗</span> {child.date}
+                   <span className="truncate text-[10px]">{child.activityType}</span>
+                 </div>
+                 <button onClick={(e) => handleUnlink(child.id, e)} className="ml-2 px-2 py-1 bg-white border border-gray-200 rounded text-[10px] hover:bg-gray-50 shrink-0 font-bold text-blue-600 transition-colors">解除</button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="mt-auto pt-3 border-t border-gray-100 flex gap-2">
           {userRole === 'admin' && (
-            <button 
-              onClick={(e) => { e.stopPropagation(); handleGenerateDocuments(activity); }} 
-              disabled={generatingId === activity.id} 
-              className={`flex-1 py-2 rounded-xl font-bold text-[10px] flex items-center justify-center transition-colors ${generatingId === activity.id ? 'bg-green-400 text-white' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}
-            >
+            <button onClick={(e) => { e.stopPropagation(); handleGenerateDocuments(activity); }} disabled={generatingId === activity.id} className={`flex-1 py-2 rounded-xl font-bold text-[10px] flex items-center justify-center transition-colors ${generatingId === activity.id ? 'bg-green-400 text-white' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}>
               {generatingId === activity.id ? <Loader2 size={14} className="mr-1 animate-spin" /> : <FileSpreadsheet size={14} className="mr-1" />}
               {generatingId === activity.id ? '作成中...' : '自動作成'}
             </button>
           )}
-          <button 
-            onClick={(e) => { e.stopPropagation(); handleDownloadDocuments(activity); }} 
-            disabled={!activity.isDocumentGenerated || downloadingId === activity.id} 
-            className={`flex-1 border py-2 rounded-xl font-bold text-[10px] flex items-center justify-center transition-colors ${!activity.isDocumentGenerated ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'}`}
-          >
+          <button onClick={(e) => { e.stopPropagation(); handleDownloadDocuments(activity); }} disabled={!activity.isDocumentGenerated || downloadingId === activity.id} className={`flex-1 border py-2 rounded-xl font-bold text-[10px] flex items-center justify-center transition-colors ${!activity.isDocumentGenerated ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'}`}>
             {downloadingId === activity.id ? <Loader2 size={14} className="mr-1 animate-spin" /> : <Archive size={14} className="mr-1" />}
             {downloadingId === activity.id ? 'DL中...' : 'DL'}
           </button>
           {userRole === 'admin' && (
-            <button 
-              onClick={(e) => { e.stopPropagation(); setManualUploadActivity(activity); }} 
-              className={`flex-1 border py-2 rounded-xl font-bold text-[10px] flex items-center justify-center transition-colors bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100`}
-            >
+            <button onClick={(e) => { e.stopPropagation(); setManualUploadActivity(activity); }} className={`flex-1 border py-2 rounded-xl font-bold text-[10px] flex items-center justify-center transition-colors bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100`}>
               <UploadCloud size={14} className="mr-1" /> 手動
             </button>
           )}
           {userRole === 'admin' && activity.isDocumentGenerated && (
-            <button 
-              onClick={(e) => { e.stopPropagation(); handleDeleteDocuments(activity); }} 
-              disabled={deletingDocId === activity.id} 
-              className={`w-10 border py-2 rounded-xl font-bold text-[10px] flex items-center justify-center transition-colors ${deletingDocId === activity.id ? 'bg-orange-100 text-orange-400 border-orange-200 cursor-not-allowed' : 'bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100'}`}
-              title="書類削除"
-            >
+            <button onClick={(e) => { e.stopPropagation(); handleDeleteDocuments(activity); }} disabled={deletingDocId === activity.id} className={`w-10 border py-2 rounded-xl font-bold text-[10px] flex items-center justify-center transition-colors ${deletingDocId === activity.id ? 'bg-orange-100 text-orange-400 border-orange-200 cursor-not-allowed' : 'bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100'}`} title="書類削除">
               {deletingDocId === activity.id ? <Loader2 size={14} className="animate-spin" /> : <FileX size={14} />}
             </button>
           )}
@@ -1075,207 +786,85 @@ export const Dashboard = () => {
     const groupInfo = groupsList.find(g => g.id === act.groupId);
     const { canDeleteAct } = getPermissions(act);
     const hasImage = (act.imageUrls && act.imageUrls.length > 0) || act.imageUrl;
-    
-    const statusLabel = act.status || '実績入力済';
-    const planTypeLabel = act.planType || '当初計画';
-    const creatorName = systemUsers.find(u => u.id === act.createdBy)?.displayName || '-';
-
-    const budget = Number(act.budget) || 0;
-    const actualCost = calculateActivityCost(act);
     const isChecked = selectedActivityIds.includes(act.id);
-
     const baseBgClass = isChecked ? 'bg-[#ebf7ee]' : 'bg-white';
     const hoverBgClass = isChecked ? '' : (act.isLocked ? 'group-hover/row:bg-gray-50' : 'group-hover/row:bg-green-50');
 
     return (
-      <tr 
-        onClick={() => navigate(`/activity-form/${act.id}`, { state: { editData: act, isViewMode: true } })}
-        className={`border-b border-gray-100 cursor-pointer transition-colors group/row active:bg-gray-200 ${isChecked ? 'bg-[#ebf7ee] font-medium' : (act.isLocked ? 'bg-white hover:bg-gray-50' : 'bg-white hover:bg-green-50')}`}
-      >
-        <td className={`p-3 text-center whitespace-nowrap sticky left-0 z-10 border-r border-gray-100 ${baseBgClass} ${hoverBgClass}`} onClick={e => e.stopPropagation()}>
-          <input 
-            type="checkbox" 
-            checked={isChecked} 
-            onChange={(e) => toggleSelectActivity(act.id, e)} 
-            className="w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500 cursor-pointer" 
-          />
-        </td>
+      <tr onClick={() => navigate(`/activity-form/${act.id}`, { state: { editData: act, isViewMode: true } })} className={`border-b border-gray-100 cursor-pointer transition-colors group/row active:bg-gray-200 ${isChecked ? 'bg-[#ebf7ee] font-medium' : (act.isLocked ? 'bg-white hover:bg-gray-50' : 'bg-white hover:bg-green-50')}`}>
+        <td className={`p-3 text-center whitespace-nowrap sticky left-0 z-10 border-r border-gray-100 ${baseBgClass} ${hoverBgClass}`} onClick={e => e.stopPropagation()}><input type="checkbox" checked={isChecked} onChange={(e) => toggleSelectActivity(act.id, e)} className="w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500 cursor-pointer" /></td>
         <td className={`p-3 text-sm text-gray-700 whitespace-nowrap sticky left-12 z-10 border-r border-gray-100 shadow-[4px_0_6px_-2px_rgba(0,0,0,0.05)] ${baseBgClass} ${hoverBgClass}`}>{act.date}</td>
-        
         <td className="p-3 text-sm font-bold text-gray-900 whitespace-nowrap overflow-hidden text-ellipsis">{act.activityType}</td>
-        
-        <td className="p-3 text-xs text-center text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis">{creatorName}</td>
-
+        <td className="p-3 text-xs text-center text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis">{systemUsers.find(u => u.id === act.createdBy)?.displayName || '-'}</td>
         <td className="p-3 text-center whitespace-nowrap">
           <div className="flex flex-col items-center gap-1">
-            <span className={`px-2 py-1 rounded-full text-[9px] font-bold border whitespace-nowrap ${statusLabel === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-600 border-green-100'}`}>
-              {statusLabel}
-            </span>
-            {act.isLocked && (
-              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-gray-600 text-white flex items-center whitespace-nowrap shadow-sm border border-gray-500 shrink-0" title="提出済みのためロックされています">
-                <Lock size={8} className="mr-1" /> 提出済
-              </span>
-            )}
+            <span className={`px-2 py-1 rounded-full text-[9px] font-bold border whitespace-nowrap ${(act.status || '実績入力済') === '未実施' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-600 border-green-100'}`}>{act.status || '実績入力済'}</span>
+            {act.isLocked && <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-gray-600 text-white flex items-center whitespace-nowrap shadow-sm border border-gray-500 shrink-0"><Lock size={8} className="mr-1" /> 提出済</span>}
           </div>
         </td>
-
         <td className="p-3 text-center whitespace-nowrap">
           <div className="flex flex-col items-center space-y-1">
-            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border whitespace-nowrap ${
-              planTypeLabel === '当初計画' ? 'bg-blue-50 text-blue-600 border-blue-100' :
-              planTypeLabel === '期中追加' ? 'bg-orange-50 text-orange-600 border-orange-100' :
-              'bg-red-50 text-red-600 border-red-100'
-            }`}>
-              {planTypeLabel}
-            </span>
-            {act.isEssential && (
-              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold border bg-yellow-50 text-yellow-700 border-yellow-200">
-                必須作業
-              </span>
-            )}
+            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border whitespace-nowrap ${act.planType === '当初計画' ? 'bg-blue-50 text-blue-600 border-blue-100' : act.planType === '期中追加' ? 'bg-orange-50 text-orange-600 border-orange-100' : 'bg-red-50 text-red-600 border-red-100'}`}>{act.planType || '当初計画'}</span>
+            {act.isEssential && <span className="px-2 py-0.5 rounded-full text-[9px] font-bold border bg-yellow-50 text-yellow-700 border-yellow-200">必須作業</span>}
           </div>
         </td>
-
-        <td className="p-3 text-[10px] text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis font-bold">
-          {act.paymentCategory || '-'}
-        </td>
-
+        <td className="p-3 text-[10px] text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis font-bold">{act.paymentCategory || '-'}</td>
         <td className="p-3 text-sm font-bold text-blue-600 whitespace-nowrap">{act.reportNo || '-'}</td>
-        
-        <td className="p-3 text-sm font-bold text-gray-700 whitespace-nowrap text-right">
-          {budget > 0 ? `¥${budget.toLocaleString()}` : '-'}
-        </td>
-        <td className={`p-3 text-sm font-bold whitespace-nowrap text-right ${actualCost > budget && budget > 0 ? 'text-red-600' : 'text-blue-700'}`}>
-          {actualCost > 0 ? `¥${actualCost.toLocaleString()}` : '-'}
-        </td>
-
+        <td className="p-3 text-sm font-bold text-gray-700 whitespace-nowrap text-right">{(Number(act.budget) || 0) > 0 ? `¥${(Number(act.budget) || 0).toLocaleString()}` : '-'}</td>
+        <td className={`p-3 text-sm font-bold whitespace-nowrap text-right ${calculateActivityCost(act) > (Number(act.budget) || 0) && (Number(act.budget) || 0) > 0 ? 'text-red-600' : 'text-blue-700'}`}>{calculateActivityCost(act) > 0 ? `¥${calculateActivityCost(act).toLocaleString()}` : '-'}</td>
         <td className="p-3 text-xs whitespace-nowrap overflow-hidden text-ellipsis">{groupInfo ? groupInfo.name : <span className="text-red-500">未登録</span>}</td>
         <td className="p-3 text-xs text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis">{act.location}</td>
         <td className="p-3 text-xs font-bold text-green-600 whitespace-nowrap">{act.activityNumbers?.join(', ')}</td>
-        
-        <td className="p-3 text-center whitespace-nowrap">
-          {hasImage ? <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded text-[9px] font-bold">あり</span> : <span className="text-gray-300 text-[10px]">-</span>}
-        </td>
-
+        <td className="p-3 text-center whitespace-nowrap">{hasImage ? <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded text-[9px] font-bold">あり</span> : <span className="text-gray-300 text-[10px]">-</span>}</td>
         <td className={`w-0 px-2 py-2 text-center whitespace-nowrap sticky right-0 bg-white transition-colors shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-100 hidden md:table-cell ${act.isLocked ? 'group-hover/row:bg-gray-50/80' : 'group-hover/row:bg-green-50'}`} onClick={(e) => e.stopPropagation()}>
           <div className="flex gap-1.5 justify-center items-center w-max mx-auto">
-            <button onClick={(e) => handleCopyLink(act, e)} className="p-1.5 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded transition-colors" title="リンクをコピー">
-              <Link size={14} />
-            </button>
-
-            {userRole === 'admin' && (
-              <button 
-                onClick={(e) => { e.stopPropagation(); handleGenerateDocuments(act); }} 
-                disabled={generatingId === act.id} 
-                className={`px-2 py-1.5 rounded-lg font-bold text-[9px] flex items-center transition-colors ${generatingId === act.id ? 'bg-green-400 text-white' : 'bg-green-50 text-green-700 hover:bg-green-100'}`} 
-                title="提出書類を自動作成・保存"
-              >
-                {generatingId === act.id ? <Loader2 size={12} className="mr-1 animate-spin" /> : <FileSpreadsheet size={12} className="mr-1" />}
-                作成
-              </button>
-            )}
-            <button 
-              onClick={(e) => { e.stopPropagation(); handleDownloadDocuments(act); }} 
-              disabled={!act.isDocumentGenerated || downloadingId === act.id} 
-              className={`px-2 py-1.5 border rounded-lg font-bold text-[9px] flex items-center transition-colors ${!act.isDocumentGenerated ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50'}`} 
-              title={act.isDocumentGenerated ? "提出書類DL(ZIP)" : "書類未作成"}
-            >
-              {downloadingId === act.id ? <Loader2 size={12} className="mr-1 animate-spin" /> : <Archive size={12} className="mr-1" />}
-              DL
-            </button>
-
-            {userRole === 'admin' && (
-              <button 
-                onClick={(e) => { e.stopPropagation(); setManualUploadActivity(act); }} 
-                className={`px-2 py-1.5 border rounded-lg font-bold text-[9px] flex items-center transition-colors bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50`} 
-                title="手動で書類を登録・個別削除"
-              >
-                <UploadCloud size={12} className="mr-1" />
-                手動
-              </button>
-            )}
-            
-            {userRole === 'admin' && act.isDocumentGenerated && (
-              <button 
-                onClick={(e) => { e.stopPropagation(); handleDeleteDocuments(act); }} 
-                disabled={deletingDocId === act.id} 
-                className={`px-2 py-1.5 border rounded-lg font-bold text-[9px] flex items-center transition-colors ${deletingDocId === act.id ? 'bg-orange-50 text-orange-400 border-orange-200' : 'bg-white text-orange-600 border-orange-200 hover:bg-orange-50'}`} 
-                title="提出書類を一括削除"
-              >
-                {deletingDocId === act.id ? <Loader2 size={12} className="mr-1 animate-spin" /> : <FileX size={12} className="mr-1" />}
-                削除
-              </button>
-            )}
-
-            {canDeleteAct && (
-              <button onClick={(e) => handleDeleteClick(act.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="活動記録の削除">
-                <Trash2 size={14} />
-              </button>
-            )}
+            <button onClick={(e) => handleCopyLink(act, e)} className="p-1.5 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded transition-colors" title="リンクをコピー"><Link size={14} /></button>
+            {userRole === 'admin' && <button onClick={(e) => { e.stopPropagation(); handleGenerateDocuments(act); }} disabled={generatingId === act.id} className={`px-2 py-1.5 rounded-lg font-bold text-[9px] flex items-center transition-colors ${generatingId === act.id ? 'bg-green-400 text-white' : 'bg-green-50 text-green-700 hover:bg-green-100'}`} title="提出書類を自動作成・保存">{generatingId === act.id ? <Loader2 size={12} className="mr-1 animate-spin" /> : <FileSpreadsheet size={12} className="mr-1" />}作成</button>}
+            <button onClick={(e) => { e.stopPropagation(); handleDownloadDocuments(act); }} disabled={!act.isDocumentGenerated || downloadingId === act.id} className={`px-2 py-1.5 border rounded-lg font-bold text-[9px] flex items-center transition-colors ${!act.isDocumentGenerated ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50'}`} title={act.isDocumentGenerated ? "提出書類DL(ZIP)" : "書類未作成"}>{downloadingId === act.id ? <Loader2 size={12} className="mr-1 animate-spin" /> : <Archive size={12} className="mr-1" />}DL</button>
+            {userRole === 'admin' && <button onClick={(e) => { e.stopPropagation(); setManualUploadActivity(act); }} className={`px-2 py-1.5 border rounded-lg font-bold text-[9px] flex items-center transition-colors bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50`} title="手動で書類を登録・個別削除"><UploadCloud size={12} className="mr-1" />手動</button>}
+            {userRole === 'admin' && act.isDocumentGenerated && <button onClick={(e) => { e.stopPropagation(); handleDeleteDocuments(act); }} disabled={deletingDocId === act.id} className={`px-2 py-1.5 border rounded-lg font-bold text-[9px] flex items-center transition-colors ${deletingDocId === act.id ? 'bg-orange-50 text-orange-400 border-orange-200' : 'bg-white text-orange-600 border-orange-200 hover:bg-orange-50'}`} title="提出書類を一括削除">{deletingDocId === act.id ? <Loader2 size={12} className="animate-spin" /> : <FileX size={12} className="mr-1" />}削除</button>}
+            {canDeleteAct && <button onClick={(e) => handleDeleteClick(act.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="活動記録の削除"><Trash2 size={14} /></button>}
           </div>
         </td>
-        <td className="w-0 px-2 py-2 text-center whitespace-nowrap sticky right-0 bg-white md:hidden border-l border-gray-100" onClick={(e) => e.stopPropagation()}>
-          <button 
-            onClick={(e) => { e.stopPropagation(); setActionMenuActivity(act); }} 
-            className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-          >
-            <MoreVertical size={20} />
-          </button>
-        </td>
+        <td className="w-0 px-2 py-2 text-center whitespace-nowrap sticky right-0 bg-white md:hidden border-l border-gray-100" onClick={(e) => e.stopPropagation()}><button onClick={(e) => { e.stopPropagation(); setActionMenuActivity(act); }} className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"><MoreVertical size={20} /></button></td>
       </tr>
     );
   };
 
   const ActivityTable = ({ activitiesToRender }) => {
-    const toggleDateSort = () => {
-      setDateSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
-    };
-
+    const toggleDateSort = () => setDateSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
     const tableActivityIds = useMemo(() => activitiesToRender.map(a => a.id), [activitiesToRender]);
     const isAllTableSelected = tableActivityIds.length > 0 && tableActivityIds.every(id => selectedActivityIds.includes(id));
-
     const handleSelectAll = (e) => {
-      if (e.target.checked) {
-        setSelectedActivityIds(prev => [...new Set([...prev, ...tableActivityIds])]);
-      } else {
-        setSelectedActivityIds(prev => prev.filter(id => !tableActivityIds.includes(id)));
-      }
+      if (e.target.checked) setSelectedActivityIds(prev => [...new Set([...prev, ...tableActivityIds])]);
+      else setSelectedActivityIds(prev => prev.filter(id => !tableActivityIds.includes(id)));
     };
+
+    // 🚀 親チケット（合体されていないもの）だけをメイン行として表示
+    const topLevelRender = useMemo(() => {
+      return activitiesToRender.filter(a => !a.mergedInto);
+    }, [activitiesToRender]);
 
     return (
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden relative">
         {(userRole === 'admin' || userRole === 'manager') && (
           <div className="md:hidden bg-blue-50/80 px-3 py-2 text-[10px] text-blue-600 flex items-center font-bold border-b border-blue-100">
-            <Info className="w-3.5 h-3.5 mr-1.5 shrink-0" /> 
-            <span>各行の右端の<span className="bg-blue-100 px-1 rounded mx-0.5 font-black">︙</span>を押すとメニューが表示されます</span>
+            <Info className="w-3.5 h-3.5 mr-1.5 shrink-0" /> <span>各行の右端の<span className="bg-blue-100 px-1 rounded mx-0.5 font-black">︙</span>を押すとメニューが表示されます</span>
           </div>
         )}
 
         <div className="overflow-x-auto relative custom-scrollbar pb-2">
-          {/* 🚀 修正：min-w-[1450px] → min-w-[1750px] に拡張し、全体的に広げる */}
           <table className="w-full text-left border-collapse min-w-[1750px] table-fixed select-none">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200 text-sm text-gray-700">
                 <th className="p-3 w-12 text-center whitespace-nowrap sticky left-0 z-20 bg-gray-50 border-r border-gray-200">
-                  <input 
-                    type="checkbox" 
-                    checked={isAllTableSelected} 
-                    onChange={handleSelectAll} 
-                    className="w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500 cursor-pointer" 
-                  />
+                  <input type="checkbox" checked={isAllTableSelected} onChange={handleSelectAll} className="w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500 cursor-pointer" />
                 </th>
                 <th onClick={toggleDateSort} className="p-3 font-bold w-28 cursor-pointer hover:bg-gray-200 transition-colors group whitespace-nowrap sticky left-12 z-20 bg-gray-50 border-r border-gray-200 shadow-[4px_0_6px_-2px_rgba(0,0,0,0.05)]" title="日付で並び替え">
-                  <div className="flex items-center text-blue-700">
-                    日付
-                    {dateSortOrder === 'desc' ? <ChevronDown size={16} className="ml-1 text-blue-600 group-hover:text-blue-800" /> : <ChevronUp size={16} className="ml-1 text-blue-600 group-hover:text-blue-800" />}
-                  </div>
+                  <div className="flex items-center text-blue-700">日付 {dateSortOrder === 'desc' ? <ChevronDown size={16} className="ml-1 text-blue-600 group-hover:text-blue-800" /> : <ChevronUp size={16} className="ml-1 text-blue-600 group-hover:text-blue-800" />}</div>
                 </th>
-                
-                {/* 🚀 修正：各列の幅に余裕を持たせる */}
                 <th className="p-3 font-bold w-full min-w-[250px] whitespace-nowrap">活動内容</th>
-                
                 <th className="p-3 font-bold w-28 text-center whitespace-nowrap">登録者</th>
-
                 <th className="p-3 font-bold w-24 text-center whitespace-nowrap">状態</th>
                 <th className="p-3 font-bold w-24 text-center whitespace-nowrap">区分</th>
                 <th className="p-3 font-bold w-44 whitespace-nowrap">支払区分</th>
@@ -1285,21 +874,49 @@ export const Dashboard = () => {
                 <th className="p-3 font-bold w-40 whitespace-nowrap">グループ</th>
                 <th className="p-3 font-bold w-48 whitespace-nowrap">活動場所</th>
                 <th className="p-3 font-bold w-24 whitespace-nowrap">項目番号</th>
-                
                 <th className="p-3 font-bold w-12 text-center whitespace-nowrap">写真</th>
-                
-                <th className="w-0 px-3 py-3 font-bold text-center whitespace-nowrap sticky right-0 bg-gray-100 shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-200 hidden md:table-cell">
-                  操作
-                </th>
-                <th className="w-0 px-3 py-3 font-bold text-center whitespace-nowrap sticky right-0 bg-gray-100 shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-200 md:hidden">
-                  操作
-                </th>
+                <th className="w-0 px-3 py-3 font-bold text-center whitespace-nowrap sticky right-0 bg-gray-100 shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-200 hidden md:table-cell">操作</th>
+                <th className="w-0 px-3 py-3 font-bold text-center whitespace-nowrap sticky right-0 bg-gray-100 shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-gray-200 md:hidden">操作</th>
               </tr>
             </thead>
             <tbody>
-              {activitiesToRender.map(act => (
-                <ActivityTableRow key={act.id} act={act} />
-              ))}
+              {topLevelRender.map(act => {
+                // 🚀 この行に吸収された子チケットたちを全活動データから探す
+                const children = globalSortedActivities.filter(c => c.mergedInto === act.id);
+
+                return (
+                  <React.Fragment key={act.id}>
+                    <ActivityTableRow act={act} />
+                    
+                    {/* 🚀 子チケットのツリー表示 (リスト版) */}
+                    {children.map(child => (
+                      <tr 
+                        key={child.id} 
+                        onClick={() => navigate(`/activity-form/${child.id}`, { state: { editData: child, isViewMode: true } })} 
+                        className="bg-indigo-50/20 hover:bg-indigo-50/50 cursor-pointer text-sm text-gray-600 border-b border-indigo-100 transition-colors"
+                      >
+                        <td className="sticky left-0 z-10 bg-indigo-50/20 border-r border-indigo-100"></td>
+                        <td className="sticky left-12 z-10 bg-indigo-50/20 border-r border-indigo-100 p-3 text-right">
+                          <span className="text-indigo-300 font-bold mr-2">┗</span>
+                        </td>
+                        <td className="p-3 font-bold text-gray-700 flex items-center">
+                          <ImageIcon size={14} className="mr-1.5 text-indigo-500" />
+                          {child.date} <span className="text-xs ml-2 truncate max-w-[200px]">{child.activityType}</span>
+                        </td>
+                        <td colSpan="11" className="p-3 text-[10px] text-indigo-400 font-bold tracking-wider">
+                          ※ この活動の実績（金額等）はそのまま個別に集計されます
+                        </td>
+                        <td className="p-3 text-center sticky right-0 bg-indigo-50/20 shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-indigo-100">
+                          <button onClick={(e) => handleUnlink(child.id, e)} className="px-3 py-1.5 bg-white border border-indigo-200 text-blue-600 rounded-lg text-xs font-bold hover:bg-indigo-50 transition-colors shadow-sm">
+                            合体解除
+                          </button>
+                        </td>
+                        <td className="p-3 text-center sticky right-0 bg-indigo-50/20 shadow-[-4px_0_6px_-1px_rgba(0,0,0,0.05)] z-10 border-l border-indigo-100 md:hidden"></td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -1340,7 +957,6 @@ export const Dashboard = () => {
           
           {(userRole === 'admin' || userRole === 'manager') && (
             <>
-              {/* 🚀 追加：申請管理へのリンク（PC） */}
               <button onClick={() => navigate('/applications')} className="flex items-center text-sm font-bold text-gray-500 hover:text-blue-600">
                 <FileCheck size={18} className="mr-1"/> 作業明細管理
               </button>
@@ -1387,7 +1003,6 @@ export const Dashboard = () => {
         <div className="md:hidden flex items-center w-full overflow-x-auto space-x-3 pb-1">
            {(userRole === 'admin' || userRole === 'manager') && (
             <>
-              {/* 🚀 追加：申請管理へのリンク（スマホ） */}
               <button onClick={() => navigate('/applications')} className="p-2 text-gray-500 hover:text-blue-600 transition-colors" title="作業明細管理"><FileCheck size={20} /></button>
 
               <button onClick={() => navigate('/groups')} className="p-2 text-gray-500 hover:text-blue-600 transition-colors"><Users size={20} /></button>
@@ -1612,7 +1227,8 @@ export const Dashboard = () => {
               <div className="animate-in fade-in duration-500">
                 {viewStyle === 'card' ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                    {globalSortedActivities.map(act => <ActivityCard key={act.id} activity={act} />)}
+                    {/* 🚀 カード形式でも、合体元のチケットはリストから隠す */}
+                    {globalSortedActivities.filter(a => !a.mergedInto).map(act => <ActivityCard key={act.id} activity={act} />)}
                   </div>
                 ) : (
                   <ActivityTable activitiesToRender={globalSortedActivities} />
@@ -1626,6 +1242,7 @@ export const Dashboard = () => {
                   const acts = groupedActivities[group.id] || [];
                   if (acts.length === 0) return null;
 
+                  // 🚀 ここの計算処理は変更なし（合体されたチケットの金額も集計に含めるため）
                   const groupTotalBudget = acts.reduce((sum, act) => sum + (Number(act.budget) || 0), 0);
                   const groupTotalActual = acts.reduce((sum, act) => sum + calculateActivityCost(act), 0);
                   const balance = groupTotalBudget - groupTotalActual;
@@ -1638,7 +1255,8 @@ export const Dashboard = () => {
                             <div className="h-6 w-1.5 bg-blue-600 rounded-full mr-3"></div>
                             <h3 className="text-xl font-extrabold text-gray-800">{group.name}</h3>
                             <span className="ml-3 bg-blue-50 text-blue-600 text-xs px-2.5 py-0.5 rounded-full font-bold border border-blue-100">
-                              {acts.length} 件の記録
+                              {/* 🚀 グループ内の実数 */}
+                              {acts.filter(a => !a.mergedInto).length} 件の記録
                             </span>
                           </div>
                           {(userRole === 'admin' || userRole === 'manager') && acts.length > 0 && (
@@ -1681,7 +1299,7 @@ export const Dashboard = () => {
                       
                       {viewStyle === 'card' ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                          {acts.map(act => <ActivityCard key={act.id} activity={act} />)}
+                          {acts.filter(a => !a.mergedInto).map(act => <ActivityCard key={act.id} activity={act} />)}
                         </div>
                       ) : (
                         <ActivityTable activitiesToRender={acts} />
@@ -1714,7 +1332,7 @@ export const Dashboard = () => {
                             <div className="h-6 w-1.5 bg-gray-400 rounded-full mr-3"></div>
                             <h3 className="text-xl font-extrabold text-gray-500">グループ未登録・不明</h3>
                             <span className="ml-3 bg-gray-100 text-gray-600 text-xs px-2.5 py-0.5 rounded-full font-bold border border-gray-200">
-                              {unregisteredActs.length} 件の記録
+                              {unregisteredActs.filter(a => !a.mergedInto).length} 件の記録
                             </span>
                           </div>
                           {(userRole === 'admin' || userRole === 'manager') && unregisteredActs.length > 0 && (
@@ -1758,7 +1376,7 @@ export const Dashboard = () => {
                       <div className="opacity-80">
                         {viewStyle === 'card' ? (
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                            {unregisteredActs.map(act => <ActivityCard key={act.id} activity={act} />)}
+                            {unregisteredActs.filter(a => !a.mergedInto).map(act => <ActivityCard key={act.id} activity={act} />)}
                           </div>
                         ) : (
                           <ActivityTable activitiesToRender={unregisteredActs} />
@@ -2016,7 +1634,7 @@ export const Dashboard = () => {
 
       {/* 🚀 進捗・完了モーダル */}
       {progressModal.isOpen && (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm no-print">
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white w-full max-w-md rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200">
             <div className="p-6">
               <div className="flex items-center mb-4">

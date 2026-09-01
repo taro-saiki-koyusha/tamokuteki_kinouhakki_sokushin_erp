@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from 'react';
-// 🚀 修正: 'Plus' アイコンのインポートを追加しました
 import { ArrowLeft, CheckCircle, Search, Save, X, Image as ImageIcon, AlertTriangle, Loader2, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, doc, getDoc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -122,7 +121,7 @@ export const TicketManagement = () => {
       return;
     }
 
-    const confirmMsg = `「${sourceTicket.activityType || '無題'}」(${sourceTicket.date}) の画像を、\n「${baseTicket.activityType || '無題'}」(${baseTicket.date}) にコピー追加します。\n\n※画像以外のデータは変更されません。\nよろしいですか？`;
+    const confirmMsg = `「${sourceTicket.activityType || '無題'}」(${sourceTicket.date}) の画像を、\n「${baseTicket.activityType || '無題'}」(${baseTicket.date}) にコピー追加します。\n\n※ダッシュボード上ではコピー元がベース側の配下にツリー表示されます。\nよろしいですか？`;
     
     if (!window.confirm(confirmMsg)) return;
 
@@ -140,8 +139,14 @@ export const TicketManagement = () => {
 
       const combinedImages = [...new Set([...baseImages, ...sourceImages])];
 
+      // 🚀 ベースチケットに画像を追加
       await updateDoc(doc(db, 'activities', baseTicket.id), {
         imageUrls: combinedImages
+      });
+
+      // 🚀 コピー元チケットに「どのチケットに合体されたか」のリンク情報を付与
+      await updateDoc(doc(db, 'activities', sourceTicket.id), {
+        mergedInto: baseTicket.id
       });
 
       const currentUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || currentUser?.displayName || '管理者';
@@ -154,7 +159,7 @@ export const TicketManagement = () => {
         createdAt: serverTimestamp()
       });
 
-      alert("画像のコピーが完了しました！");
+      alert("画像のコピーと合体が完了しました！");
       setBaseTicketId(null);
       setSourceTicketId(null);
     } catch (error) {
@@ -181,7 +186,7 @@ export const TicketManagement = () => {
           <div className="p-4 border-b border-gray-100 bg-gray-50">
             <h2 className="font-extrabold text-gray-800">⚙️ 合体設定</h2>
             <p className="text-xs text-gray-500 mt-1">
-              2つ目のチケットの画像を、1つ目のチケットにコピーします。（画像以外のデータは変更されません）
+              2つ目のチケットの画像を、1つ目のチケットにコピーし、リスト上でもツリー化させます。
             </p>
           </div>
           
@@ -198,7 +203,7 @@ export const TicketManagement = () => {
             </div>
 
             <TicketCard 
-              title="コピー元（画像を提供）" 
+              title="コピー元（画像を提供し、ベースの配下に入る）" 
               ticket={sourceTicket} 
               onClear={() => setSourceTicketId(null)} 
               type="source" 
@@ -246,7 +251,7 @@ export const TicketManagement = () => {
             <table className="w-full text-left border-collapse min-w-[700px]">
               <thead>
                 <tr className="bg-gray-100 border-b border-gray-200 text-xs text-gray-600">
-                  <th className="p-3 font-bold">日付</th>
+                  <th className="p-3 font-bold pl-5">日付</th>
                   <th className="p-3 font-bold w-1/3">活動内容</th>
                   <th className="p-3 font-bold text-center">画像</th>
                   <th className="p-3 font-bold text-center">アクション</th>
@@ -261,12 +266,29 @@ export const TicketManagement = () => {
                   filteredActivities.map(act => {
                     const safeImageUrls = Array.isArray(act.imageUrls) ? act.imageUrls : [];
                     const imgCount = safeImageUrls.length + (act.imageUrl && !safeImageUrls.includes(act.imageUrl) ? 1 : 0);
+                    
                     const isBase = baseTicketId === act.id;
                     const isSource = sourceTicketId === act.id;
+                    const isAlreadyMerged = !!act.mergedInto; // 既に合体済みのチケットかどうか
 
                     return (
-                      <tr key={act.id} className={`border-b border-gray-100 transition-colors hover:bg-gray-50 ${isBase ? 'bg-blue-50/50' : ''} ${isSource ? 'bg-indigo-50/50' : ''}`}>
-                        <td className="p-3 text-sm text-gray-700 whitespace-nowrap">{act.date}</td>
+                      <tr 
+                        key={act.id} 
+                        className={`border-b border-gray-100 transition-colors ${
+                          isAlreadyMerged ? 'bg-gray-50 opacity-60' : 'hover:bg-gray-50'
+                        } border-l-4 ${
+                          isBase ? 'bg-blue-50/80 border-l-blue-500' : 
+                          isSource ? 'bg-indigo-50/80 border-l-indigo-500' : 'border-l-transparent'
+                        }`}
+                      >
+                        <td className="p-3 pl-4 text-sm text-gray-700 whitespace-nowrap">
+                          <div className="flex flex-col items-start gap-1">
+                            <span>{act.date}</span>
+                            {isBase && <span className="bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded-full font-bold shadow-sm">1 ベース</span>}
+                            {isSource && <span className="bg-indigo-600 text-white text-[10px] px-2 py-0.5 rounded-full font-bold shadow-sm">2 コピー元</span>}
+                            {isAlreadyMerged && <span className="bg-gray-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold shadow-sm">合体済み</span>}
+                          </div>
+                        </td>
                         <td className="p-3 text-sm font-bold text-gray-900">
                           {act.activityType || '-'}
                           <div className="text-[10px] text-gray-500 font-normal mt-0.5">{act.location}</div>
@@ -284,25 +306,30 @@ export const TicketManagement = () => {
                           <div className="flex items-center justify-center space-x-2">
                             <button
                               onClick={() => setBaseTicketId(isBase ? null : act.id)}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+                              disabled={isSource || isAlreadyMerged} 
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors flex items-center ${
                                 isBase 
-                                  ? 'bg-blue-600 text-white border-blue-600' 
+                                  ? 'bg-blue-600 text-white border-blue-600 shadow-md' 
                                   : 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50'
-                              }`}
+                              } ${(isSource || isAlreadyMerged) ? 'opacity-30 cursor-not-allowed' : ''}`}
                             >
-                              {isBase ? <CheckCircle size={14} className="inline mr-1"/> : null}
-                              ベースにセット
+                              {isBase ? (
+                                <><span className="bg-white text-blue-600 rounded-full w-4 h-4 inline-flex items-center justify-center mr-1.5 text-[10px]">1</span> 選択中</>
+                              ) : 'ベースにセット'}
                             </button>
+                            
                             <button
                               onClick={() => setSourceTicketId(isSource ? null : act.id)}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+                              disabled={isBase || isAlreadyMerged} 
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors flex items-center ${
                                 isSource 
-                                  ? 'bg-indigo-600 text-white border-indigo-600' 
+                                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' 
                                   : 'bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50'
-                              }`}
+                              } ${(isBase || isAlreadyMerged) ? 'opacity-30 cursor-not-allowed' : ''}`}
                             >
-                              {isSource ? <CheckCircle size={14} className="inline mr-1"/> : null}
-                              コピー元にセット
+                              {isSource ? (
+                                <><span className="bg-white text-indigo-600 rounded-full w-4 h-4 inline-flex items-center justify-center mr-1.5 text-[10px]">2</span> 選択中</>
+                              ) : 'コピー元にセット'}
                             </button>
                           </div>
                         </td>
