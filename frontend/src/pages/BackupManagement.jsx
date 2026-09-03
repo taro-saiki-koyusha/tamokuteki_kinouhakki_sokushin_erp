@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { doc, getDoc, collection, getDocs, writeBatch, serverTimestamp, addDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, writeBatch, serverTimestamp, addDoc, Timestamp } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
-import { ArrowLeft, Database, Download, Upload, AlertTriangle, ShieldCheck, CheckCircle, Loader2, Info } from 'lucide-react';
+import { ArrowLeft, Database, Download, Upload, AlertTriangle, ShieldCheck, CheckCircle, Loader2, Info, FileJson } from 'lucide-react';
 import { db, auth } from '../firebase';
 
 export const BackupManagement = () => {
@@ -15,6 +15,11 @@ export const BackupManagement = () => {
   const [restoreStatus, setRestoreStatus] = useState('idle');
   const [restoreFile, setRestoreFile] = useState(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+
+  // 🚀 個別リストア（JSON貼り付け）用のステート
+  const [pastedJson, setPastedJson] = useState('');
+  const [pasteRestoreStatus, setPasteRestoreStatus] = useState('idle');
+  const [pasteCollection, setPasteCollection] = useState('activities');
 
   // バックアップ対象の全コレクション
   const COLLECTIONS_TO_BACKUP = [
@@ -71,7 +76,6 @@ export const BackupManagement = () => {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      // 操作履歴の保存
       await addDoc(collection(db, 'audit_logs'), {
         action: 'BACKUP',
         userName: userName,
@@ -110,7 +114,6 @@ export const BackupManagement = () => {
         throw new Error("無効なバックアップファイル形式です。");
       }
 
-      // 復元処理（バッチ処理を利用して安全に書き込み）
       for (const colName of Object.keys(backupData.collections)) {
         let batch = writeBatch(db);
         let operationCount = 0;
@@ -122,7 +125,6 @@ export const BackupManagement = () => {
           batch.set(docRef, docData);
           operationCount++;
 
-          // Firestoreのバッチ処理の上限（500）を超えないように分割してコミット
           if (operationCount >= 400) {
             await batch.commit();
             batch = writeBatch(db);
@@ -135,7 +137,6 @@ export const BackupManagement = () => {
         }
       }
 
-      // 操作履歴の保存
       await addDoc(collection(db, 'audit_logs'), {
         action: 'RESTORE',
         userName: userName,
@@ -152,6 +153,71 @@ export const BackupManagement = () => {
     } catch (error) {
       console.error("リストアエラー:", error);
       setRestoreStatus('error');
+    }
+  };
+
+  // 🚀 個別リストア（JSON貼り付け）実行
+  const executePasteRestore = async () => {
+    if (!pastedJson.trim()) return;
+    if (!window.confirm(`貼り付けられたデータを「${pasteCollection}」に復元（上書き・追加）しますか？`)) return;
+    
+    setPasteRestoreStatus('loading');
+    try {
+      const parsedData = JSON.parse(pastedJson);
+      // 単一オブジェクトの場合は配列に変換
+      const dataArray = Array.isArray(parsedData) ? parsedData : [parsedData];
+      
+      let batch = writeBatch(db);
+      let count = 0;
+
+      for (const item of dataArray) {
+        const { id, ...docData } = item;
+        if (!id) throw new Error("JSON内に 'id' フィールドが含まれていないデータがあります。");
+
+        // 日付型（Timestamp）の復元処理（seconds があるものは Timestamp クラスに変換）
+        const convertTimestamps = (obj) => {
+          for (const key in obj) {
+            if (obj[key] !== null && typeof obj[key] === 'object') {
+              if ('seconds' in obj[key] && 'nanoseconds' in obj[key]) {
+                obj[key] = new Timestamp(obj[key].seconds, obj[key].nanoseconds);
+              } else {
+                convertTimestamps(obj[key]);
+              }
+            }
+          }
+        };
+        convertTimestamps(docData);
+
+        const docRef = doc(db, pasteCollection, id);
+        batch.set(docRef, docData, { merge: true }); // マージで安全に上書き・追加
+        count++;
+
+        if (count % 400 === 0) {
+          await batch.commit();
+          batch = writeBatch(db);
+        }
+      }
+      
+      if (count % 400 !== 0) {
+        await batch.commit();
+      }
+
+      await addDoc(collection(db, 'audit_logs'), {
+        action: 'RESTORE',
+        userName: userName,
+        userId: auth.currentUser.uid,
+        target: 'システム設定',
+        details: `JSONの直接貼り付けにより「${pasteCollection}」へ ${count}件 の個別復元を実行しました`,
+        createdAt: serverTimestamp()
+      });
+
+      setPasteRestoreStatus('success');
+      setPastedJson('');
+      setTimeout(() => setPasteRestoreStatus('idle'), 5000);
+    } catch (error) {
+      console.error("個別リストアエラー:", error);
+      alert('復元に失敗しました。JSONの形式が正しいか確認してください。\n\n詳細エラー: ' + error.message);
+      setPasteRestoreStatus('error');
     }
   };
 
@@ -263,31 +329,26 @@ export const BackupManagement = () => {
             </button>
           </div>
 
-          {/* リストア（インポート） */}
+          {/* リストア（フルインポート） */}
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-red-100">
             <div className="flex items-center mb-4">
               <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center mr-3">
                 <Upload className="text-red-600" size={20} />
               </div>
-              <h2 className="text-lg font-bold text-gray-800">システムの復元 (リストア)</h2>
+              <h2 className="text-lg font-bold text-gray-800">システムの全体復元 (フルリストア)</h2>
             </div>
             <p className="text-sm text-gray-600 mb-4">
-              事前に作成したバックアップファイル（JSON形式）を読み込み、システムの状態を復元します。
+              事前に作成したバックアップファイル（JSON形式）を読み込み、システムの状態を完全に復元します。
             </p>
 
             <div className="border border-red-200 bg-red-50 p-3 rounded-xl mb-6 flex items-start text-xs text-red-700 font-bold">
               <AlertTriangle size={14} className="mr-2 mt-0.5 shrink-0" />
-              現在のデータベースに登録されているデータはすべてバックアップファイルの内容で上書きされます。
+              現在のシステム上のデータはすべてバックアップの内容で上書きされ、元に戻せません。
             </div>
 
             {restoreStatus === 'success' && (
               <div className="mb-4 bg-green-50 border border-green-200 p-3 rounded-lg flex items-center text-green-700 text-sm font-bold animate-in fade-in">
                 <CheckCircle size={16} className="mr-2" /> データベースの復元が完了しました！
-              </div>
-            )}
-            {restoreStatus === 'error' && (
-              <div className="mb-4 bg-red-50 border border-red-200 p-3 rounded-lg flex items-center text-red-700 text-sm font-bold animate-in fade-in">
-                <AlertTriangle size={16} className="mr-2" /> 復元中にエラーが発生しました。ファイル形式を確認してください。
               </div>
             )}
 
@@ -311,13 +372,64 @@ export const BackupManagement = () => {
                 {restoreStatus === 'loading' ? (
                   <><Loader2 size={18} className="mr-2 animate-spin" /> 復元中...画面を閉じないでください</>
                 ) : (
-                  <><Upload size={18} className="mr-2" /> 選択したファイルで復元を開始</>
+                  <><Upload size={18} className="mr-2" /> 選択したファイルで全体復元を開始</>
                 )}
               </button>
             </div>
           </div>
-
         </div>
+
+        {/* 🚀 追加：個別データ復元（JSON貼り付け） */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-indigo-200 mt-6">
+          <div className="flex items-center mb-4">
+            <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center mr-3">
+              <FileJson className="text-indigo-600" size={20} />
+            </div>
+            <h2 className="text-lg font-bold text-gray-800">個別データの復元（JSON貼り付け）</h2>
+          </div>
+          <p className="text-sm text-gray-600 mb-4">
+            誤って削除してしまったチケットなど、特定のデータのみをバックアップから抽出して復元します。既存の他のデータには影響しません。
+          </p>
+
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <label className="text-sm font-bold text-gray-700">復元先のコレクション:</label>
+              <select 
+                value={pasteCollection} 
+                onChange={(e) => setPasteCollection(e.target.value)}
+                className="border border-gray-300 rounded-lg p-2 text-sm font-bold text-gray-800 focus:ring-2 focus:ring-indigo-500"
+              >
+                {COLLECTIONS_TO_BACKUP.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+
+            <textarea 
+              value={pastedJson} 
+              onChange={(e) => setPastedJson(e.target.value)}
+              placeholder='[ { "id": "...", "activityType": "...", ... } ] のように、復元したいデータのJSON配列をここに貼り付けてください。'
+              className="w-full h-48 border border-gray-300 rounded-xl p-3 text-sm font-mono text-gray-700 focus:ring-2 focus:ring-indigo-500"
+            ></textarea>
+
+            {pasteRestoreStatus === 'success' && (
+              <div className="bg-green-50 border border-green-200 p-3 rounded-lg flex items-center text-green-700 text-sm font-bold animate-in fade-in">
+                <CheckCircle size={16} className="mr-2" /> 個別データの復元に成功しました！
+              </div>
+            )}
+
+            <button 
+              onClick={executePasteRestore} 
+              disabled={!pastedJson.trim() || pasteRestoreStatus === 'loading'}
+              className="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-sm flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {pasteRestoreStatus === 'loading' ? (
+                <><Loader2 size={18} className="mr-2 animate-spin" /> 復元中...</>
+              ) : (
+                <><Upload size={18} className="mr-2" /> 貼り付けたデータを復元する</>
+              )}
+            </button>
+          </div>
+        </div>
+
       </main>
     </div>
   );
