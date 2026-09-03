@@ -1,8 +1,151 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp, query, orderBy, setDoc } from 'firebase/firestore';
+// 🚀 Timestamp を追加でインポート
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp, query, orderBy, setDoc, Timestamp } from 'firebase/firestore';
 import { ArrowLeft, Plus, Trash2, Edit, X, Check, Tractor, DollarSign, Settings, Package, Calendar, CreditCard, Sprout } from 'lucide-react';
 import { db } from '../firebase';
+
+// 🚀 復元用の失われた4件のデータ
+const RESTORE_DATA = [
+  {
+    "id": "Q72vKgwBLc1Lod5DqM84",
+    "updatedAt": { "seconds": 1785411652, "nanoseconds": 849000000 },
+    "endTime": "15:00",
+    "systemMemo": "",
+    "paymentDateId": "",
+    "imageUrls": [
+      "https://firebasestorage.googleapis.com/v0/b/tamokuteki-kinouhakki-erp.firebasestorage.app/o/photos%2F1783831329716_1000001270.jpg?alt=media&token=b02f41f6-a1f8-4f9f-9d74-94b2308a7f76",
+      "https://firebasestorage.googleapis.com/v0/b/tamokuteki-kinouhakki-erp.firebasestorage.app/o/photos%2F1783831329730_1000001268.jpg?alt=media&token=c73ffdad-5f14-496a-a4d1-f88eebef2769",
+      "https://firebasestorage.googleapis.com/v0/b/tamokuteki-kinouhakki-erp.firebasestorage.app/o/photos%2F1783831329735_1000001269.jpg?alt=media&token=73ac4ef5-d246-4586-9e19-03c9f87d7137"
+    ],
+    "memo": "",
+    "createdAt": { "seconds": 1783831337, "nanoseconds": 664000000 },
+    "participantsNonAgri": 0,
+    "location": "七十刈池",
+    "activityType": "七十刈池草刈り①",
+    "participants": 2,
+    "participantDetails": [
+      {
+        "isAgri": true,
+        "machineId": "",
+        "wageId": "5YRXAZojafv2nIQr5NDL",
+        "participantName": "阿部賢二",
+        "isManualName": false,
+        "machineTime": 0,
+        "workTime": 6
+      },
+      {
+        "isManualName": false,
+        "machineTime": 6,
+        "wageId": "zero",
+        "workTime": 0,
+        "machineId": "sbk3iBMRv93xJCE3kEE1",
+        "isAgri": true,
+        "participantName": "農）カマタ"
+      }
+    ],
+    "isLocked": false,
+    "budget": 16500,
+    "createdBy": "rEQzgOh4uZaV44YF75mb32F5UKg2",
+    "startTime": "08:00",
+    "reportNo": "20260712134217",
+    "groupId": "nN0CprbF4pq3Stug1oB8",
+    "participantsAgri": 2,
+    "planType": "当初計画",
+    "paymentCategory": "２ 資源向上支払（共同）",
+    "updatedBy": "H7RNPZ0UCTYZFIbmPaDSLAMaklr2",
+    "activityNumbers": ["10", "13"],
+    "isEssential": false,
+    "date": "2026-07-11",
+    "status": "未実施",
+    "materialDetails": [],
+    "customPaymentDate": ""
+  },
+  {
+    "id": "mV8MKLCMZ2PYehFjCiFi",
+    "isEssential": true,
+    "materialDetails": [],
+    "planType": "当初計画",
+    "participantsNonAgri": 0,
+    "paymentCategory": "２ 資源向上支払（共同）",
+    "status": "未実施",
+    "activityNumbers": ["5"],
+    "date": "2026-07-25",
+    "updatedBy": "H7RNPZ0UCTYZFIbmPaDSLAMaklr2",
+    "paymentDateId": "",
+    "participantsAgri": 0,
+    "startTime": "08:00",
+    "participants": 0,
+    "createdBy": "H7RNPZ0UCTYZFIbmPaDSLAMaklr2",
+    "endTime": "10:00",
+    "reportNo": "20260601234732",
+    "participantDetails": [],
+    "memo": "【計画として一括登録】",
+    "createdAt": { "seconds": 1778242239, "nanoseconds": 782000000 },
+    "groupId": "nN0CprbF4pq3Stug1oB8",
+    "activityType": "第1ポンプ場草刈り②",
+    "updatedAt": { "seconds": 1780903719, "nanoseconds": 271000000 },
+    "location": "その他",
+    "imageUrls": [],
+    "budget": 5400
+  },
+  {
+    "id": "9uJhQXDJ71ljrAJRoxJ9",
+    "memo": "【計画として一括登録】",
+    "participantsNonAgri": 0,
+    "activityNumbers": ["5"],
+    "isEssential": true,
+    "status": "未実施",
+    "reportNo": "20260601234719",
+    "paymentCategory": "２ 資源向上支払（共同）",
+    "participantDetails": [],
+    "materialDetails": [],
+    "updatedBy": "H7RNPZ0UCTYZFIbmPaDSLAMaklr2",
+    "participantsAgri": 0,
+    "location": "その他",
+    "endTime": "10:00",
+    "budget": 12150,
+    "participants": 0,
+    "createdBy": "H7RNPZ0UCTYZFIbmPaDSLAMaklr2",
+    "startTime": "08:00",
+    "date": "2026-07-25",
+    "updatedAt": { "seconds": 1780903711, "nanoseconds": 580000000 },
+    "planType": "当初計画",
+    "imageUrls": [],
+    "createdAt": { "seconds": 1778242239, "nanoseconds": 797000000 },
+    "activityType": "第2ポンプ場草刈り②",
+    "groupId": "nN0CprbF4pq3Stug1oB8",
+    "paymentDateId": ""
+  },
+  {
+    "id": "scHtPIt4vvhFtyYb0Q1l",
+    "activityType": "荒谷の沢池草刈り②",
+    "imageUrls": [],
+    "isEssential": true,
+    "paymentCategory": "２ 資源向上支払（共同）",
+    "location": "その他",
+    "updatedAt": { "seconds": 1780903735, "nanoseconds": 281000000 },
+    "budget": 8100,
+    "activityNumbers": ["13", "15"],
+    "createdAt": { "seconds": 1778242239, "nanoseconds": 732000000 },
+    "date": "2026-08-01",
+    "groupId": "nN0CprbF4pq3Stug1oB8",
+    "endTime": "10:00",
+    "reportNo": "20260601234746",
+    "createdBy": "H7RNPZ0UCTYZFIbmPaDSLAMaklr2",
+    "materialDetails": [],
+    "participants": 0,
+    "startTime": "08:00",
+    "participantsAgri": 0,
+    "updatedBy": "H7RNPZ0UCTYZFIbmPaDSLAMaklr2",
+    "status": "未実施",
+    "memo": "【計画として一括登録】",
+    "planType": "当初計画",
+    "paymentDateId": "",
+    "participantsNonAgri": 0,
+    "participantDetails": []
+  }
+];
 
 export const MasterManagement = () => {
   const navigate = useNavigate();
@@ -11,7 +154,7 @@ export const MasterManagement = () => {
   const [materials, setMaterials] = useState([]); 
   const [systemSettings, setSystemSettings] = useState({ 
     fiscalYearStartMonth: 4,
-    targetYear: new Date().getFullYear(), // 🚀 追加：対象年度
+    targetYear: new Date().getFullYear(),
     paymentDates: [],
     budgetAgriMaintain: 0,
     budgetResourceJoint: 0,
@@ -43,7 +186,7 @@ export const MasterManagement = () => {
         const data = docSnap.data();
         setSystemSettings({
           fiscalYearStartMonth: data.fiscalYearStartMonth || 4,
-          targetYear: data.targetYear || new Date().getFullYear(), // 🚀 追加
+          targetYear: data.targetYear || new Date().getFullYear(),
           paymentDates: data.paymentDates || [],
           budgetAgriMaintain: data.budgetAgriMaintain || 0,
           budgetResourceJoint: data.budgetResourceJoint || 0,
@@ -62,6 +205,34 @@ export const MasterManagement = () => {
       unsubSettings(); 
     };
   }, []);
+
+  // 🚀 復元実行関数
+  const executeRestore = async () => {
+    if(!window.confirm('失われた4件の活動データを復元します。よろしいですか？')) return;
+    
+    try {
+      for (const act of RESTORE_DATA) {
+        const dataToSave = { ...act };
+        const docId = dataToSave.id;
+        delete dataToSave.id;
+
+        // 時間データ (seconds, nanoseconds) をFirestoreのTimestamp型に変換
+        if (dataToSave.createdAt?.seconds) {
+          dataToSave.createdAt = new Timestamp(dataToSave.createdAt.seconds, dataToSave.createdAt.nanoseconds);
+        }
+        if (dataToSave.updatedAt?.seconds) {
+          dataToSave.updatedAt = new Timestamp(dataToSave.updatedAt.seconds, dataToSave.updatedAt.nanoseconds);
+        }
+
+        // setDocでIDを指定して上書き保存（復元）
+        await setDoc(doc(db, 'activities', docId), dataToSave);
+      }
+      alert('4件の活動データを正常に復元しました！ダッシュボードを確認してください。');
+    } catch (error) {
+      console.error('復元エラー:', error);
+      alert('エラーが発生しました。コンソールを確認してください。');
+    }
+  };
 
   const handleAdd = async (type) => {
     try {
@@ -136,7 +307,7 @@ export const MasterManagement = () => {
     try {
       await setDoc(doc(db, 'settings', 'system'), {
         fiscalYearStartMonth: Number(systemSettings.fiscalYearStartMonth),
-        targetYear: Number(systemSettings.targetYear), // 🚀 追加
+        targetYear: Number(systemSettings.targetYear),
         paymentDates: systemSettings.paymentDates, 
         budgetAgriMaintain: Number(systemSettings.budgetAgriMaintain || 0),
         budgetResourceJoint: Number(systemSettings.budgetResourceJoint || 0),
@@ -175,6 +346,14 @@ export const MasterManagement = () => {
           <Settings className="w-6 h-6 mr-2 text-blue-600" />
           マスタ・設定管理
         </h1>
+
+        {/* 🚀 復元ボタンを右上に設置 */}
+        <button 
+          onClick={executeRestore}
+          className="ml-auto bg-red-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-red-700 transition-colors shadow-sm active:scale-95"
+        >
+          失われた4件を復元
+        </button>
       </header>
 
       <main className="p-4 max-w-5xl mx-auto space-y-6">
@@ -225,7 +404,6 @@ export const MasterManagement = () => {
                   <p className="text-xs text-gray-500">※ この月を起点として、ダッシュボードや実績一覧の「年度」が自動計算されます。</p>
                 </div>
 
-                {/* 🚀 追加：対象年度の入力欄 */}
                 <div className="flex flex-col sm:flex-row sm:items-center gap-4 mt-5">
                   <label className="text-sm font-bold text-gray-700 min-w-[150px]">対象年度（西暦）</label>
                   <div className="flex items-center w-full sm:w-48">
