@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { ArrowLeft, CheckCircle, Search, Save, X, Image as ImageIcon, AlertTriangle, Loader2, Plus } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Search, Save, X, Image as ImageIcon, AlertTriangle, Loader2, Plus, Trash2, RotateCcw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, onSnapshot, doc, getDoc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, getDoc, updateDoc, deleteDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth } from '../firebase';
 
@@ -75,6 +75,7 @@ export const TicketManagement = () => {
             return;
           }
 
+          // 🚀 ダッシュボード同様、すべてのチケットを取得（後でフィルタリングする）
           const q = query(collection(db, 'activities'));
           unsubscribeData = onSnapshot(q, (querySnapshot) => {
             const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -105,14 +106,21 @@ export const TicketManagement = () => {
   const baseTicket = useMemo(() => activities.find(a => a.id === baseTicketId), [activities, baseTicketId]);
   const sourceTicket = useMemo(() => activities.find(a => a.id === sourceTicketId), [activities, sourceTicketId]);
 
+  // 🚀 アクティブなチケット（削除されていないもの）
   const filteredActivities = useMemo(() => {
-    if (!searchTerm) return activities;
-    return activities.filter(act => 
-      (act.activityType || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (act.date || '').includes(searchTerm) ||
-      (act.location || '').toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    return activities.filter(act => {
+      if (act.isDeleted === true) return false; // 確実に削除フラグを除外
+      if (!searchTerm) return true;
+      return (act.activityType || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+             (act.date || '').includes(searchTerm) ||
+             (act.location || '').toLowerCase().includes(searchTerm.toLowerCase());
+    });
   }, [activities, searchTerm]);
+
+  // 🚀 削除済みのチケット（ごみ箱）
+  const deletedActivities = useMemo(() => {
+    return activities.filter(act => act.isDeleted === true); // 確実に削除フラグが立っているものを抽出
+  }, [activities]);
 
   const handleMerge = async () => {
     if (!baseTicket || !sourceTicket) return;
@@ -139,12 +147,10 @@ export const TicketManagement = () => {
 
       const combinedImages = [...new Set([...baseImages, ...sourceImages])];
 
-      // 🚀 ベースチケットに画像を追加
       await updateDoc(doc(db, 'activities', baseTicket.id), {
         imageUrls: combinedImages
       });
 
-      // 🚀 コピー元チケットに「どのチケットに合体されたか」のリンク情報を付与
       await updateDoc(doc(db, 'activities', sourceTicket.id), {
         mergedInto: baseTicket.id
       });
@@ -167,6 +173,51 @@ export const TicketManagement = () => {
       alert("統合処理に失敗しました。");
     } finally {
       setIsMerging(false);
+    }
+  };
+
+  // 🚀 復元処理
+  const handleRestore = async (id, title) => {
+    if (!window.confirm(`「${title || '無題'}」を復元しますか？\nダッシュボードの一覧に再度表示されるようになります。`)) return;
+    try {
+      await updateDoc(doc(db, 'activities', id), {
+        isDeleted: false, 
+        deletedAt: null
+      });
+      const currentUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || currentUser?.displayName || '管理者';
+      await addDoc(collection(db, 'audit_logs'), {
+        action: 'RESTORE',
+        userName: currentUserName,
+        userId: currentUser?.uid || 'unknown',
+        target: '活動実績',
+        details: `ID: ${id} の活動記録をごみ箱から復元しました。`,
+        createdAt: serverTimestamp()
+      });
+      alert('チケットを復元しました！');
+    } catch (error) {
+      console.error("Restore error:", error);
+      alert('復元に失敗しました。');
+    }
+  };
+
+  // 🚀 完全削除処理
+  const handlePermanentDelete = async (id, title) => {
+    if (!window.confirm(`「${title || '無題'}」をデータベースから完全に削除しますか？\n※この操作は元に戻せません！`)) return;
+    try {
+      await deleteDoc(doc(db, 'activities', id));
+      const currentUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || currentUser?.displayName || '管理者';
+      await addDoc(collection(db, 'audit_logs'), {
+        action: 'DELETE',
+        userName: currentUserName,
+        userId: currentUser?.uid || 'unknown',
+        target: '活動実績',
+        details: `ID: ${id} の活動記録をデータベースから完全削除しました。`,
+        createdAt: serverTimestamp()
+      });
+      alert('完全に削除しました。');
+    } catch (error) {
+      console.error("Permanent delete error:", error);
+      alert('削除に失敗しました。');
     }
   };
 
@@ -269,7 +320,7 @@ export const TicketManagement = () => {
                     
                     const isBase = baseTicketId === act.id;
                     const isSource = sourceTicketId === act.id;
-                    const isAlreadyMerged = !!act.mergedInto; // 既に合体済みのチケットかどうか
+                    const isAlreadyMerged = !!act.mergedInto;
 
                     return (
                       <tr 
@@ -341,6 +392,77 @@ export const TicketManagement = () => {
             </table>
           </div>
         </section>
+
+        {/* 🚀 ごみ箱（削除済みチケット一覧） */}
+        <section className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden opacity-95">
+          <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gray-100 text-gray-700">
+            <h2 className="font-extrabold flex items-center">
+              <Trash2 className="mr-2" size={18} />
+              ごみ箱（削除済みチケット一覧）
+            </h2>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[700px]">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500">
+                  <th className="p-3 font-bold pl-5">日付</th>
+                  <th className="p-3 font-bold w-1/3">活動内容</th>
+                  <th className="p-3 font-bold text-center">画像</th>
+                  <th className="p-3 font-bold text-center">アクション</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan="4" className="text-center py-6 text-gray-400">読み込み中...</td></tr>
+                ) : deletedActivities.length === 0 ? (
+                  <tr><td colSpan="4" className="text-center py-6 text-gray-400">削除されたチケットはありません</td></tr>
+                ) : (
+                  deletedActivities.map(act => {
+                    const safeImageUrls = Array.isArray(act.imageUrls) ? act.imageUrls : [];
+                    const imgCount = safeImageUrls.length + (act.imageUrl && !safeImageUrls.includes(act.imageUrl) ? 1 : 0);
+
+                    return (
+                      <tr key={act.id} className="border-b border-gray-100 transition-colors bg-gray-50/50 hover:bg-gray-100 text-gray-500">
+                        <td className="p-3 pl-4 text-sm whitespace-nowrap">{act.date}</td>
+                        <td className="p-3 text-sm font-bold">
+                          <span className="line-through">{act.activityType || '-'}</span>
+                          <div className="text-[10px] text-gray-400 font-normal mt-0.5">{act.location}</div>
+                        </td>
+                        <td className="p-3 text-center">
+                          {imgCount > 0 ? (
+                            <span className="inline-flex items-center bg-gray-200 px-2 py-1 rounded text-xs font-bold text-gray-500 border border-gray-300">
+                              <ImageIcon size={12} className="mr-1" /> {imgCount}
+                            </span>
+                          ) : (
+                            <span className="text-gray-300 text-xs">-</span>
+                          )}
+                        </td>
+                        <td className="p-3 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center space-x-2">
+                            <button
+                              onClick={() => handleRestore(act.id, act.activityType)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors flex items-center bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                            >
+                              <RotateCcw size={14} className="mr-1"/> 復元
+                            </button>
+                            <button
+                              onClick={() => handlePermanentDelete(act.id, act.activityType)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors flex items-center bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
+                            >
+                              <X size={14} className="mr-1"/> 完全削除
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
       </main>
     </div>
   );

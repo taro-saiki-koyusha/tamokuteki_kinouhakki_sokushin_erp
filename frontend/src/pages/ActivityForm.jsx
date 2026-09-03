@@ -370,10 +370,14 @@ export const ActivityForm = () => {
     setOpenParticipantIndex(null); 
   };
 
+  // 🚀 物理削除（deleteDoc）から論理削除（isDeleted: true）に変更
   const handleDelete = async () => {
-    if (window.confirm('本当にこの実績を削除しますか？')) {
+    if (window.confirm('この活動記録をごみ箱へ移動しますか？\n（チケット管理画面の「ごみ箱」から復元可能です）')) {
       try { 
-        await deleteDoc(doc(db, 'activities', editData.id)); 
+        await updateDoc(doc(db, 'activities', editData.id), {
+          isDeleted: true,
+          deletedAt: serverTimestamp()
+        }); 
 
         const currentUserName = systemUsers.find(u => u.id === currentUser?.uid)?.name || 
                                 systemUsers.find(u => u.id === currentUser?.uid)?.displayName || 
@@ -385,7 +389,7 @@ export const ActivityForm = () => {
           userName: currentUserName,
           userId: currentUser?.uid || 'unknown',
           target: '活動実績',
-          details: `活動日: ${editData.date || '未定'} の記録（${editData.activityType || '無題'}）を削除しました`,
+          details: `活動日: ${editData.date || '未定'} の記録（${editData.activityType || '無題'}）をごみ箱へ移動しました`,
           createdAt: serverTimestamp()
         });
 
@@ -955,8 +959,10 @@ export const ActivityForm = () => {
                 <label className="block text-sm font-bold text-blue-900 mb-1">対象グループ <span className="text-red-500">*</span></label>
                 <select name="groupId" value={formData.groupId} onChange={handleChange} disabled={isViewMode} className={`${inputClass} border-blue-200 focus:ring-blue-500 bg-white`} required>
                   <option value="">グループを選択してください</option>
-                  {/* 🚀 修正：プルダウンの表示名のみ変更 */}
-                  {selectableGroups.map(g => <option key={g.id} value={g.id}>{g.name === '農）カマタ' ? '農事組合法人カマタ' : g.name}</option>)}
+                  <option value="YxsEWa1szhUcCDcQgIwd">農事組合法人カマタ</option>
+                  {selectableGroups.filter(g => g.id !== "YxsEWa1szhUcCDcQgIwd").map(g => (
+                    <option key={g.id} value={g.id}>{g.name}</option>
+                  ))}
                 </select>
               </div>
 
