@@ -29,6 +29,46 @@ const formatBytes = (bytes) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
+// 🚀 追加：ファイルサイズを約1/5に圧縮するユーティリティ関数
+const compressImage = (file) => {
+  return new Promise((resolve) => {
+    if (!file.type.startsWith('image/')) {
+      resolve(file); // 画像以外はそのまま返す
+      return;
+    }
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        // 面積が約1/5になるように縦横のスケールを計算 (√0.2 ≈ 0.447)
+        const scale = 0.45; 
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const compressedFile = new File([blob], file.name, {
+              type: 'image/jpeg',
+              lastModified: Date.now()
+            });
+            resolve(compressedFile);
+          } else {
+            resolve(file); // 失敗時は元のファイルを返す
+          }
+        }, 'image/jpeg', 0.8); // JPEG形式、品質80%で圧縮
+      };
+      img.onerror = () => resolve(file);
+    };
+    reader.onerror = () => resolve(file);
+  });
+};
+
 export const ActivityForm = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -43,6 +83,7 @@ export const ActivityForm = () => {
   const [isLoadingDirect, setIsLoadingDirect] = useState(false); 
   const [isExporting, setIsExporting] = useState(false); 
   const [isPreparingPrint, setIsPreparingPrint] = useState(false);
+  const [isCompressing, setIsCompressing] = useState(false); // 🚀 追加：圧縮中のローディング用ステート
 
   const [membersList, setMembersList] = useState([]);
   const [machinesList, setMachinesList] = useState([]);
@@ -321,12 +362,23 @@ export const ActivityForm = () => {
     });
   };
 
-  const handleImageChange = (e) => {
+  // 🚀 変更：選択時に圧縮処理を挟む
+  const handleImageChange = async (e) => {
     const files = Array.from(e.target.files);
     if (files.length > 0) {
-      setNewImageFiles(prev => [...prev, ...files]);
-      const newPreviews = files.map(file => URL.createObjectURL(file));
-      setNewPreviewUrls(prev => [...prev, ...newPreviews]);
+      setIsCompressing(true);
+      try {
+        const compressedFiles = await Promise.all(files.map(file => compressImage(file)));
+        setNewImageFiles(prev => [...prev, ...compressedFiles]);
+        const newPreviews = compressedFiles.map(file => URL.createObjectURL(file));
+        setNewPreviewUrls(prev => [...prev, ...newPreviews]);
+      } catch (err) {
+        console.error("画像圧縮エラー:", err);
+        alert("画像の処理中にエラーが発生しました。");
+      } finally {
+        setIsCompressing(false);
+        e.target.value = ''; // inputのリセット
+      }
     }
   };
 
@@ -370,7 +422,6 @@ export const ActivityForm = () => {
     setOpenParticipantIndex(null); 
   };
 
-  // 🚀 物理削除（deleteDoc）から論理削除（isDeleted: true）に変更
   const handleDelete = async () => {
     if (window.confirm('この活動記録をごみ箱へ移動しますか？\n（チケット管理画面の「ごみ箱」から復元可能です）')) {
       try { 
@@ -573,13 +624,19 @@ export const ActivityForm = () => {
     e.preventDefault();
     if (!formData.groupId) { alert('対象グループを選択してください。'); return; }
 
+    // 🚀 追加：合計サイズチェック (40MB以上でブロック)
+    const totalSize = newImageFiles.reduce((acc, file) => acc + file.size, 0);
+    const MAX_SIZE_BYTES = 40 * 1024 * 1024; // 40MB
+    if (totalSize >= MAX_SIZE_BYTES) {
+      alert(`追加された画像の合計サイズが大きすぎます（現在: ${formatBytes(totalSize)}）。\n通信エラーを防ぐため、40MB未満になるよう画像の枚数を減らして再度お試しください。`);
+      return;
+    }
+
     setIsSubmitting(true);
-    setUploadStats({ transferred: 0, total: 0 }); 
+    setUploadStats({ transferred: 0, total: totalSize }); 
     try {
       let finalImageUrls = [...existingUrls];
       if (newImageFiles.length > 0) {
-        const totalSize = newImageFiles.reduce((acc, file) => acc + file.size, 0);
-        setUploadStats({ transferred: 0, total: totalSize });
         const fileProgress = new Array(newImageFiles.length).fill(0);
 
         const uploadPromises = newImageFiles.map((file, index) => {
@@ -690,8 +747,8 @@ export const ActivityForm = () => {
         setSuccessModal({ show: true, message: '新しい活動実績を登録しました。' });
       }
     } catch (error) { 
+      // 🚀 変更：エラーの具体的なメッセージをダイアログに表示させる
       console.error("保存エラー詳細:", error); 
-      // エラーの具体的なメッセージをダイアログに表示させる
       alert(`保存エラーが発生しました。\n詳細: ${error.message || '通信エラーまたは容量超過の可能性があります'}`); 
     } finally { 
       setIsSubmitting(false); 
@@ -1144,7 +1201,14 @@ export const ActivityForm = () => {
               ))}
               
               {!isViewMode && (
-                <label className="aspect-square border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center text-gray-400 hover:bg-green-50 hover:border-green-400 cursor-pointer transition-all"><Camera size={24} /><span className="text-[10px] mt-1 font-bold">追加</span><input type="file" accept="image/*" multiple onChange={handleImageChange} className="hidden" /></label>
+                <label className={`aspect-square border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center text-gray-400 cursor-pointer transition-all ${isCompressing ? 'opacity-50 cursor-wait' : 'hover:bg-green-50 hover:border-green-400'}`}>
+                  {isCompressing ? (
+                    <><Loader2 size={24} className="animate-spin" /><span className="text-[10px] mt-1 font-bold">圧縮中...</span></>
+                  ) : (
+                    <><Camera size={24} /><span className="text-[10px] mt-1 font-bold">追加</span></>
+                  )}
+                  <input type="file" accept="image/*" multiple onChange={handleImageChange} disabled={isCompressing} className="hidden" />
+                </label>
               )}
             </div>
           </div>
