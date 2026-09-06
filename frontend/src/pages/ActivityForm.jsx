@@ -690,8 +690,9 @@ export const ActivityForm = () => {
         setSuccessModal({ show: true, message: '新しい活動実績を登録しました。' });
       }
     } catch (error) { 
-      console.error(error); 
-      alert('保存エラーが発生しました。'); 
+      console.error("保存エラー詳細:", error); 
+      // エラーの具体的なメッセージをダイアログに表示させる
+      alert(`保存エラーが発生しました。\n詳細: ${error.message || '通信エラーまたは容量超過の可能性があります'}`); 
     } finally { 
       setIsSubmitting(false); 
     }
